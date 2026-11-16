@@ -1,18 +1,19 @@
 {
   "name": "honghub-desktop",
-  "version": "1.7.8",
+  "version": "1.7.30",
   "description": "鸿汇影 · 免费桌面版：远程问题自动收集 + 实时更新 + 可扩展功能 + 一键自愈",
   "main": "electron-main.js",
   "scripts": {
     "start": "node server/server.js",
     "desktop": "node server/server.js",
     "build:app": "python build_desktop.py",
-    "pack": "node scripts/build-exe.js",
+    "pack": "node scripts/build-exe.js && node scripts/auto-release.js",
     "verify": "node scripts/verify-release.js",
     "test:bugfix": "node scripts/selftest-bugfix.js",
     "test:feature": "node scripts/selftest-feature-flow.js",
     "batch": "node scripts/build-archs.js",
     "check": "node scripts/check-static.js",
+    "check:features": "node scripts/check-feature-wiring.js",
     "doctor": "node scripts/doctor.js",
     "signing:setup": "node scripts/setup-signing.js",
     "hap:sign": "node scripts/hap-sign.js",
@@ -33,9 +34,25 @@
     "version:sync": "node scripts/version.js --sync",
     "version:bump": "node scripts/version.js --bump",
     "verify:dev-auto": "node scripts/verify-dev-auto.js",
+    "sources:verify": "node scripts/verify-sources.js",
+    "sources:chunk": "node scripts/verify-sources.js --chunk=300",
+    "sources:status": "node scripts/verify-sources.js --status",
+    "deploy:sites": "node scripts/deploy-sites.js",
+    "verify:online": "node scripts/deploy-sites.js --verify-only",
+    "verify:online:deep": "node scripts/deploy-sites.js --verify-only --deep",
+    "verify:e2e": "node scripts/verify-e2e.js",
+    "maintain": "node scripts/dev-maintain.js",
+    "maintain:quick": "node scripts/dev-maintain.js --quick",
+    "auto:release": "node scripts/auto-release.js",
+    "hap:device": "node scripts/hap-device.js --run",
+    "hap:install": "node scripts/hap-device.js --install",
+    "hap:shot": "node scripts/hap-device.js --shot",
+    "sites:sync": "node scripts/sync-sites.js",
     "sbom": "node scripts/sbom.js",
     "audit": "node scripts/sbom.js",
-    "hooks:install": "node scripts/install-hooks.js"
+    "hooks:install": "node scripts/install-hooks.js",
+    "dev:auto": "node scripts/dev-auto.mjs",
+    "dev:auto:check": "node scripts/dev-auto.mjs --check"
   },
   "devDependencies": {
     "electron": "^30.0.0",
@@ -55,7 +72,13 @@
       "assets/**/*",
       "electron-main.js",
       "build_desktop.py",
-      "package.json"
+      "package.json",
+      "!server/data/*.jsonl",
+      "!server/data/*.json",
+      "!server/data/access-token.txt",
+      "!server/data/app.page.html",
+      "!**/*.bak",
+      "!**/*.log"
     ],
     "directories": {
       "output": "dist"

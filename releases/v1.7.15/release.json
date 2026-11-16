@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "versionName": "1.7.15",
+  "versionCode": 1000129,
+  "publishedAt": "2026-11-16T06:56:17.302Z",
+  "buildAt": "2026-11-16T06:57:09.326Z",
+  "artifacts": {
+    "desktop": {
+      "file": "desktop-setup.exe",
+      "size": 77493807,
+      "sha256": "4f20aa9fd5798e4d6bbf9156f5d576a1b5db3717e43961b7d686eb94c496f013"
+    },
+    "hap": {
+      "file": "honghub-harmony.hap",
+      "size": 922917,
+      "sha256": "a88bf6d94532504d3ec843a407f8f8da3beb9a4333fc563b1e61dd3bb561af26"
+    }
+  },
+  "features": {
+    "versionName": "1.7.15",
+    "versionCode": 1000129,
+    "count": 30,
+    "hash": "3825274363086508",
+    "ids": [
+      "board",
+      "report",
+      "sourcespeed",
+      "fix",
+      "updatepublish",
+      "automation",
+      "updatecheck",
+      "govern",
+      "preset-open-dashboard",
+      "preset-dingtalk",
+      "preset-wecom",
+      "preset-feishu",
+      "preset-backup",
+      "preset-broadcast",
+      "feature-mine",
+      "auto-batch",
+      "arch-adaptive",
+      "play-smooth",
+      "mem-adaptive",
+      "auto-update",
+      "os-follow",
+      "ops-audit",
+      "ops-trend",
+      "ops-rollout",
+      "ops-publish",
+      "ops-smoke",
+      "ops-alerts",
+      "ops-catalog",
+      "ops-play",
+      "ops-issues"
+    ]
+  }
+}

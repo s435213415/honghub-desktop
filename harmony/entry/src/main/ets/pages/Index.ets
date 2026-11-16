@@ -1,10 +1,29 @@
 import webview from '@ohos.web.webview';
 import { AlertDialog } from '@kit.ArkUI';
+import deviceInfo from '@ohos.deviceInfo';
 
 @Entry
 @Component
 struct Index {
   controller: webview.WebviewController = new webview.WebviewController();
+
+  /* 把系统版本交给前端，前端据此自动切换适配策略（深开鸿 6.x / 旧系统同一套包） */
+  injectOsInfo() {
+    let info: Record<string, string> = {
+      'osFullName': String(deviceInfo.osFullName || ''),
+      'distributionOSName': String(deviceInfo.distributionOSName || ''),
+      'osVersion': String(deviceInfo.osVersion || ''),
+      'sdkApiVersion': String(deviceInfo.sdkApiVersion || 0),
+      'deviceType': String(deviceInfo.deviceType || '')
+    };
+    try {
+      this.controller.runJavaScript(
+        'window.__KH_OS=' + JSON.stringify(info) + ';' +
+        'try{if(window.applyOsAdapt)applyOsAdapt();}catch(e){}'
+      );
+    } catch (e) {
+    }
+  }
 
   build() {
     Column() {
@@ -16,6 +35,9 @@ struct Index {
         .fileAccess(true)
         .imageAccess(true)
         .cacheMode(CacheMode.Default)
+        .onPageEnd(() => {
+          this.injectOsInfo();
+        })
         // 接管前端 JS 的弹窗，让「一键自愈 / 自治 / 播报」等需 confirm/prompt 的功能在深开鸿端可用
         .onAlert((event) => {
           AlertDialog.show({

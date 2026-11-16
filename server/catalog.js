@@ -481,13 +481,42 @@ function removeSite(key) {
   metric('site', { act: 'remove', n: 1 });
   return { ok: true, removed: gone.name, totalSites: sites.length, manifestVersion: m.sources.v };
 }
+function updateSite(key, patch) {
+  const m = readManifest();
+  const sites = (m.sources && m.sources.sites) || [];
+  const k = String(key || '').trim();
+  const idx = sites.findIndex(function (s) { return siteId(s.name) === k || String(s.name) === k || String(s.url) === k; });
+  if (idx < 0) return { ok: false, error: '未找到该站点' };
+  const s = sites[idx];
+  const before = JSON.parse(JSON.stringify(s));
+  const p = (patch && typeof patch === 'object') ? patch : {};
+  const u = p.url ? normUrl(p.url) : '';
+  if (p.url && !u) return { ok: false, error: 'url 只接受 http/https' };
+  if (p.name) s.name = clip(p.name, 24);
+  if (u) s.url = u;
+  if (p.cat) s.cat = clip(p.cat, 20);
+  if (p.tag) s.tag = clip(p.tag, 2);
+  if (p.prov) s.prov = clip(p.prov, 8);
+  if (p.color && /^#[0-9a-fA-F]{6}$/.test(String(p.color))) s.color = String(p.color);
+  if (p.mobile) { const mu = normUrl(p.mobile); if (mu) s.mobile = mu; }
+  if (p.mode && ['wap', 'native', 'oversea'].indexOf(String(p.mode)) >= 0) s.mode = String(p.mode);
+  try { fs.copyFileSync(MANIFEST_FILE, path.join(DATA_DIR, 'manifest.before-site-update.json')); } catch (e) {}
+  m.sources.v = (Number(m.sources.v) || 0) + 1;
+  m.sources.updatedAt = iso();
+  m.sources.siteCount = sites.length;
+  writeJson(MANIFEST_FILE, m);
+  auditOk('site.update ' + s.name);
+  metric('site', { act: 'update', n: 1 });
+  return { ok: true, site: s, before: before, totalSites: sites.length, manifestVersion: m.sources.v };
+}
+
 function listSites() {
   const m = readManifest();
   const sites = (m.sources && m.sources.sites) || [];
   return {
     ok: true, total: sites.length, manifestVersion: m.sources && m.sources.v,
     sites: sites.map(function (s) {
-      return { id: siteId(s.name), name: s.name, url: s.url, cat: s.cat, region: s.region || (s.mode === 'oversea' ? 'oversea' : 'cn'), mode: s.mode, entryOnly: s.entryOnly !== false, addedBy: s.addedBy || 'builtin' };
+      return { id: siteId(s.name), name: s.name, url: s.url, cat: s.cat, prov: s.prov || '', tag: s.tag || '', color: s.color || '', region: s.region || (s.mode === 'oversea' ? 'oversea' : 'cn'), mode: s.mode, entryOnly: s.entryOnly !== false, addedBy: s.addedBy || 'builtin' };
     })
   };
 }
@@ -507,7 +536,7 @@ function startAuto(intervalMs) {
 
 module.exports = {
   normalize, probe, probeAll, runCycle, startAuto, ingestPlay, aggregatePlay,
-  addSites, removeSite, listSites,
+  addSites, removeSite, updateSite, listSites,
   catalog: function () { return readJson(CATALOG_FILE, { schema: 2, items: [], totals: {}, version: null }); },
   diff: function (since) {
     const cur = readJson(CATALOG_FILE, { items: [] });

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>鸿汇影 · 运维开关台</title>
+<style>
+  :root{--bg:#0E1119;--card:#161B26;--line:#242B3A;--fg:#E7ECF5;--mut:#9AA6C4;--hi:#5B8CFF;--ok:#4ED18A;--bad:#FF6B6B}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.6 -apple-system,"Segoe UI",sans-serif}
+  .wrap{max-width:1080px;margin:0 auto;padding:22px}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--mut);font-size:12px;margin-bottom:18px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:820px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .card h2{font-size:15px;margin:0 0 10px;display:flex;justify-content:space-between;align-items:center}
+  .row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+  .row:last-child{border-bottom:0}
+  .muted{color:var(--mut);font-size:12px}
+  button{border:1px solid var(--line);background:#212736;color:var(--fg);border-radius:9px;padding:6px 12px;cursor:pointer}
+  button.pri{background:var(--hi);border-color:var(--hi);color:#fff}
+  button.danger{background:#3A2026;border-color:#5B2A32;color:#FFB3B3}
+  input{background:#0F131C;border:1px solid var(--line);color:var(--fg);border-radius:9px;padding:7px 10px}
+  .pill{display:inline-block;padding:2px 9px;border-radius:12px;font-size:12px}
+  .on{background:rgba(78,209,138,.16);color:var(--ok)}
+  .off{background:rgba(255,107,107,.16);color:var(--bad)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:top}
+  th{color:var(--mut);font-weight:500}
+  code{color:#9FC1FF;font-size:12px}
+  .bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🧩 运维开关台</h1>
+  <div class="sub">远程功能开关 · 儿童时段 · 升级遥测 · 双指标选源 · 聚合搜索 · 双端接力 · 仅开发端可见</div>
+
+  <div class="bar">
+    <button id="reload" class="pri">刷新</button>
+    <span class="muted" id="stat"></span>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>远程功能开关 <span class="muted" id="flagAt"></span></h2>
+      <div id="flags"></div>
+      <div class="muted" style="margin-top:8px">关掉即从客户端 /api/features 生效，不必重新发版。</div>
+    </div>
+
+    <div class="card">
+      <h2>儿童时段模式</h2>
+      <div class="row"><span>总开关</span><button id="kidTog">-</button></div>
+      <div class="row"><span>时段</span><span><input id="kidStart" size="5" placeholder="21:00"> ~ <input id="kidEnd" size="5" placeholder="06:00"></span></div>
+      <div class="row"><span>屏蔽分组</span><input id="kidGroups" style="width:58%" placeholder="成人,福利,午夜"></div>
+      <div class="row"><span>解锁码</span><input id="kidPin" size="6" maxlength="4" placeholder="4 位数字"></div>
+      <div class="row"><span>当前状态</span><span id="kidState" class="muted">-</span></div>
+      <div style="text-align:right;margin-top:10px"><button id="kidSave" class="pri">保存</button></div>
+    </div>
+
+    <div class="card">
+      <h2>升级遥测 <span class="muted" id="telTot"></span></h2>
+      <table><thead><tr><th>时间</th><th>阶段</th><th>版本</th><th>结果</th><th>错误</th></tr></thead><tbody id="telBody"></tbody></table>
+    </div>
+
+    <div class="card">
+      <h2>双指标选源 <span class="muted">成功率 60% + 时延 40%</span></h2>
+      <table><thead><tr><th>条目</th><th>可用/总</th><th>最佳线路</th></tr></thead><tbody id="rankBody"></tbody></table>
+    </div>
+
+    <div class="card">
+      <h2>聚合搜索</h2>
+      <div class="bar"><input id="q" placeholder="频道 / 平台 / 地区，输入即搜" style="flex:1"><button id="go" class="pri">搜索</button></div>
+      <div id="searchOut" class="muted">输入关键词试试。</div>
+    </div>
+
+    <div class="card">
+      <h2>双端接力</h2>
+      <div class="muted">桌面端生成 6 位接力码，开鸿设备输码即取（10 分钟有效，一次性）。</div>
+      <div class="bar" style="margin-top:10px"><button id="mk" class="pri">生成测试接力码</button><span id="mkOut" class="muted"></span></div>
+    </div>
+  </div>
+</div>
+<script>
+function j(u){return fetch(u,{cache:'no-store'}).then(function(r){return r.json()})}
+function jp(u,b){return fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(function(r){return r.json()})}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+
+function loadFlags(){
+  j('/api/features/flags').then(function(d){
+    var f=(d&&d.flags)||{}, ids=Object.keys(f).sort();
+    document.getElementById('flagAt').textContent=d&&d.updatedAt?('更新 '+d.updatedAt.slice(0,19).replace('T',' ')):'';
+    document.getElementById('flags').innerHTML=ids.map(function(id){
+      var on=f[id]!==false;
+      return '<div class="row"><span>'+esc(id)+'</span><button data-id="'+esc(id)+'" data-on="'+(on?'1':'0')+'" class="'+(on?'':'danger')+'">'+(on?'已开启':'已关闭')+'</button></div>';
+    }).join('')||'<div class="muted">暂无开关记录</div>';
+    Array.prototype.forEach.call(document.querySelectorAll('#flags button[data-id]'),function(b){
+      b.onclick=function(){
+        var on=b.getAttribute('data-on')==='1';
+        b.disabled=true;
+        jp('/api/features/flags',{id:b.getAttribute('data-id'),enabled:!on}).then(function(r){
+          b.disabled=false;
+          if(r&&r.ok){ loadFlags(); document.getElementById('stat').textContent='开关已更新'; }
+          else alert('修改失败：'+((r&&r.error)||''));
+        });
+      };
+    });
+  });
+}
+
+var kidCfg=null;
+function loadKid(){
+  j('/api/config/kid').then(function(d){
+    if(!d||!d.ok) return;
+    kidCfg=d.config||{};
+    document.getElementById('kidStart').value=(kidCfg.window&&kidCfg.window.start)||'21:00';
+    document.getElementById('kidEnd').value=(kidCfg.window&&kidCfg.window.end)||'06:00';
+    document.getElementById('kidGroups').value=(kidCfg.blockGroups||[]).join(',');
+    document.getElementById('kidPin').value=kidCfg.pin||'';
+    var t=document.getElementById('kidTog');
+    t.textContent=kidCfg.enabled?'已启用':'已停用';
+    t.className=kidCfg.enabled?'':'danger';
+    document.getElementById('kidState').textContent=(d.inside?'⛔ 现在处于儿童时段':'✅ 当前不在儿童时段')+' · 本机 '+d.local;
+  });
+}
+document.getElementById('kidTog').onclick=function(){
+  if(!kidCfg) return;
+  jp('/api/config/kid',{enabled:!kidCfg.enabled}).then(function(){ loadKid(); });
+};
+document.getElementById('kidSave').onclick=function(){
+  var g=document.getElementById('kidGroups').value.split(/[,，]/).map(function(s){return s.trim()}).filter(Boolean);
+  jp('/api/config/kid',{
+    window:{start:document.getElementById('kidStart').value.trim(),end:document.getElementById('kidEnd').value.trim()},
+    blockGroups:g,pin:document.getElementById('kidPin').value.trim().slice(0,4)
+  }).then(function(r){ document.getElementById('stat').textContent=r&&r.ok?'儿童时段已保存':'保存失败'; loadKid(); });
+};
+
+function loadTel(){
+  j('/api/telemetry/update').then(function(d){
+    if(!d||!d.ok){ document.getElementById('telBody').innerHTML='<tr><td colspan="5" class="muted">暂无数据（发布后客户端上报）</td></tr>'; return; }
+    document.getElementById('telTot').textContent=d.total+' 条 · 失败 '+d.failed;
+    document.getElementById('telBody').innerHTML=(d.last||[]).map(function(r){
+      return '<tr><td class="muted">'+esc((r.at||'').slice(5,19).replace('T',' '))+'</td><td>'+esc(r.stage)+'</td><td>'+esc(r.versionName||'-')+
+        '</td><td>'+(r.ok?'<span class="pill on">成功</span>':'<span class="pill off">失败</span>')+'</td><td class="muted">'+esc(r.error||'')+'</td></tr>';
+    }).join('')||'<tr><td colspan="5" class="muted">暂无数据</td></tr>';
+  });
+}
+
+function loadRank(){
+  j('/api/stats/source-rank?limit=12').then(function(d){
+    if(!d||!d.ok) return;
+    document.getElementById('rankBody').innerHTML=(d.rows||[]).map(function(r){
+      return '<tr><td>'+esc(r.name)+'</td><td>'+r.usable+' / '+r.count+'</td><td>'+
+        (r.best?(esc(r.best.label)+' <code>'+r.best.score+'</code> · '+r.best.ms+' ms'):'<span class="muted">无</span>')+'</td></tr>';
+    }).join('')||'<tr><td colspan="3" class="muted">暂无数据</td></tr>';
+    document.getElementById('stat').textContent='共 '+d.total+' 条目已评分';
+  });
+}
+
+document.getElementById('go').onclick=function(){
+  var q=document.getElementById('q').value.trim();
+  if(!q) return;
+  j('/api/search?q='+encodeURIComponent(q)+'&limit=20').then(function(d){
+    if(!d||!d.ok){ document.getElementById('searchOut').innerHTML='<span class="muted">'+esc((d&&d.error)||'无结果')+'</span>'; return; }
+    document.getElementById('searchOut').innerHTML='命中 '+d.total+' 条'+(d.truncated?'（显示前 20）':'')+'：<table><tbody>'+
+      (d.rows||[]).map(function(r){ return '<tr><td>'+esc(r.name)+'</td><td class="muted">'+esc(r.group)+' · '+esc(r.type)+'</td><td>'+r.usable+'/'+r.sources+' 路</td></tr>'; }).join('')+
+      '</tbody></table>';
+  });
+};
+document.getElementById('q').addEventListener('keydown',function(e){ if(e.key==='Enter') document.getElementById('go').click(); });
+
+document.getElementById('mk').onclick=function(){
+  jp('/api/handoff',{payload:{kind:'demo',favorites:[],at:new Date().toISOString()}}).then(function(d){
+    document.getElementById('mkOut').textContent=d&&d.ok?('接力码 '+d.code+' · '+d.expiresIn+' 秒有效 · 现有 '+d.count+' 个'):'生成失败';
+  });
+};
+
+document.getElementById('reload').onclick=function(){ loadFlags(); loadKid(); loadTel(); loadRank(); };
+loadFlags(); loadKid(); loadTel(); loadRank();
+</script>
+</body>
+</html>

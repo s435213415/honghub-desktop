@@ -251,5 +251,55 @@
     "desc": "探测失败或失败率超阈值自动建单 → 频道自动换可用源 → 复检通过自动关单，全程无人工",
     "action": "builtin:issues",
     "enabled": true
+  },
+  {
+    "id": "stats-heat",
+    "name": "收视热度统计",
+    "desc": "按真实播放埋点统计频道/平台的点开、起播与失败，指导资源维护优先级",
+    "action": "open",
+    "url": "/admin/insights"
+  },
+  {
+    "id": "fail-top",
+    "name": "失效源 TOP 榜",
+    "desc": "巡检失败线路按受影响条目排序，并列出同条目可用备用线路",
+    "action": "open",
+    "url": "/admin/insights"
+  },
+  {
+    "id": "kid-mode",
+    "name": "儿童时段模式",
+    "desc": "按时段屏蔽成人分组，带 4 位解锁码，家长可随时关闭",
+    "action": "builtin:kidmode"
+  },
+  {
+    "id": "handoff",
+    "name": "双端接力·推送",
+    "desc": "把桌面端收藏打包成 6 位接力码，开鸿设备输码即可取回",
+    "action": "builtin:handoff"
+  },
+  {
+    "id": "handoff-take",
+    "name": "双端接力·接收",
+    "desc": "输入接力码取回另一台设备推送的收藏，一次性 10 分钟有效",
+    "action": "builtin:handofftake"
+  },
+  {
+    "id": "search-all",
+    "name": "全网聚合搜索",
+    "desc": "一个框搜遍 300+ 条目与 200+ 平台的远端全目录，可直开线路",
+    "action": "builtin:searchall"
+  },
+  {
+    "id": "rank-sources",
+    "name": "智能选源",
+    "desc": "按成功率 60% + 时延 40% 给每条线路评分，首选线路自动置顶",
+    "action": "builtin:rank"
+  },
+  {
+    "id": "upgrade-telemetry",
+    "name": "升级状态上报",
+    "desc": "检查/安装升级的结果自动上报，后台可看谁升成功谁卡住",
+    "action": "builtin:updatecheck"
   }
 ]

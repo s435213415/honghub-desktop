@@ -64,16 +64,23 @@ try { RELEASE_CODE = Number(JSON.parse(fs.readFileSync(path.join(ROOT, 'server',
 const zipRead = require('./lib/zip-read');
 function freshHap(p) {
   if (!fs.existsSync(p)) return false;
-  try {
-    const html = zipRead.readText(p, 'resources/rawfile/movie-site/index.html');
-    const m = html.match(/var KH_APP_CODE\s*=\s*(\d+)/);
-    return !!(m && Number(m[1]) === RELEASE_CODE && html.indexOf('KH_HARMONY') >= 0);
-  } catch (e) { return false; }
+  /* 包内前端目录以实际壳包为准：v1.7.8 起统一为 resources/rawfile/www/，
+     早期壳包曾用 movie-site，这里两个都试，避免路径变更把新鲜度判定打哑。 */
+  for (const entry of ['resources/rawfile/www/index.html', 'resources/rawfile/movie-site/index.html']) {
+    try {
+      const html = zipRead.readText(p, entry);
+      const m = html.match(/var KH_APP_CODE\s*=\s*(\d+)/);
+      if (m && Number(m[1]) === RELEASE_CODE && html.indexOf('KH_HARMONY') >= 0) return true;
+    } catch (e) { /* 换下一个候选路径 */ }
+  }
+  return false;
 }
 const buildStamp = (function () { try { return JSON.parse(fs.readFileSync(path.join(DIST, '.hap-build.json'), 'utf8')); } catch (e) { return null; } })();
 const builtSha = buildStamp && buildStamp.sha256;
+const stampCode = buildStamp ? Number(buildStamp.versionCode || (buildStamp.versions && buildStamp.versions.versionCode) || 0) : 0;
 const candidates = [
-  path.join(ROOT, 'harmony', 'signing', 'sign', 'HongHubMovie.hap'),   // hap-sign.js 本次签名源
+  path.join(ROOT, 'harmony', 'signing', 'keys', 'sign', 'HongHubMovie.hap'),  // resign_hap.py 本次签名源
+  path.join(ROOT, 'harmony', 'signing', 'sign', 'HongHubMovie.hap'),         // 旧签名链产物
   path.join(DIST, 'honghub-harmony.hap'),
   path.join(DIST, 'HongHubMovie.hap'),
   path.join(ROOT, 'harmony', 'HongHubMovie.hap'),
@@ -81,7 +88,7 @@ const candidates = [
 ];
 // 同版本重复签名会改变 sha256，所以「新鲜」必须由本次构建指纹判定，不能只看包内版本号
 let hap = null;
-if (builtSha && Number(buildStamp.versionCode) === RELEASE_CODE) {
+if (builtSha && (stampCode === 0 || stampCode === RELEASE_CODE)) {
   hap = candidates.find(p => freshHap(p) && shaOf(p) === builtSha) || null;
 }
 if (!hap) {

@@ -21,7 +21,7 @@ jobs:
           python-version: '3.11'
       # 静态门禁不打包、不签名，不需要 electron 二进制与 OH SDK
       - run: npm ci --ignore-scripts
-      - name: 语法 / 页面 / 闭环回归
-        run: npm run check
+      - name: 开发者端一键门禁（版本/静态/闭环）
+        run: npm run dev:auto:check
       - name: 环境体检（只读，允许外部工具缺项）
         run: npm run doctor || true

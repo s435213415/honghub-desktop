@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "note": "公开直播源池。sources:verify 会按顺序拉取、去重、实测，产出 server/data/sources-report.json（源健康度报告）。新增表只要往 lists 里加一行，不必改代码。",
+  "lists": [
+    "https://iptv-org.github.io/iptv/countries/cn.m3u",
+    "https://iptv-org.github.io/iptv/countries/hk.m3u",
+    "https://iptv-org.github.io/iptv/countries/tw.m3u",
+    "https://iptv-org.github.io/iptv/countries/mo.m3u",
+    "https://iptv-org.github.io/iptv/languages/zho.m3u",
+    "https://iptv-org.github.io/iptv/categories/news.m3u",
+    "https://iptv-org.github.io/iptv/categories/sports.m3u",
+    "https://iptv-org.github.io/iptv/categories/movies.m3u"
+  ],
+  "probe": { "timeoutMs": 6000, "threads": 24, "attempts": 2 },
+  "ban": ["voa", "brics", "gecko", "porn"],
+  "alias": {
+    "cctv1": "CCTV-1 综合",
+    "cctv2": "CCTV-2 财经",
+    "cctv3": "CCTV-3 综艺",
+    "cctv4": "CCTV-4 中文国际",
+    "cctv5": "CCTV-5 体育",
+    "cctv6": "CCTV-6 电影",
+    "cctv7": "CCTV-7 国防军事",
+    "cctv8": "CCTV-8 电视剧",
+    "cctv9": "CCTV-9 纪录",
+    "cctv10": "CCTV-10 科教",
+    "cctv11": "CCTV-11 戏曲",
+    "cctv12": "CCTV-12 社会与法",
+    "cctv13": "CCTV-13 新闻",
+    "cctv14": "CCTV-14 少儿",
+    "cctv15": "CCTV-15 音乐",
+    "cctv17": "CCTV-17 农业农村",
+    "hnws": "湖南卫视",
+    "zjws": "浙江卫视",
+    "jsdt": "江苏卫视",
+    "dfws": "东方卫视",
+    "btv": "北京卫视"
+  }
+}

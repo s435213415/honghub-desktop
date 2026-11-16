@@ -533,11 +533,13 @@ def inject(html, hub):
     rep2 = "window.KH_DESKTOP = true;"
     if rep2 in html:
         html = html.replace(rep2, "window.KH_HARMONY = true;", 1)
-    # 3) 远程收集默认随 hub 是否可用来开启
+    # 3) 远程收集开关：深开鸿端只认用户自己设置过的中枢地址（khHub）。
+    #    原写法 '(localStorage.getItem('khHub') || '%s' ? true : false)' 里 || 先算成字符串恒为真，
+    #    等于上报开关永远打开，和"默认关闭"的注释相反。
     rep3 = "enabled: (window.KH_DESKTOP ? true : (c.enabled === true)),"
     if rep3 in html:
         html = html.replace(rep3,
-            "enabled: (window.KH_HARMONY ? (localStorage.getItem('khHub') || '%s' ? true : false) : (c.enabled === true))," % hub,
+            "enabled: (window.KH_HARMONY ? !!localStorage.getItem('khHub') : (c.enabled === true)),",
             1)
     # 4) 注入 HAP 块（含默认中枢地址 + 自动发现候选列表）
     anchor = "setDiag('state','ready');"
@@ -547,6 +549,48 @@ def inject(html, hub):
              .replace('__KH_HUB_DEFAULT__', hub)
              .replace('__KH_HUB_CANDIDATES__', hub_candidates()))
     html = html.replace(anchor, anchor + "\n" + block, 1)
+    return html
+
+
+def inject_sites(html):
+    """HAP 端把内置平台清单直接内嵌：深开鸿设备不连中枢时也要能看到完整平台，
+    否则只认随包那 29 条基线（v1.7.13 就出现过「网页端 204 个、HAP 只有 29 个」）。"""
+    man_path = os.path.normpath(os.path.join(ROOT, '..', 'server', 'manifest.json'))
+    if not os.path.exists(man_path):
+        print('   [平台] 未找到 manifest.json，跳过内嵌')
+        return html
+    try:
+        man = json.load(open(man_path, encoding='utf-8'))
+        sites = (man.get('sources') or {}).get('sites') or []
+    except Exception as e:
+        print('   [平台] manifest 读取失败，跳过内嵌：', e)
+        return html
+    rows = []
+    for s in sites:
+        if not isinstance(s, dict) or not s.get('url') or not s.get('name'):
+            continue
+        url = str(s['url'])
+        if not url.startswith('http'):
+            continue
+        row = {'name': str(s['name'])[:24], 'url': url[:512],
+               'color': s.get('color') or '#3B456B',
+               'tag': (s.get('prov') or s.get('tag') or str(s['name'])[:1])[:2],
+               'cat': (s.get('cat') or '综合视频')[:20]}
+        if s.get('mobile'):
+            row['mobile'] = s['mobile']
+        if s.get('mode'):
+            row['mode'] = s['mode']
+        rows.append(row)
+    js = 'var BUILTIN_SITES = [\n' + ',\n'.join(
+        '{' + ','.join('%s:%s' % (k, json.dumps(v, ensure_ascii=False)) for k, v in r.items()) + '}'
+        for r in rows) + '\n];'
+    import re
+    m = re.search(r'var BUILTIN_SITES = \[[\s\S]*?\n\];', html)
+    if not m:
+        print('   [平台] 页面里没有 BUILTIN_SITES 锚点，跳过内嵌')
+        return html
+    html = html[:m.start()] + js + html[m.end():]
+    print('   [平台] 已内嵌 %d 条内置平台到 HAP 前端' % len(rows))
     return html
 
 
@@ -564,6 +608,7 @@ def main():
     shutil.copytree(src, WWW)
     html = open(os.path.join(WWW, 'index.html'), encoding='utf-8').read()
     html = inject(html, hub)
+    html = inject_sites(html)
     open(os.path.join(WWW, 'index.html'), 'w', encoding='utf-8').write(html)
 
     print('OK 深开鸿 HAP 前端构建完成')

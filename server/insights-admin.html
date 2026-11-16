@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>鸿汇影 · 维护决策看板</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 22px; background: #0B1622; color: #E8F1FF;
+         font: 14px/1.65 "Microsoft YaHei", -apple-system, sans-serif; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  .sub { color: #8CA0BE; font-size: 12px; margin-bottom: 18px; }
+  h2 { font-size: 15px; margin: 26px 0 10px; padding-top: 12px; border-top: 1px solid #1E3450; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap: 12px; }
+  .card { background: #12233B; border: 1px solid #1E3450; border-radius: 10px; padding: 12px 14px; }
+  .card .k { color: #8CA0BE; font-size: 12px; }
+  .card .v { font-size: 20px; font-weight: 700; margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid #17283C; vertical-align: top; }
+  th { color: #8CA0BE; font-weight: 600; position: sticky; top: 0; background: #0B1622; }
+  tr:hover td { background: #101F31; }
+  .num { color: #9CC5FF; font-variant-numeric: tabular-nums; }
+  .bad { color: #FF9B9B; }
+  .ok { color: #6BE3A0; }
+  .mute { color: #7E93B4; }
+  .url { font-size: 12px; color: #7E93B4; word-break: break-all; max-width: 340px; }
+  .alt { font-size: 12px; color: #6BE3A0; word-break: break-all; max-width: 340px; }
+  .empty { color: #7E93B4; }
+  .btn { border: 1px solid #2A4E77; background: #1B3A5B; color: #CFE3FF; border-radius: 16px;
+         padding: 5px 14px; font: 13px/1.4 sans-serif; cursor: pointer; }
+  .scroll { max-height: 460px; overflow: auto; border: 1px solid #1E3450; border-radius: 8px; }
+</style>
+</head>
+<body>
+<h1>鸿汇影 · 维护决策看板</h1>
+<div class="sub">两组数据回答“该先维护什么”：谁真的在看（收视热度）、哪条线路坏了（失效源 TOP）。数据全部来自现有埋点与巡检，不额外采集。</div>
+
+<h2>一、收视热度 <span class="mute" id="heatAt"></span>
+  <button class="btn" id="reload" style="float:right">刷新</button></h2>
+<div class="cards">
+  <div class="card"><div class="k">埋点事件</div><div class="v num" id="hEvents">-</div></div>
+  <div class="card"><div class="k">被点开次数</div><div class="v num" id="hOpens">-</div></div>
+  <div class="card"><div class="k">成功起播</div><div class="v num" id="hStarts">-</div></div>
+  <div class="card"><div class="k">失败次数</div><div class="v num bad" id="hFails">-</div></div>
+  <div class="card"><div class="k">有数据的条目</div><div class="v num" id="hTouched">-</div></div>
+  <div class="card"><div class="k">从未被点开</div><div class="v num mute" id="hCold">-</div></div>
+</div>
+<div class="scroll" style="margin-top:12px">
+<table>
+  <thead><tr><th>#</th><th>名称</th><th>分组</th><th>点开</th><th>起播</th><th>失败</th><th>失败率</th><th>平均延迟</th><th>主要错误</th></tr></thead>
+  <tbody id="heatRows"><tr><td colspan="9" class="empty">加载中…</td></tr></tbody>
+</table>
+</div>
+
+<h2>二、失效源 TOP（该先修哪条线）</h2>
+<div class="cards">
+  <div class="card"><div class="k">条目总数</div><div class="v num" id="fItems">-</div></div>
+  <div class="card"><div class="k">线路总数</div><div class="v num" id="fSources">-</div></div>
+  <div class="card"><div class="k">失效线路</div><div class="v num bad" id="fFailed">-</div></div>
+  <div class="card"><div class="k">受影响条目</div><div class="v num bad" id="fFailedItems">-</div></div>
+</div>
+<div class="scroll" style="margin-top:12px">
+<table>
+  <thead><tr><th>#</th><th>条目</th><th>线路</th><th>错误</th><th>状态码</th><th>可用备用线路</th></tr></thead>
+  <tbody id="failRows"><tr><td colspan="6" class="empty">加载中…</td></tr></tbody>
+</table>
+</div>
+
+<script>
+function el(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function num(v){ return (v==null) ? '-' : v; }
+function loadHeat(){
+  fetch('/api/stats/heat?days=7',{cache:'no-store'}).then(r=>r.json()).then(function(d){
+    if(!d||!d.ok){ throw new Error((d&&d.error)||'无数据'); }
+    el('heatAt').textContent = '（近 '+d.days+' 天 · '+new Date(d.at).toLocaleString('zh-CN',{hour12:false})+'）';
+    el('hEvents').textContent = num(d.totals.events);
+    el('hOpens').textContent = num(d.totals.opens);
+    el('hStarts').textContent = num(d.totals.starts);
+    el('hFails').textContent = num(d.totals.fails);
+    el('hTouched').textContent = num(d.totals.touched);
+    el('hCold').textContent = num(d.totals.untouched);
+    var rows = (d.rows||[]).map(function(r,i){
+      return '<tr><td class="mute">'+(i+1)+'</td><td>'+esc(r.name||r.id)+'</td><td class="mute">'+esc(r.group||'-')+'</td>'+
+        '<td class="num">'+num(r.opens)+'</td><td class="num">'+num(r.starts)+'</td>'+
+        '<td class="num '+(r.fails?'bad':'')+'">'+num(r.fails)+'</td>'+
+        '<td class="num">'+(r.failRate||0)+'%</td><td class="num">'+(r.avgLatency||0)+' ms</td>'+
+        '<td class="mute">'+esc(r.topError||'-')+'</td></tr>';
+    }).join('');
+    el('heatRows').innerHTML = rows || '<tr><td colspan="9" class="empty">近 7 天还没有播放埋点。客户机开始使用后这里才有数据。</td></tr>';
+  }).catch(function(e){
+    el('heatRows').innerHTML = '<tr><td colspan="9" class="empty">读取失败：'+esc(e.message)+'（需以开发端模式启动）</td></tr>';
+  });
+}
+function loadFail(){
+  fetch('/api/stats/fail-top?limit=25',{cache:'no-store'}).then(r=>r.json()).then(function(d){
+    if(!d||!d.ok){ throw new Error((d&&d.error)||'无数据'); }
+    el('fItems').textContent = num(d.totals.items);
+    el('fSources').textContent = num(d.totals.sources);
+    el('fFailed').textContent = num(d.totals.failed);
+    el('fFailedItems').textContent = num(d.totals.failedItems);
+    var rows = (d.rows||[]).map(function(r,i){
+      var alt = (r.alt&&r.alt.length) ? r.alt.map(function(a){ return esc(a.label||'线路')+' <span class="alt">'+esc(a.url)+'</span>'; }).join('<br>')
+                                      : '<span class="bad">无可用备用线路</span>';
+      return '<tr><td class="mute">'+(i+1)+'</td><td>'+esc(r.itemName||r.itemId)+'<div class="mute">'+esc(r.group||'')+'</div></td>'+
+        '<td><div class="mute">'+esc(r.label||'-')+'</div><div class="url">'+esc(r.url||'')+'</div></td>'+
+        '<td class="bad">'+esc(r.error||'unknown')+'</td><td class="num">'+num(r.code)+'</td><td>'+alt+'</td></tr>';
+    }).join('');
+    el('failRows').innerHTML = rows || '<tr><td colspan="6" class="empty">没有失效线路，或者还没有跑过巡检（npm run sources:verify）。</td></tr>';
+  }).catch(function(e){
+    el('failRows').innerHTML = '<tr><td colspan="6" class="empty">读取失败：'+esc(e.message)+'</td></tr>';
+  });
+}
+el('reload').onclick = function(){ loadHeat(); loadFail(); };
+loadHeat(); loadFail();
+</script>
+</body>
+</html>

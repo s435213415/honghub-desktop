@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>鸿汇影 · 客户端功能追踪</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 22px; background: #0B1622; color: #E8F1FF;
+         font: 14px/1.65 "Microsoft YaHei", -apple-system, sans-serif; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  .sub { color: #8CA0BE; font-size: 12px; margin-bottom: 18px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(230px,1fr)); gap: 12px; margin-bottom: 20px; }
+  .card { background: #12233B; border: 1px solid #1E3450; border-radius: 10px; padding: 14px 16px; }
+  .card .k { color: #8CA0BE; font-size: 12px; margin-bottom: 6px; }
+  .card .v { font-size: 22px; font-weight: 700; }
+  .card .d { color: #7E93B4; font-size: 12px; margin-top: 6px; word-break: break-all; }
+  h2 { font-size: 15px; margin: 22px 0 10px; padding-top: 12px; border-top: 1px solid #1E3450; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #17283C; }
+  th { color: #8CA0BE; font-weight: 600; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; }
+  .new { background: #14472F; color: #6BE3A0; }
+  .gone { background: #4A1620; color: #FF9B9B; }
+  .same { background: #1C2B3F; color: #9CC5FF; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { background: #17283C; color: #B9CCE6; border-radius: 6px; padding: 2px 8px; font-size: 12px; }
+  .empty { color: #7E93B4; font-size: 13px; }
+  .warn { color: #FFD48A; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>鸿汇影 · 客户端功能追踪</h1>
+<div class="sub">每一版客户端带哪些功能、线上版本有没有、这一版增删了什么 —— 后期维护直接查这里，不用翻代码。</div>
+
+<div class="cards">
+  <div class="card"><div class="k">客户端包内功能</div><div class="v" id="cLocal">-</div><div class="d" id="dLocal">加载中…</div></div>
+  <div class="card"><div class="k">线上版本功能</div><div class="v" id="cRemote">-</div><div class="d" id="dRemote">加载中…</div></div>
+  <div class="card"><div class="k">与线上差异</div><div class="v" id="cDiff">-</div><div class="d" id="dDiff">—</div></div>
+  <div class="card"><div class="k">上次记录</div><div class="v" id="cChange">-</div><div class="d" id="dChange">—</div></div>
+</div>
+
+<h2>本版相对上一版的增删</h2>
+<div id="vsPrev" class="empty">加载中…</div>
+
+<h2>本版相对线上版本的增删</h2>
+<div id="vsRemote" class="empty">加载中…</div>
+
+<h2>当前功能清单</h2>
+<div id="ids" class="tags"><span class="empty">加载中…</span></div>
+
+<h2>历史版本记录（最近 12 条）</h2>
+<table>
+  <thead><tr><th>记录时间</th><th>版本</th><th>versionCode</th><th>功能数</th><th>指纹</th></tr></thead>
+  <tbody id="hist"><tr><td colspan="5" class="empty">加载中…</td></tr></tbody>
+</table>
+
+<script>
+function el(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function fmt(iso){ if(!iso) return '—'; var d=new Date(iso); return d.toLocaleString('zh-CN',{hour12:false}); }
+function diffBlock(d, prevTag){
+  if(!d) return '<span class="empty">没有可比数据</span>';
+  var parts=[];
+  (d.added||[]).forEach(function(x){ parts.push('<span class="pill new">+ '+esc(x)+'</span>'); });
+  (d.removed||[]).forEach(function(x){ parts.push('<span class="pill gone">− '+esc(x)+'</span>'); });
+  if(!parts.length) return '<span class="pill same">'+(prevTag||'无变化')+'</span>';
+  return '<div class="tags">'+parts.join(' ')+'</div>';
+}
+fetch('/api/features/track',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+  if(!d||!d.ok){ throw new Error((d&&d.error)||'接口无数据'); }
+  var L=d.local, R=d.remote;
+  el('cLocal').textContent = L ? L.count : '—';
+  el('dLocal').textContent = L ? ('v'+L.versionName+' / #'+L.versionCode+' · 指纹 '+(L.hash||'-')+' · 来源 '+L.source) : '读不到本机功能清单';
+  el('cRemote').textContent = R ? (R.noFeatures ? '未知' : R.count) : '—';
+  el('dRemote').textContent = R
+    ? ('v'+R.versionName+' / #'+R.versionCode+(R.noFeatures?' · 线上清单未带功能字段':' · 指纹 '+(R.hash||'-')))
+    : '线上清单不可达（隧道域名可能已换）';
+  var addN=(d.vsRemote&&d.vsRemote.added?d.vsRemote.added.length:0);
+  var delN=(d.vsRemote&&d.vsRemote.removed?d.vsRemote.removed.length:0);
+  el('cDiff').textContent = (addN||delN) ? ('+'+addN+' / −'+delN) : '一致';
+  el('dDiff').textContent = (addN||delN) ? '本地与线上功能清单不同' : '本地与线上功能一致';
+  el('cChange').textContent = d.changed===null ? '—' : (d.changed ? '有变化' : '无变化');
+  el('dChange').textContent = d.changed===null ? '尚未建立历史' : (d.changed ? '已记录一条新版本' : '与最近记录一致 · 自 '+fmt(d.trackedSince)+' 起追踪');
+  el('vsPrev').innerHTML = diffBlock(d.vsPrev, '这一版没有增删功能');
+  el('vsRemote').innerHTML = diffBlock(d.vsRemote, '本地与线上功能一致');
+  el('ids').innerHTML = (L&&L.ids&&L.ids.length)
+    ? L.ids.map(function(x){ return '<span class="tag">'+esc(x)+'</span>'; }).join('')
+    : '<span class="empty">本机清单里没有功能 id</span>';
+  var rows=(d.versions||[]).map(function(v){
+    return '<tr><td>'+fmt(v.at)+'</td><td>v'+esc(v.versionName)+'</td><td>'+(v.versionCode||'-')+'</td><td>'+(v.count||0)+'</td><td>'+esc(v.hash||'-')+'</td></tr>';
+  }).join('');
+  el('hist').innerHTML = rows || '<tr><td colspan="5" class="empty">还没有历史记录（打开本页即会记一条）</td></tr>';
+}).catch(function(e){
+  el('dLocal').innerHTML = '<span class="warn">读取失败：'+esc(e.message)+'（需以开发端模式启动）</span>';
+});
+</script>
+</body>
+</html>

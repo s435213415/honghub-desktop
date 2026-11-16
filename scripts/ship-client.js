@@ -122,42 +122,70 @@ function parseBaseline(notePath) {
   record('版本一致性门禁', 'passed', '9 处版本字段全部对齐（version.js --check）');
 
   // ---- 1) 定位权威成品目录 ----
-  // 兼容两种摆放：桌面顶层，或已归拢到「鸿汇影·v1.7.8交付中心/」内。
-  // 再兜底扫桌面一层子目录，避免以后再次整理文件夹导致一键发布失效。
+  // 版本不再写死：以 server/manifest.json 的本次发版为准，桌面文件夹改名/换版本都不会失联。
+  const rel = jread(path.join(ROOT, 'server', 'manifest.json'), {}).release || {};
+  const LATEST = rel.latest || {};
+  const relVer = String(LATEST.versionName || '');
+  const relCode = Number(LATEST.versionCode || 0);
+  need(relVer && relCode, 'server/manifest.json 缺少本次发版版本（请先 npm run release）');
   const DESKTOP = path.join(os.homedir(), 'Desktop');
   const ART = ARG_DIR ? path.resolve(ARG_DIR)
     : (function () {
-        const NAME = /^鸿汇影·客户成品_v/;
+        const NAME = /客户成品_v/;
         const found = [];
         const scan = (dir) => {
           try {
             for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-              if (e.isDirectory() && NAME.test(e.name)) found.push(path.join(dir, e.name));
+              if (e.isDirectory() && NAME.test(e.name) && !/开发端/.test(e.name)) found.push(path.join(dir, e.name));
             }
           } catch (e) {}
         };
         scan(DESKTOP);
-        scan(path.join(DESKTOP, '鸿汇影·v1.7.8交付中心'));
         try {
           for (const e of fs.readdirSync(DESKTOP, { withFileTypes: true })) {
             if (e.isDirectory()) scan(path.join(DESKTOP, e.name));
           }
         } catch (e) {}
         const uniq = Array.from(new Set(found)).sort();
+        // 优先本次版本的成品目录；没有则退回最新一个（哈希基线断言会兜住其余风险）
+        const exact = uniq.filter((p) => p.indexOf('客户成品_v' + relVer) >= 0);
+        if (exact.length) return exact[exact.length - 1];
         if (uniq.length) return uniq[uniq.length - 1];
-        return path.join(DESKTOP, '鸿汇影·客户成品_v1.7.8');
+        return path.join(DESKTOP, '鸿汇影·客户成品_v' + relVer);
       })();
   need(fs.existsSync(ART), '未找到权威成品目录：' + ART);
   // 防呆：只接受客户成品目录，绝不把开发端专用包发布上线
   need(/客户成品/.test(path.basename(ART)) && !/开发端/.test(ART),
        '发布源必须是「鸿汇影·客户成品_v*」，开发端专用包禁止上传公网');
-  const notePath = path.join(ART, '客户下载说明.txt');
-  const artifacts = {
-    exe: path.join(ART, '鸿汇影桌面版 Setup 1.7.8.exe'),
-    hap: path.join(ART, 'HongHubMovie.hap'),
-    zip: path.join(ART, '鸿汇影桌面版 Setup 1.7.8.zip')
+  // 深度防呆：目录里只要出现开发端专属物（源码 / 签名密钥 / 内部工程），一律中止，
+  // 保证下发通道里出现的每个文件都是客户能直接拿去用的成品。
+  const DEV_ONLY = /(^|[\\/])(开发者端|开发端|dev|dist|server|scripts|resources|harmony|node_modules|signing|sign-keys|签名密钥|\.git)([\\/]|$)|\.p12$|\.p7b$|\.pem$|\.cer$|package\.json$|electron-main\.js$|\.js$|\.py$|\.cjs$|\.bak$|\.log$/i;
+  const offenders = [];
+  const scanDev = (dir, depth) => {
+    if (depth > 6 || offenders.length > 20) return;
+    let list = [];
+    try { list = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+    for (const e of list) {
+      const p = path.join(dir, e.name);
+      if (DEV_ONLY.test(e.name) || DEV_ONLY.test(p)) { offenders.push(path.relative(ART, p)); continue; }
+      if (e.isDirectory()) scanDev(p, depth + 1);
+    }
   };
-  record('定位权威成品目录', 'passed', ART);
+  scanDev(ART, 0);
+  need(!offenders.length, '客户成品目录混入开发端文件（下发通道只发客户成品）：' + offenders.slice(0, 8).join(' / '));
+  const notePath = path.join(ART, '客户下载说明.txt');
+  const pick = (re, fallback) => {
+    let hits = [];
+    try { hits = fs.readdirSync(ART).filter((n) => re.test(n)); } catch (e) {}
+    hits = hits.sort();
+    return path.join(ART, hits.length ? hits[hits.length - 1] : fallback);
+  };
+  const artifacts = {
+    exe: pick(/^鸿汇影桌面版 Setup .*\.exe$/i, '鸿汇影桌面版 Setup ' + relVer + '.exe'),
+    hap: pick(/^HongHubMovie\.hap$/i, 'HongHubMovie.hap'),
+    zip: pick(/^鸿汇影桌面版 Setup .*\.zip$/i, '鸿汇影桌面版 Setup ' + relVer + '.zip')
+  };
+  record('定位权威成品目录', 'passed', ART + ' · 目标版本 v' + relVer + ' / #' + relCode);
   need(fs.existsSync(notePath), '缺少客户下载说明.txt（基线来源）');
 
   // ---- 2) 哈希基线断言 ----

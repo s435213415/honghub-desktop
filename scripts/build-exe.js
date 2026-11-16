@@ -30,6 +30,16 @@ const ENV = Object.assign({}, process.env, {
   ELECTRON_MIRROR: 'https://registry.npmmirror.com/-/binary/electron/'
 });
 
+/* .env 自动装载：签名口令 OH_KEY_PWD 平时躺在深开鸿工程里，这里统一捞进来，
+   出包不再需要人手先 export 一遍（旧行为：忘了注入就直接中止在 HAP 签名）。 */
+require('./lib/env').apply();
+for (const k of ['OH_KEY_PWD', 'KH_RELEASE_BUMP', 'KH_ALLOW_STALE_HAP', 'PYTHON_BIN', 'KH_HDC', 'KH_DEPLOY_CMD']) {
+  if (process.env[k] !== undefined && ENV[k] === undefined) ENV[k] = process.env[k];
+}
+/* 版本只推一次：--no-bump 或 KH_RELEASE_BUMP=0 时，第 0 步只对齐版本不递增。
+   双推（先 version.js --bump 再出包）会把版本号顶高一级，出包前请二选一。 */
+if (process.argv.includes('--no-bump')) { ENV.KH_RELEASE_BUMP = '0'; console.log('  [版本] --no-bump：本次不递增版本'); }
+
 function step(label, script, args) {
   console.log('\n=== ' + label + ' ===');
   const r = spawnSync(process.execPath, [script].concat(args || []), { cwd: ROOT, stdio: 'inherit', env: ENV });
@@ -181,6 +191,42 @@ function signHapPackage() {
   process.exit(r.status || 1);
 }
 
+/* 免安装包：过去是手工用 .NET ZipFile 打的，命名还和 ship-client 的匹配规则对不上
+   （发布脚本只认「鸿汇影桌面版 Setup *.zip」），差点漏发。这里并入流水线自动生成。 */
+function buildPortableZip() {
+  console.log('\n=== 5.2/6 生成免安装包 ===');
+  const ver = pkgVersion();
+  const unpacked = path.join(DIST, 'win-unpacked');
+  const zip = path.join(DIST, '鸿汇影桌面版 Setup ' + ver + '.zip');
+  if (!fs.existsSync(unpacked)) { console.warn('  win-unpacked 不存在，跳过免安装包'); return; }
+  if (fs.existsSync(zip)) fs.unlinkSync(zip);
+  let ok = false;
+  // 本机 PATH 里没有 tar，也没有 powershell（node 直接 spawn 会 ENOENT），
+  // 但 electron-builder 自带 7za，调它最稳，且不需要任何系统组件。
+  const seven = [
+    path.join(ROOT, 'node_modules', '7zip-bin', 'win', 'x64', '7za.exe'),
+    path.join(ROOT, 'node_modules', '7zip-bin', 'win', 'ia32', '7za.exe')
+  ].find((p) => fs.existsSync(p));
+  if (seven) {
+    const r = spawnSync(seven, ['a', '-tzip', '-mx=9', '-bso0', '-bsp0', zip, unpacked], { stdio: 'ignore' });
+    ok = r.status === 0;
+  }
+  if (!ok) {   // 兜底：用系统自带 Windows PowerShell 绝对路径 + .NET ZipFile
+    const psExe = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    const q = (s) => "'" + String(s).replace(/'/g, "''") + "'";
+    const ps = 'Add-Type -AssemblyName System.IO.Compression.FileSystem; ' +
+      '[System.IO.Compression.ZipFile]::CreateFromDirectory(' + q(unpacked) + ',' + q(zip) +
+      ',[System.IO.Compression.CompressionLevel]::Optimal,$false)';
+    if (fs.existsSync(psExe)) {
+      const r = spawnSync(psExe, ['-NoProfile', '-NonInteractive', '-Command', ps], { stdio: 'ignore' });
+      ok = r.status === 0;
+    }
+  }
+  if (!ok || !fs.existsSync(zip)) { console.warn('  免安装包生成失败'); return; }
+  const sha = crypto.createHash('sha256').update(fs.readFileSync(zip)).digest('hex');
+  console.log('  ' + path.basename(zip) + ' · ' + fs.statSync(zip).size + ' B · ' + sha.slice(0, 12) + '…');
+}
+
 function deliver() {
   console.log('\n=== 6/6 交付到桌面 ===');
   const desktop = path.join(os.homedir(), 'Desktop');
@@ -199,7 +245,9 @@ function deliver() {
   }
 }
 
+const vBefore = pkgVersion();
 step('0/6 发版', path.join(__dirname, 'release.js'));
+console.log('  [版本] ' + vBefore + ' → ' + pkgVersion());
 buildHapFrontend();
 signHapPackage();
 stageSnapshots();
@@ -212,6 +260,7 @@ step('4/6 生成安装包', CLI, ['--prepackaged', 'dist/win-unpacked']);
 // 签名会改 exe 字节，必须在 postpack 重算 sha256 之前执行；缺证书时脚本自行 SKIP
 step('4.5/6 Windows 代码签名（可选）', path.join(__dirname, 'sign-windows.js'));
 step('5/6 同步产物与校验清单', path.join(__dirname, 'postpack.js'));
+buildPortableZip();
 step('5.5/6 自动生成批量下发与不限设备/内存清单', path.join(__dirname, 'build-archs.js'));
 step('5.6/6 版本归档与可回滚索引', path.join(__dirname, 'archive-release.js'));
 step('5.7/6 依赖审计与 SBOM', path.join(__dirname, 'sbom.js'));

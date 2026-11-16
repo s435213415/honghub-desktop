@@ -70,7 +70,7 @@ if (!STATIC) {
     const f = at('dist/honghub-harmony.hap');
     if (!fs.existsSync(f)) fail('缺少本次发版 HAP（dist/honghub-harmony.hap）');
     else {
-      const html = zipRead.readText(f, 'resources/rawfile/movie-site/index.html');
+      const html = zipRead.readText(f, 'resources/rawfile/www/index.html');
       const mm = html.match(/var KH_APP_CODE\s*=\s*(\d+)/);
       if (!mm) fail('HAP 包内前端缺少 KH_APP_CODE');
       else if (Number(mm[1]) !== targetCode) fail('HAP 包内前端 #' + mm[1] + ' ≠ 发版 #' + targetCode + '（疑似沿用旧 HAP）');
@@ -80,12 +80,55 @@ if (!STATIC) {
   } catch (e) { fail('HAP 新鲜度检查失败：' + e.message); }
 }
 
+// 2.6) 页面缓存闸：安装包会把 server/data 整个带进去。若缓存版本低于随包页面，
+//      服务端旧逻辑会把旧快照当成「热更新页」盖住随包页面（v1.7.10 前踩过这个坑：
+//      版本号升了，打开还是旧频道数据）。这里在打包前强制把缓存对齐到本次页面。
+{
+  const cache = at('server/data/app.page.html');
+  const page = at('app/index.html');
+  if (!fs.existsSync(cache)) {
+    pass('页面缓存闸：安装包内无本地缓存（不会覆盖随包页面）');
+  } else {
+    const src = fs.readFileSync(page, 'utf8');
+    const want = (src.match(/var KH_APP_CODE\s*=\s*(\d+)/) || [])[1];
+    const got = (fs.readFileSync(cache, 'utf8').match(/var KH_APP_CODE\s*=\s*(\d+)/) || [])[1];
+    if (want && got !== want) {
+      fs.writeFileSync(cache, src);
+      const meta = cache.replace(/\.html$/, '.json');
+      try {
+        fs.writeFileSync(meta, JSON.stringify({
+          hash: require('crypto').createHash('sha256').update(src).digest('hex'),
+          size: Buffer.byteLength(src), at: new Date().toISOString(), source: 'prebuild-seed'
+        }, null, 2));
+      } catch (e) {}
+      pass('页面缓存闸：缓存 #' + (got || '无') + ' ≠ 随包 #' + want + '，已强制对齐');
+    } else {
+      pass('页面缓存闸：缓存与随包页面同为 #' + want);
+    }
+  }
+}
+
+// 2.7) 平台基线闸：页面 BUILTIN_SITES 必须与 server/manifest.json 的 sources.sites 同步，
+//      否则断网/无中枢时平台数量会悄悄退回到旧基线（v1.7.13 曾出现 204 → 29 的落差）。
+try {
+  const man = JSON.parse(fs.readFileSync(at('server/manifest.json'), 'utf8'));
+  const want = ((man.sources || {}).sites || []).length;
+  const html = fs.readFileSync(at('app/index.html'), 'utf8');
+  const m = html.match(/var BUILTIN_SITES = \[[\s\S]*?\n\];/);
+  if (!m) fail('页面缺少 BUILTIN_SITES 基线');
+  else {
+    const got = (m[0].match(/\{name:/g) || []).length;
+    if (got !== want) fail('平台基线 ' + got + ' ≠ 清单 ' + want + '（请先跑 npm run sites:sync）');
+    else pass('平台基线与清单一致（' + want + ' 条）');
+  }
+} catch (e) { fail('平台基线检查失败：' + e.message); }
+
 // 3) 起临时中枢，抓真实看板页面做端到端检查
 const PORT = 9400 + Math.floor(Math.random() * 200);
 const srv = spawn(process.execPath, [at('server/server.js')], {
   cwd: ROOT,
   env: Object.assign({}, process.env, {
-    PORT: String(PORT), AUTO_RUN_ENABLED: '0', AUTO_OPTIMIZE: '0', AUTO_GOVERN: '0'
+    PORT: String(PORT), KH_DEV_MODE: '1', AUTO_RUN_ENABLED: '0', AUTO_OPTIMIZE: '0', AUTO_GOVERN: '0'
   }),
   stdio: 'ignore'
 });
@@ -111,7 +154,8 @@ function get(pathname) {
   if (!healthy) fail('临时中枢未能启动');
   else {
     pass('临时中枢启动正常');
-    const r = await get('/');
+    /* 运维看板已迁到 /admin（客户成品的 / 是影视页），自检要取真实的看板路由 */
+    const r = await get('/admin');
     const html = r.body;
     const list = checkSyntax('在线看板', html);
     const js = list[list.length - 1] || '';

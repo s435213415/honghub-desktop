@@ -7,8 +7,28 @@ const { spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..', '..');
 
+/* .env 定位：显式文件 > 本仓库 .env > 同级/邻居 HongHubMovie 工程 .env。
+   签名口令 OH_KEY_PWD 一直放在深开鸿工程里，构建脚本却在桌面工程里，
+   只认 ROOT/.env 会让每次出包都卡在「缺少 OH_KEY_PWD」。 */
+function envCandidates() {
+  const home = os.homedir();
+  const list = [path.join(ROOT, '.env'), path.join(ROOT, '..', 'HongHubMovie', '.env')];
+  try {
+    for (const d of fs.readdirSync(path.join(home, 'WorkBuddy')) .sort().reverse()) {
+      list.push(path.join(home, 'WorkBuddy', d, 'HongHubMovie', '.env'));
+    }
+  } catch (e) { /* 无 WorkBuddy 目录时忽略 */ }
+  list.push(path.join(home, 'Desktop', 'HongHubMovie', '.env'));
+  return list;
+}
+
 function loadEnv(file) {
-  const p = file || path.join(ROOT, '.env');
+  if (!file) {
+    const found = envCandidates().find(p => fs.existsSync(p));
+    if (!found) return {};
+    file = found;
+  }
+  const p = file;
   const out = {};
   if (!fs.existsSync(p)) return out;
   for (const line of fs.readFileSync(p, 'utf8').split(/\r?\n/)) {

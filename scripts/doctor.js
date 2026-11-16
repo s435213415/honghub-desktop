@@ -57,8 +57,10 @@ if (!hdcVer) {
 
 // —— 项目内签名链 ——
 const SIGN = path.join(ROOT, 'harmony', 'signing');
-const REQUIRED = ['_inject_honghub.py', 'sign-hap.py', 'entry-default-unsigned.hap',
-  'sign-keys/app-key.p12', 'sign-keys/profile-key.p12', 'sign-keys/ca.p12', 'sign-keys/ca.cer'];
+// 真实签名链 hap-sign.js → resign_hap.py 的布局：壳包在 signing 根，密钥在 keys/sign-keys/。
+// 旧检查把密钥写成 signing/sign-keys/，导致材料齐全却误报缺失。
+const REQUIRED = ['_inject_honghub.py', 'sign-hap.py', 'resign_hap.py', 'entry-default-unsigned.hap',
+  'keys/sign-keys/app-key.p12', 'keys/sign-keys/profile-key.p12', 'keys/sign-keys/ca.p12', 'keys/sign-keys/ca.cer'];
 const miss = REQUIRED.filter(f => !fs.existsSync(path.join(SIGN, f)));
 miss.length ? err('项目内签名工作台', '缺 ' + miss.join(', ') + '；执行 npm run signing:setup')
   : ok('项目内签名工作台', REQUIRED.length + ' 项齐全（不再依赖桌面临时目录）');
@@ -89,7 +91,7 @@ if (rel) {
   const hapFile = path.join(ROOT, 'dist', 'honghub-harmony.hap');
   if (fs.existsSync(hapFile)) {
     try {
-      const html = zip.readText(hapFile, 'resources/rawfile/movie-site/index.html');
+      const html = zip.readText(hapFile, 'resources/rawfile/www/index.html');
       const m = html.match(/var KH_APP_CODE\s*=\s*(\d+)/);
       if (!m) err('HAP 新鲜度', '包内前端缺少 KH_APP_CODE');
       else if (Number(m[1]) !== Number(rel.versionCode)) err('HAP 新鲜度', '包内 #' + m[1] + ' ≠ 发版 #' + rel.versionCode + '（旧 HAP 冒充新版）');

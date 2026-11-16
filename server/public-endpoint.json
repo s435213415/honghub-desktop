@@ -1,17 +1,17 @@
 {
   "schema": 1,
   "enabled": true,
-  "baseUrl": "https://wbapp-j8tm07cirj5x0krfyivhfz.app.workbuddy.host",
-  "shareQuery": "?sharecode=E4RJGYDYNW",
-  "distribution": "workbuddy-sites",
-  "note": "公网分发端点（非敏感）：仅含公开下载域名与分享码，不含任何密钥/口令；客户端据此从公网拉更新清单与成品。可在 .env 用 KH_PUBLIC_BASE_URL / KH_PUBLIC_SHARE_QUERY 覆盖，或换成自有域名/对象存储。",
-  "versionName": "1.7.8",
-  "versionCode": 1000122,
-  "desktopUrl": "https://wbapp-j8tm07cirj5x0krfyivhfz.app.workbuddy.host/honghub/v1.7.8/desktop-setup.exe?sharecode=E4RJGYDYNW",
-  "hapUrl": "https://wbapp-j8tm07cirj5x0krfyivhfz.app.workbuddy.host/honghub/v1.7.8/HongHubMovie.hap?sharecode=E4RJGYDYNW",
-  "hapSha256": "7a3497480599a00357be291b346ebd14b82d9e77ebed47de0ef6a4403bf1ae57",
-  "hapSize": 841006,
+  "baseUrl": "http://127.0.0.1:8099",
+  "shareQuery": "",
+  "distribution": "local-mirror",
+  "mirrors": [],
+  "note": "公网分发端点（非敏感）：baseUrl 为自建镜像站（云主机 + 隧道），mirrors 为备用源（原 WorkBuddy 站点）。客户端按顺序探测，任一存活即可完成更新检查；全挂时静默跳过、保留旧缓存。可用 KH_PUBLIC_BASE_URL 覆盖。",
+  "versionName": "1.7.30",
+  "versionCode": 1000144,
+  "desktopUrl": "http://127.0.0.1:8099/honghub/v1.7.30/desktop-setup.exe",
+  "hapUrl": "http://127.0.0.1:8099/honghub/v1.7.30/HongHubMovie.hap",
   "desktopSha256Source": "remote-manifest.json",
   "desktopSha256Note": "安装包自身 SHA256 / 体积刻意不写入随包配置：该配置是 exe 的一部分，写死会导致重打包后哈希再次变化而永远对不上。真实值由 server/distribute.js 运行时从公网 remote-manifest.json 拉取。",
-  "publishedAt": "2026-11-15T16:07:49.339891Z"
+  "hapSha256": "db1da2548eed1ef13bafae48c77e749e230440d3d211a13748783adf1fb906a7",
+  "hapSize": 947493
 }

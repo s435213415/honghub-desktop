@@ -11,5 +11,5 @@ if (r.status !== 0) {
   console.error('设置 hooksPath 失败（当前目录可能不是 git 仓库）：' + String(r.stderr || '').trim());
   process.exit(1);
 }
-console.log('已启用提交前静态门禁：' + path.join(ROOT, '.githooks', 'pre-commit'));
-console.log('此后每次 git commit 会自动跑 npm run check 的等价检查。');
+console.log('已启用提交前自动门禁：' + path.join(ROOT, '.githooks', 'pre-commit'));
+console.log('此后每次 git commit 会自动跑 npm run dev:auto:check 的等价检查。');

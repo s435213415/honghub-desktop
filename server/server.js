@@ -17,6 +17,9 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
+// 进程启动时加载 .env：让 KH_DEPLOY_CMD（上传通道）/ KH_DEV_MODE / 公网分发端点等配置生效。
+// 环境变量优先级高于 .env，命令行注入不会被本地文件覆盖。
+try { require('../scripts/lib/env').apply(); } catch (e) {}
 const bugfix = require('./auto-bugfix');   // 自动收集 → 提取 → 修改 Bug → 优化功能
 const miner = require('./feature-miner');  // 反馈建议 → 自动提取新功能 → 自动添加（零人工复核）
 const delivery = require('./delivery-plan'); // 自动下发成品：不限设备 / 不限内存 + 自动更新比对
@@ -26,6 +29,9 @@ const catalog = require('./catalog');                // 资源目录 / 平台探
 const logRotate = require('./log-rotate');           // *.jsonl 超限自动切分压缩，避免磁盘被日志吃满
 const healthMonitor = require('./health-monitor');   // 磁盘/内存/日志水位监测与告警落盘
 const distribute = require('./distribute');         // 公网分发配置（未配置时保持本地局域网分发）
+const featureTrack = require('./feature-track');    // 客户端功能追踪：每版功能清单与增删对比
+const insights = require('./insights');             // 维护决策：收视热度 / 失效源 TOP
+const extras = require('./extras');                 // 远程功能开关 / 升级遥测 / 儿童时段 / 双端接力 / 双指标选源 / 聚合搜索
 // 已安装客户端没有 dist/，校验值与新版本必须来自公网清单：启动拉一次并按周期刷新（失败静默回退）。
 try { distribute.startAutoRefresh(Number(process.env.KH_PUBLIC_REFRESH_MS || 5 * 60 * 1000)); } catch (e) {}
 
@@ -33,8 +39,14 @@ const PORT = Number(process.env.PORT || 8787);
 const PRODUCT_NAME = process.env.PRODUCT_NAME || '鸿汇影';   // 改名：设 PRODUCT_NAME 环境变量，或改此处默认值
 const REPORT_TOKEN = process.env.REPORT_TOKEN || '';
 const FIX_TOKEN = process.env.FIX_TOKEN || '';
-// 可选局域网访问口令：默认空＝完全不限网络；设置后 /api/* 与 /download/* 需带 X-KH-Access-Token
-const ACCESS_TOKEN = process.env.KH_ACCESS_TOKEN || '';
+/* 开发端模式：默认关闭。关闭时客户包不暴露运维看板与发布/自治类接口，
+   开启（KH_DEV_MODE=1）才提供 /admin 与 /api/publish 等开发端能力。 */
+const DEV_MODE = process.env.KH_DEV_MODE === '1';
+/* 监听地址：桌面客户端默认只绑本机回环，避免同网段设备直接操作用户的中枢；
+   需要局域网分发时显式设 KH_HOST=0.0.0.0（此时自动要求访问口令）。 */
+const HOST = process.env.KH_HOST || '127.0.0.1';
+// 可选访问口令：绑定非回环地址且未显式配置时，自动生成并持久化一份口令
+let ACCESS_TOKEN = process.env.KH_ACCESS_TOKEN || '';
 const MAX_BODY = 128 * 1024;
 const MAX_KEEP = 5000;
 const APP_DIR = path.join(__dirname, '..', 'app');
@@ -47,11 +59,49 @@ const DATA_DIR = path.join(__dirname, 'data');
 const PAGE_CACHE = path.join(DATA_DIR, 'app.page.html');
 const PAGE_META  = path.join(DATA_DIR, 'app.page.json');
 function pageHashOf(buf) { return crypto.createHash('sha256').update(buf).digest('hex'); }
+function pageCode(buf) {
+  try {
+    const t = buf.toString('utf8');
+    const m = t.match(/KH_APP_CODE\s*=\s*(\d{5,})/) || t.match(/"versionCode"\s*:\s*(\d{5,})/);
+    return m ? parseInt(m[1], 10) : 0;
+  } catch (e) { return 0; }
+}
 function activePage() {
-  try { if (fs.existsSync(PAGE_CACHE)) return { buf: fs.readFileSync(PAGE_CACHE), source: 'public-hot-update' }; } catch (e) {}
-  try { return { buf: fs.readFileSync(path.join(APP_DIR, 'index.html')), source: 'bundled' }; } catch (e) { return { buf: Buffer.alloc(0), source: 'none' }; }
+  let bundled = Buffer.alloc(0);
+  try { bundled = fs.readFileSync(path.join(APP_DIR, 'index.html')); } catch (e) {}
+  let cached = null;
+  try { if (fs.existsSync(PAGE_CACHE)) cached = fs.readFileSync(PAGE_CACHE); } catch (e) {}
+  /* 缓存必须比随包页面「更新」才允许生效。旧行为是缓存无条件优先，导致随包的新页面被
+     server/data 里的旧快照整个盖掉：装上 v1.7.10 打开还是旧频道数据。 */
+  if (cached && cached.length) {
+    if (!bundled.length || pageCode(cached) > pageCode(bundled)) return { buf: cached, source: 'public-hot-update' };
+  }
+  if (bundled.length) return { buf: bundled, source: 'bundled' };
+  if (cached && cached.length) return { buf: cached, source: 'public-hot-update' };
+  return { buf: Buffer.alloc(0), source: 'none' };
 }
 function currentPageHash() { const a = activePage(); return a.buf.length ? pageHashOf(a.buf) : null; }
+/* 构建标识：版本号之外再带一段由 package.json + 内置页面算出的短哈希。
+   过去同一版本号下出现过两个不同安装包，仅靠 versionCode 无法分辨，加 buildId 后
+   manifest / 健康检查 / 下载页都能指到具体那一份构建。 */
+let __buildId = null;
+function buildId() {
+  if (__buildId) return __buildId;
+  try {
+    const p = path.join(__dirname, 'build-id.json');
+    if (fs.existsSync(p)) {
+      const v = String(JSON.parse(fs.readFileSync(p, 'utf8')).buildId || '').trim();
+      if (v) { __buildId = v; return __buildId; }
+    }
+  } catch (e) {}
+  try {
+    const pkgBuf = fs.readFileSync(path.join(__dirname, '..', 'package.json'));
+    const ver = JSON.parse(pkgBuf.toString('utf8')).version;
+    const page = activePage().buf;
+    __buildId = ver + '-' + crypto.createHash('sha256').update(pkgBuf).update(page).digest('hex').slice(0, 8);
+  } catch (e) { __buildId = 'unknown'; }
+  return __buildId;
+}
 function buildStamp() {
   const m = readManifest(), lat = (m && m.release && m.release.latest) || {};
   const raw = String(lat.versionCode || '') + '|' + featureStamp() + '|' + String(currentPageHash() || '').slice(0, 16);
@@ -73,23 +123,35 @@ function refreshPageFromPublic() {
   let c = null;
   try { c = require('./distribute').config(); } catch (e) { return; }
   if (!c || !c.enabled) return;
-  const q = c.shareQuery || '';
-  httpGet(c.baseUrl + '/remote-manifest.json' + q, function (mb) {
-    if (!mb) return;
-    let m = null; try { m = JSON.parse(mb.toString('utf8')); } catch (e) { return; }
-    if (!m || !m.pageUrl || !m.pageHash) return;
-    const url = m.pageUrl + (m.pageUrl.indexOf('?') >= 0 ? '' : q);
-    httpGet(url, function (buf) {
-      if (!buf || buf.length < 10000 || buf.indexOf('<html') < 0) return;
-      if (pageHashOf(buf) !== m.pageHash) { console.warn('[HongHub-Desktop] 页面热更新校验失败，已忽略'); return; }
-      try {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
-        fs.writeFileSync(PAGE_CACHE, buf);
-        fs.writeFileSync(PAGE_META, JSON.stringify({ hash: m.pageHash, size: buf.length, at: new Date().toISOString(), source: url }, null, 2));
-        console.log('[HongHub-Desktop] 应用页面已从公网热更新：' + buf.length + ' B / ' + m.pageHash.slice(0, 12) + '…（刷新即生效，无需重装）');
-      } catch (e) {}
+  const sources = (c.mirrors && c.mirrors.length) ? c.mirrors : [{ baseUrl: c.baseUrl, shareQuery: c.shareQuery || '' }];
+  (function next(i) {
+    if (i >= sources.length) return; /* 主备都不可达：静默跳过，等下次刷新 */
+    const src = sources[i];
+    const q = src.shareQuery || '';
+    httpGet(src.baseUrl + '/remote-manifest.json' + q, function (mb) {
+      if (!mb) return next(i + 1);
+      let m = null; try { m = JSON.parse(mb.toString('utf8')); } catch (e) { return next(i + 1); }
+      if (!m || !m.pageUrl || !m.pageHash) return next(i + 1);
+      const url = m.pageUrl + (m.pageUrl.indexOf('?') >= 0 ? '' : q);
+      httpGet(url, function (buf) {
+        if (!buf || buf.length < 10000 || buf.indexOf('<html') < 0) return next(i + 1);
+        if (pageHashOf(buf) !== m.pageHash) { console.warn('[HongHub-Desktop] 页面热更新校验失败，已忽略'); return next(i + 1); }
+        /* 只接受比随包页面更新的公网页面，防止公网还挂旧版时把新版降级覆盖回去 */
+        let bundledCode = 0;
+        try { bundledCode = pageCode(fs.readFileSync(path.join(APP_DIR, 'index.html'))); } catch (e) {}
+        if (bundledCode && pageCode(buf) && pageCode(buf) < bundledCode) {
+          console.warn('[HongHub-Desktop] 公网页面版本较旧，已跳过（' + pageCode(buf) + ' < ' + bundledCode + '）');
+          return next(i + 1);
+        }
+        try {
+          fs.mkdirSync(DATA_DIR, { recursive: true });
+          fs.writeFileSync(PAGE_CACHE, buf);
+          fs.writeFileSync(PAGE_META, JSON.stringify({ hash: m.pageHash, size: buf.length, at: new Date().toISOString(), source: url }, null, 2));
+          console.log('[HongHub-Desktop] 应用页面已从公网热更新：' + buf.length + ' B / ' + m.pageHash.slice(0, 12) + '…（刷新即生效，无需重装）');
+        } catch (e) {}
+      });
     });
-  });
+  })(0);
 }
 
 const DATA_FILE = path.join(DATA_DIR, 'reports.jsonl');
@@ -131,11 +193,17 @@ function limited(ip) {
   return cur.count > 60;
 }
 
+/* 只为本机页面放行跨源：任意外部网页都不允许读写本地中枢（防 CSRF / 本地接口被滥用）。
+   回环来源（127.0.0.1 / localhost）回显 Origin，其余来源不下发 CORS 头，浏览器即拦截。 */
 function cors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  let origin = '';
+  try { origin = String((res.req && res.req.headers && res.req.headers.origin) || ''); } catch (e) {}
+  const ok = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(origin);
+  res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-KH-Token, X-KH-Fix-Token');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-KH-Token, X-KH-Fix-Token, X-KH-Access-Token');
   res.setHeader('Access-Control-Max-Age', '86400');
+  if (ok) res.setHeader('Access-Control-Allow-Origin', origin);
 }
 function send(res, code, obj) {
   const body = JSON.stringify(obj);
@@ -303,6 +371,125 @@ function resolveDownload(file) {
     if (hit) return path.join(d, hit);
   }
   return null;
+}
+
+/* ---------------- 自动升级：本地没包就从镜像站现下现装 ----------------
+   顺序：本机 dist/updates/桌面 有安装包 → 直接用；没有 → 读公网清单 desktopUrl
+   下载到 updates/ → sha256 + 体积校验 → 再拉起安装向导。
+   清单来源与更新检查同一条链（多源 mirrors 顺序重试），不另建一套配置。 */
+const UPDATES_DIR = path.join(__dirname, '..', 'updates');
+
+function manifestForInstall() {
+  /* 显式指定下载地址（调试 / 灰度 / 指定版本时用，不影响正常链路） */
+  if (process.env.KH_UPDATE_DOWNLOAD_URL) {
+    return {
+      downloadUrl: process.env.KH_UPDATE_DOWNLOAD_URL,
+      desktopSha256: process.env.KH_UPDATE_SHA256 || null,
+      desktopSize: Number(process.env.KH_UPDATE_SIZE) || 0,
+      versionName: null, versionCode: null, source: 'env-override'
+    };
+  }
+  try {
+    const p = distribute.published();
+    if (p && p.downloadUrl && /^https?:\/\//i.test(p.downloadUrl)) {
+      return {
+        downloadUrl: p.downloadUrl,
+        desktopSha256: p.desktopSha256 || null,
+        desktopSize: p.desktopSize || null,
+        versionName: p.versionName || null,
+        versionCode: p.versionCode || null,
+        source: 'public-manifest'
+      };
+    }
+  } catch (e) { /* 落到随包配置 */ }
+  try {
+    const c = distribute.config();
+    if (c && c.enabled && c.desktopUrl) {
+      return {
+        downloadUrl: c.desktopUrl,
+        desktopSha256: c.desktopSha256 || null,
+        desktopSize: c.desktopSize || null,
+        versionName: c.versionName || null,
+        versionCode: c.versionCode || null,
+        source: 'bundled-endpoint'
+      };
+    }
+  } catch (e2) { /* 无配置 */ }
+  return null;
+}
+
+function downloadToFile(url, dest, cb) {
+  let done = false;
+  const finish = (err, size) => { if (done) return; done = true; cb(err, size); };
+  try { fs.mkdirSync(path.dirname(dest), { recursive: true }); } catch (e) { /* 已存在 */ }
+  const go = (target, depth) => {
+    let mod;
+    try { mod = /^https:/i.test(target) ? require('https') : http; } catch (e) { return finish(e); }
+    const req = mod.get(target, {
+      timeout: 300000,
+      headers: { 'user-agent': 'HongHubUpdater/1.0', accept: '*/*' }
+    }, (res) => {
+      const loc = res.headers && res.headers.location;
+      if ([301, 302, 303, 307, 308].indexOf(res.statusCode) >= 0 && loc && depth < 5) {
+        res.resume();
+        let next;
+        try { next = new URL(loc, target).toString(); } catch (e) { return finish(new Error('跳转地址非法')); }
+        return go(next, depth + 1);
+      }
+      if (res.statusCode !== 200) { res.resume(); return finish(new Error('HTTP ' + res.statusCode)); }
+      const out = fs.createWriteStream(dest);
+      let size = 0;
+      res.on('data', (c) => { size += c.length; });
+      res.on('error', finish);
+      out.on('error', finish);
+      out.on('finish', () => finish(null, size));
+      res.pipe(out);
+    });
+    req.on('timeout', () => { try { req.destroy(); } catch (e) {} finish(new Error('下载超时（5 分钟）')); });
+    req.on('error', finish);
+  };
+  try { go(url, 0); } catch (e) { finish(e); }
+}
+
+/* 校验并拉起安装向导：非静默，用户在向导里确认覆盖安装；数据与设置保留。 */
+function launchSetup(fp, res, extra) {
+  let buf;
+  try { buf = fs.readFileSync(fp); } catch (e) {
+    send(res, 500, { ok: false, error: '安装包读取失败：' + (e && e.message) });
+    return;
+  }
+  const sha = crypto.createHash('sha256').update(buf).digest('hex');
+  const expect = extra && extra.desktopSha256 ? String(extra.desktopSha256).toLowerCase() : null;
+  if (expect && expect !== sha) {
+    send(res, 409, { ok: false, error: '安装包 SHA256 校验失败，已阻止启动安装', expect: expect, actual: sha });
+    return;
+  }
+  if (extra && extra.desktopSize && Number(extra.desktopSize) > 0 && buf.length !== Number(extra.desktopSize)) {
+    send(res, 409, { ok: false, error: '安装包体积与清单不符，已阻止启动安装', expect: Number(extra.desktopSize), actual: buf.length });
+    return;
+  }
+  if (buf.length < 10 * 1024 * 1024) {
+    send(res, 409, { ok: false, error: '安装包异常（体积过小）' });
+    return;
+  }
+  let launched = false;
+  try {
+    const child = spawn(fp, [], { detached: true, stdio: 'ignore' });
+    child.on('error', (e) => console.error('[更新] 启动安装向导失败', e && e.message));
+    child.unref();
+    launched = true;
+  } catch (e) { /* 下面返回失败 */ }
+  const lat = (function () { try { return readManifest().release.latest; } catch (e2) { return {}; } })() || {};
+  send(res, launched ? 200 : 500, {
+    ok: launched, launched: launched,
+    verified: expect ? 'sha256' : 'size-only', sha256: sha,
+    version: (extra && extra.versionName) || lat.versionName || null,
+    versionCode: (extra && extra.versionCode) || lat.versionCode || null,
+    file: path.basename(fp), from: extra && extra.source ? extra.source : 'local',
+    message: launched
+      ? '覆盖安装已启动：同目录覆盖、无需卸载当前版本、数据与设置保留；若提示程序被占用，请先退出本应用再继续'
+      : '启动覆盖安装失败'
+  });
 }
 
 // 版本归档：releases/index.json 由 npm run archive 生成，回滚端点与下载都读它
@@ -873,19 +1060,26 @@ const MIME = {
   '.ttf': 'font/ttf', '.m3u8': 'application/vnd.apple.mpegurl', '.mp4': 'video/mp4', '.webm': 'video/webm'
 };
 function serveStatic(res, u) {
-  let p = decodeURIComponent(u.pathname);
+  let p;
+  try { p = decodeURIComponent(u.pathname); }
+  catch (e) { send(res, 400, { ok: false, error: 'bad uri' }); return; }   // 畸形百分号编码不再打崩进程
   if (p === '/' || p === '') p = '/index.html';
   if (p === '/index.html') {
-    try {
-      if (fs.existsSync(PAGE_CACHE)) {
-        const pb = fs.readFileSync(PAGE_CACHE);
-        res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-store', 'Content-Length': pb.length });
-        res.end(pb); return;
-      }
-    } catch (e) {}
+    /* 走 activePage() 的版本比较，不再无条件发缓存页：
+       旧写法只要 server/data/app.page.html 存在就发它，装了新版仍显示旧频道（v1.7.15 实测踩到）。 */
+    const ap = activePage();
+    if (ap.buf.length) {
+      res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-store', 'Content-Length': ap.buf.length });
+      res.end(ap.buf); return;
+    }
   }
   const fp = path.normalize(path.join(APP_DIR, p));
   if (fp !== APP_DIR && !fp.startsWith(APP_DIR + path.sep)) { send(res, 403, { ok: false, error: 'forbidden' }); return; }
+  /* 静态目录白名单：只对外提供页面与素材，不把 server/、scripts/、package.json 等源码下发出去 */
+  const rel = p.replace(/^\/+/, '');
+  const allowStatic = rel === 'index.html' || rel === 'favicon.ico' ||
+    rel.indexOf('app/') === 0 || rel.indexOf('assets/') === 0;
+  if (!allowStatic) { send(res, 404, { ok: false, error: 'not found' }); return; }
   fs.stat(fp, (e, st) => {
     if (e || !st.isFile()) {
       const idx = path.join(APP_DIR, 'index.html');
@@ -926,7 +1120,9 @@ function autoDetectUA(req, pathname) {
   } catch (e) { /* 只读环境不影响正常服务 */ }
 }
 
-const server = http.createServer((req, res) => {
+/* 请求分发。整体包一层 try/catch：任何路由意外抛错只影响当次请求，
+   绝不让整个本地服务进程退出（过去畸形 URL 即可打崩服务，Electron 自愈 3 次后白屏）。 */
+function handleRequest(req, res) {
   const u = new URL(req.url, 'http://localhost');
   if (req.method === 'OPTIONS') { cors(res); res.writeHead(204); res.end(); return; }
   autoDetectUA(req, u.pathname);
@@ -937,15 +1133,60 @@ const server = http.createServer((req, res) => {
     if (t !== ACCESS_TOKEN) { send(res, 401, { ok: false, error: '访问口令错误，请在「中枢设置」里填写口令' }); return; }
   }
 
+  /* 客户成品不提供开发端运维能力：发布 / 自治 / 自动修复 / 功能运行时只在 KH_DEV_MODE=1 下开放。
+     客户端页面也不再提供这些入口，这里做第二道闸，防止有人手拼 URL 直接调用。
+     运维数据类接口（审计 / 趋势 / 告警 / 运维总览 / 站点表 / 设备台账 / 回传清单）同样只给开发端：
+     客户端页面本身并不调用它们，暴露出去等于把运维数据摊给客户。 */
+  if (!DEV_MODE && /^\/api\/(publish|update-publish|automation|automation\/run|govern|govern\/run|bugfix|bugfix\/run|feature\/run|batch|rollout|update\/rollback|update\/rollback\/apply|hap\/smoke|audit|metrics|alerts|ops|sites|devices|reports|issues\/run)(\/|$)/.test(u.pathname)) {
+    send(res, 404, { ok: false, error: 'not found' });
+    return;
+  }
+
   if (u.pathname === '/health') {
     const last = autoRuns.length ? autoRuns[autoRuns.length - 1] : null;
     const lastG = governRuns.length ? governRuns[governRuns.length - 1] : null;
     const lat = (function () { try { return readManifest().release.latest; } catch (e) { return {}; } })() || {};
-    send(res, 200, { ok: true, app: 'HongHub-Desktop', stored: reports.length, writable, tokenRequired: !!REPORT_TOKEN, fixTokenRequired: !!FIX_TOKEN, accessTokenRequired: !!ACCESS_TOKEN, hubs: hubAddresses(), release: { versionName: lat.versionName, versionCode: lat.versionCode, publishedAt: lat.publishedAt }, features: featureStamp().hash, manifest: readManifest().sources ? readManifest().sources.v : null, auto: { enabled: AUTO_RUN_ENABLED, mode: AUTO_GOVERN ? 'govern' : 'update', nextRunAt: nextRunAt, lastRunOk: last ? last.ok : null, lastRunAt: last ? last.startedAt : null }, govern: { enabled: AUTO_GOVERN, lastRunOk: lastG ? lastG.ok : null, lastRunAt: lastG ? lastG.startedAt : null }, diagnostics: (function () { try { const s = healthMonitor.snapshot(); return { healthy: s.healthy, diskFreeMB: s.diskFreeMB, memUsedPct: s.mem.usedPct, alerts: s.alerts.length }; } catch (e) { return null; } })() });
+    send(res, 200, { ok: true, app: 'HongHub-Desktop', buildId: buildId(), devMode: DEV_MODE, stored: reports.length, writable, tokenRequired: !!REPORT_TOKEN, fixTokenRequired: !!FIX_TOKEN, accessTokenRequired: !!ACCESS_TOKEN, hubs: hubAddresses(), release: { versionName: lat.versionName, versionCode: lat.versionCode, publishedAt: lat.publishedAt }, features: featureStamp().hash, manifest: readManifest().sources ? readManifest().sources.v : null, auto: { enabled: AUTO_RUN_ENABLED, mode: AUTO_GOVERN ? 'govern' : 'update', nextRunAt: nextRunAt, lastRunOk: last ? last.ok : null, lastRunAt: last ? last.startedAt : null }, govern: { enabled: AUTO_GOVERN, lastRunOk: lastG ? lastG.ok : null, lastRunAt: lastG ? lastG.startedAt : null }, diagnostics: (function () { try { const s = healthMonitor.snapshot(); return { healthy: s.healthy, diskFreeMB: s.diskFreeMB, memUsedPct: s.mem.usedPct, alerts: s.alerts.length }; } catch (e) { return null; } })() });
     return;
   }
+  // 源健康度：读 sources:verify 落下的体检报告（只报事实，没有报告就明说没测）
+  if (u.pathname === '/api/sources/health' && req.method === 'GET') {
+    cors(res);
+    let rep = null;
+    for (const f of [path.join(DATA_DIR, 'sources-report.json'), path.join(__dirname, 'data/sources-report.json')]) {
+      try { if (!rep && fs.existsSync(f)) rep = JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) {}
+    }
+    if (!rep) { send(res, 200, { ok: true, ready: false, note: '尚未运行 npm run sources:verify' }); return; }
+    send(res, 200, {
+      ok: true, ready: true, at: rep.at, totals: rep.totals, coverage: rep.coverage,
+      lists: (rep.lists || []).map(function (l) { return { url: l.url, ok: l.ok, n: l.n, why: l.why }; })
+    });
+    return;
+  }
+
+  /* 页面里的版本角标（右下角 PKG x.y.z）就是拉这个文件；以前包内没有它、也没有路由，
+     客户端一直显示占位符 "PKG …"。这里按当前安装好的版本与功能指纹现算一份，离线也能显示。 */
+  if (u.pathname === '/remote-manifest.json' && req.method === 'GET') {
+    const lat0 = (function () { try { return readManifest().release.latest; } catch (e) { return {}; } })() || {};
+    const body = {
+      schema: 1,
+      versionName: lat0.versionName || null,
+      versionCode: lat0.versionCode || null,
+      publishedAt: lat0.publishedAt || null,
+      distribution: 'bundled',
+      offline: true,
+      features: featureStamp(),
+      generatedAt: new Date().toISOString()
+    };
+    cors(res);
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(JSON.stringify(body)) });
+    res.end(JSON.stringify(body));
+    return;
+  }
+
   if (u.pathname === '/api/manifest' && req.method === 'GET') {
     const m = readManifest();
+    m.buildId = buildId();
     try {
       if (m && m.release && m.release.latest && !m.release.latest.downloadUrl) m.release.latest.downloadUrl = process.env.DOWNLOAD_URL || '/download/desktop-setup.exe';
       const art = releaseArtifacts();
@@ -1086,7 +1327,7 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
-  if (u.pathname === '/api/features' && req.method === 'GET') { send(res, 200, { ok: true, features: readFeatures(), version: featureStamp() }); return; }
+  if (u.pathname === '/api/features' && req.method === 'GET') { send(res, 200, { ok: true, features: extras.features.apply(readFeatures()), version: featureStamp() }); return; }
 
   /* ---------------- 资源目录 / 播放回传 / 问题单：全自动闭环 ---------------- */
   // 统一目录（频道 + 平台），带版本号；客户端可按 ?since= 增量热更新，源修好无需发新版
@@ -1130,9 +1371,137 @@ const server = http.createServer((req, res) => {
     return;
   }
   /* 第三方站点接入：自定义网址 / 批量导入 / 移除（只做入口与可达性，不抓流） */
+  // 平台清单管理页：按省筛选、改分类、改名、删除，一屏看全（开发端才有）
+  if (u.pathname === '/admin/sites' && req.method === 'GET') {
+    if (!DEV_MODE) { send(res, 404, { ok: false, error: 'not found' }); return; }
+    let html = '';
+    try { html = fs.readFileSync(path.join(__dirname, 'sites-admin.html'), 'utf8'); }
+    catch (e) { send(res, 500, { ok: false, error: 'sites-admin.html 缺失' }); return; }
+    cors(res);
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(html) });
+    res.end(html);
+    return;
+  }
+
   if (u.pathname === '/api/sites' && req.method === 'GET') {
     send(res, 200, catalog.listSites()); return;
   }
+
+  /* 功能追踪：客户端每版带哪些功能、线上有没有、这一版增删了什么（仅开发端可看） */
+  if (u.pathname === '/api/features/track' && req.method === 'GET') {
+    if (!DEV_MODE) { send(res, 404, { ok: false, error: 'not found' }); return; }
+    try { send(res, 200, featureTrack.status()); }
+    catch (e) { send(res, 500, { ok: false, error: '功能追踪失败：' + (e && e.message) }); }
+    return;
+  }
+  if (u.pathname === '/admin/features' && req.method === 'GET') {
+    if (!DEV_MODE) { send(res, 404, { ok: false, error: 'not found' }); return; }
+    let html = '';
+    try { html = fs.readFileSync(path.join(__dirname, 'features-admin.html'), 'utf8'); }
+    catch (e) { send(res, 500, { ok: false, error: 'features-admin.html 缺失' }); return; }
+    cors(res);
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(html) });
+    res.end(html);
+    return;
+  }
+
+  /* 维护决策数据：收视热度（谁真的在看）/ 失效源 TOP（该先修哪条线） */
+  if (u.pathname === '/api/stats/heat' && req.method === 'GET') {
+    if (!DEV_MODE) { send(res, 404, { ok: false, error: 'not found' }); return; }
+    try { send(res, 200, insights.heat(Number(u.searchParams.get('days') || 7))); }
+    catch (e) { send(res, 500, { ok: false, error: '收视热度统计失败：' + (e && e.message) }); }
+    return;
+  }
+  if (u.pathname === '/api/stats/fail-top' && req.method === 'GET') {
+    if (!DEV_MODE) { send(res, 404, { ok: false, error: 'not found' }); return; }
+    try { send(res, 200, insights.failTop(Number(u.searchParams.get('limit') || 25))); }
+    catch (e) { send(res, 500, { ok: false, error: '失效源统计失败：' + (e && e.message) }); }
+    return;
+  }
+  if (u.pathname === '/admin/insights' && req.method === 'GET') {
+    if (!DEV_MODE) { send(res, 404, { ok: false, error: 'not found' }); return; }
+    let html = '';
+    try { html = fs.readFileSync(path.join(__dirname, 'insights-admin.html'), 'utf8'); }
+    catch (e) { send(res, 500, { ok: false, error: 'insights-admin.html 缺失' }); return; }
+    cors(res);
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(html) });
+    res.end(html);
+    return;
+  }
+  /* ------------- 剩余六项能力：开关 / 遥测 / 儿童时段 / 接力 / 选源 / 聚合搜索 ------------- */
+  if (u.pathname === '/api/features/flags' && req.method === 'GET') {
+    send(res, 200, Object.assign({ ok: true }, extras.features.all()));
+    return;
+  }
+  if (u.pathname === '/api/features/flags' && req.method === 'POST') {
+    if (!DEV_MODE) { send(res, 403, { ok: false, error: '仅开发端可改功能开关' }); return; }
+    readBody(req, (body) => {
+      let p; try { p = JSON.parse(body || '{}'); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      if (p && p.flags && typeof p.flags === 'object') {
+        Object.keys(p.flags).forEach((k) => extras.features.set(k, p.flags[k]));
+        send(res, 200, { ok: true, flags: extras.features.all() });
+        return;
+      }
+      send(res, 200, extras.features.set(p.id, p.enabled === undefined ? null : p.enabled));
+    });
+    return;
+  }
+  if (u.pathname === '/api/telemetry/update' && req.method === 'POST') {
+    readBody(req, (body) => {
+      let p; try { p = JSON.parse(body || '{}'); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      send(res, 200, extras.telemetry.append(p));
+    });
+    return;
+  }
+  if (u.pathname === '/api/telemetry/update' && req.method === 'GET') {
+    if (!DEV_MODE) { send(res, 404, { ok: false, error: 'not found' }); return; }
+    send(res, 200, extras.telemetry.summary());
+    return;
+  }
+  if (u.pathname === '/api/config/kid' && req.method === 'GET') {
+    send(res, 200, Object.assign({ ok: true, config: extras.kid.get() }, extras.kid.stateAt()));
+    return;
+  }
+  if (u.pathname === '/api/config/kid' && req.method === 'POST') {
+    readBody(req, (body) => {
+      let p; try { p = JSON.parse(body || '{}'); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      const r = extras.kid.set(p || {});
+      send(res, r.ok ? 200 : 500, r);
+    });
+    return;
+  }
+  if (u.pathname === '/api/handoff' && req.method === 'POST') {
+    readBody(req, (body) => {
+      let p; try { p = JSON.parse(body || '{}'); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      send(res, 200, extras.handoff.put(p.payload || p));
+    });
+    return;
+  }
+  if (u.pathname === '/api/handoff/get' && req.method === 'GET') {
+    send(res, 200, extras.handoff.take(u.searchParams.get('code')));
+    return;
+  }
+  if (u.pathname === '/api/stats/source-rank' && req.method === 'GET') {
+    try { send(res, 200, extras.score.rank(Number(u.searchParams.get('limit') || 40))); }
+    catch (e) { send(res, 500, { ok: false, error: '选源评分失败：' + (e && e.message) }); }
+    return;
+  }
+  if (u.pathname === '/api/search' && req.method === 'GET') {
+    try { send(res, 200, extras.search.run(u.searchParams.get('q'), Number(u.searchParams.get('limit') || 50))); }
+    catch (e) { send(res, 500, { ok: false, error: '搜索失败：' + (e && e.message) }); }
+    return;
+  }
+  if (u.pathname === '/admin/extras' && req.method === 'GET') {
+    if (!DEV_MODE) { send(res, 404, { ok: false, error: 'not found' }); return; }
+    let html = '';
+    try { html = fs.readFileSync(path.join(__dirname, 'extras-admin.html'), 'utf8'); }
+    catch (e) { send(res, 500, { ok: false, error: 'extras-admin.html 缺失' }); return; }
+    cors(res);
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(html) });
+    res.end(html);
+    return;
+  }
+
   if (u.pathname === '/api/sites' && req.method === 'POST') {
     readBody(req, (body) => {
       if (!body) { send(res, 413, { ok: false, error: 'empty or oversized body' }); return; }
@@ -1147,6 +1516,14 @@ const server = http.createServer((req, res) => {
       if (!body) { send(res, 413, { ok: false, error: 'empty or oversized body' }); return; }
       let p; try { p = JSON.parse(body); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
       send(res, 200, catalog.removeSite(p.id || p.name || p.url));
+    });
+    return;
+  }
+  if (u.pathname === '/api/sites/update' && req.method === 'POST') {
+    readBody(req, (body) => {
+      if (!body) { send(res, 413, { ok: false, error: 'empty or oversized body' }); return; }
+      let p; try { p = JSON.parse(body); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      send(res, 200, catalog.updateSite(p.id || p.name || p.url, p.patch || p));
     });
     return;
   }
@@ -1385,46 +1762,61 @@ const server = http.createServer((req, res) => {
       out.elapsedMs = Date.now() - t0;
       devops.audit('update.publish', { result: out.ok ? 'ok' : 'fail', detail: out.ok ? ('v' + out.publish.versionName + ' / #' + out.publish.versionCode + ' / 源清单 v' + (out.update && out.update.v)) : String(out.error || '') });
       send(res, out.ok ? 200 : 500, out);
+      /* 开发端专用：发布成功后把本机回装成新版（KH_AUTO_REINSTALL=1 才启用）。
+         客户端不带这个开关，发布→自装闭环只在开发机上跑。 */
+      if (out.ok && DEV_MODE && String(process.env.KH_AUTO_REINSTALL || '0') === '1') {
+        const fp = resolveDownload('desktop-setup.exe');
+        if (fp) {
+          try {
+            const child = spawn(fp, [], { detached: true, stdio: 'ignore' });
+            child.on('error', (e) => console.error('[更新] 发布后自动回装失败', e && e.message));
+            child.unref();
+            console.log('[更新] 发布成功，已拉起本机回装：' + path.basename(fp));
+          } catch (e) { console.error('[更新] 发布后自动回装异常', e && e.message); }
+        } else {
+          console.warn('[更新] 发布成功，但本机没有安装包，跳过回装（先 npm run pack）');
+        }
+      }
     });
     return;
   }
 
-  // 自动更新落地：本机校验安装包后拉起安装向导（非静默，仍需用户在向导里确认）
+  // 自动更新落地：本地没有安装包时先从镜像站下载，校验通过再拉起安装向导
+  // （非静默，仍需用户在向导里确认覆盖安装）
   if (u.pathname === '/api/update/install' && req.method === 'POST') {
     const ip = (req.socket && req.socket.remoteAddress) || '';
     if (!/^(127\.0\.0\.1|::1|::ffff:127\.0\.0\.1)$/.test(ip)) {
-      send(res, 403, { ok: false, error: '仅允许本机触发安装（安全限制）' }); return;
+      send(res, 403, { ok: false, error: '仅允许本机触发安装（安全限制）' });
+      return;
     }
-    const fp = resolveDownload('desktop-setup.exe');
-    if (!fp) { send(res, 404, { ok: false, error: '未找到最新安装包，请先运行 npm run pack' }); return; }
-    let buf;
-    try { buf = fs.readFileSync(fp); } catch (e) { send(res, 500, { ok: false, error: '安装包读取失败：' + (e && e.message) }); return; }
-    const sha = crypto.createHash('sha256').update(buf).digest('hex');
-    let verified = 'size-only';
-    try {
-      const shaFile = fp + '.sha256';
-      if (fs.existsSync(shaFile)) {
-        const expect = fs.readFileSync(shaFile, 'utf8').trim().split(/\s+/)[0];
-        if (expect && expect.toLowerCase() !== sha) {
-          send(res, 409, { ok: false, error: '安装包 SHA256 校验失败，已阻止启动安装' }); return;
-        }
-        if (expect) verified = 'sha256';
+    const local = (String(process.env.KH_UPDATE_FORCE_REMOTE || '0') === '1') ? null : resolveDownload('desktop-setup.exe');
+    if (local) {
+      let localSha = null;
+      try {
+        const sf = local + '.sha256';
+        if (fs.existsSync(sf)) localSha = String(fs.readFileSync(sf, 'utf8')).trim().split(/\s+/)[0] || null;
+      } catch (e) { /* 无校验文件则按体积闸 */ }
+      launchSetup(local, res, { source: 'local', desktopSha256: localSha });
+      return;
+    }
+    if (String(process.env.KH_UPDATE_ALLOW_DOWNLOAD || '1') === '0') {
+      send(res, 404, { ok: false, error: '本机没有安装包，且已禁用联网下载（KH_UPDATE_ALLOW_DOWNLOAD=0）' });
+      return;
+    }
+    const man = manifestForInstall();
+    if (!man) {
+      send(res, 404, { ok: false, error: '本机没有安装包，公网清单也没有可用的下载地址（未配置镜像站？）' });
+      return;
+    }
+    const dest = path.join(UPDATES_DIR, 'desktop-setup.exe');
+    console.log('[更新] 本机无安装包，开始从镜像站下载：' + man.downloadUrl);
+    downloadToFile(man.downloadUrl, dest, (err, size) => {
+      if (err) {
+        send(res, 502, { ok: false, error: '从镜像站下载安装包失败：' + (err.message || err), url: man.downloadUrl });
+        return;
       }
-    } catch (e) { /* 校验文件不可读则退化为体积校验 */ }
-    if (buf.length < 10 * 1024 * 1024) { send(res, 409, { ok: false, error: '安装包异常（体积过小）' }); return; }
-    let launched = false;
-    try {
-      const child = spawn(fp, [], { detached: true, stdio: 'ignore' });
-      child.on('error', (e) => console.error('[更新] 启动安装向导失败', e && e.message));
-      child.unref();
-      launched = true;
-    } catch (e) { /* 下面返回失败 */ }
-    const lat = (function () { try { return readManifest().release.latest; } catch (e2) { return {}; } })() || {};
-    send(res, launched ? 200 : 500, {
-      ok: launched, launched: launched, verified: verified, sha256: sha,
-      version: lat.versionName || null, versionCode: lat.versionCode || null,
-      file: path.basename(fp),
-      message: launched ? '覆盖安装已启动：同目录覆盖、无需卸载当前版本、数据与设置保留；若提示程序被占用，请先退出本应用再继续' : '启动覆盖安装失败'
+      console.log('[更新] 下载完成 ' + size + ' B，开始校验');
+      launchSetup(dest, res, man);
     });
     return;
   }
@@ -1551,20 +1943,63 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (u.pathname === '/' && req.method === 'GET') {
+  /* 运维看板：仅开发端（KH_DEV_MODE=1）可见。客户成品的首页是影视页，不再是运维看板。 */
+  if ((u.pathname === '/admin' || u.pathname === '/board') && req.method === 'GET') {
+    if (!DEV_MODE) { send(res, 404, { ok: false, error: 'not found' }); return; }
     cors(res);
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(BOARD) });
-    res.end(BOARD);
+    // 看板右上角挂一个「功能追踪」入口，点进去看每版功能清单与增删
+    const boardHtml = BOARD.indexOf('</body>') >= 0
+      ? BOARD.replace('</body>', '<div style="position:fixed;right:14px;bottom:14px;z-index:9999;display:flex;gap:8px">' +
+          '<a href="/admin/insights" style="display:inline-block;padding:7px 14px;border-radius:18px;' +
+          'background:#1B3A5B;color:#CFE3FF;text-decoration:none;font:13px/1.4 sans-serif;' +
+          'border:1px solid #2A4E77">📊 维护决策</a>' +
+          '<a href="/admin/features" style="display:inline-block;padding:7px 14px;border-radius:18px;' +
+          'background:#1B3A5B;color:#CFE3FF;text-decoration:none;font:13px/1.4 sans-serif;' +
+          'border:1px solid #2A4E77">🧩 功能追踪</a>' +
+          '<a href="/admin/extras" style="display:inline-block;padding:7px 14px;border-radius:18px;' +
+          'background:#1B3A5B;color:#CFE3FF;text-decoration:none;font:13px/1.4 sans-serif;' +
+          'border:1px solid #2A4E77">🧩 开关台</a></div></body>')
+      : BOARD;
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(boardHtml) });
+    res.end(boardHtml);
     return;
   }
 
   if (req.method === 'GET') { serveStatic(res, u); return; }
   send(res, 404, { ok: false, error: 'not found' });
-});
+}
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log('[HongHub-Desktop] 服务已启动：http://localhost:' + PORT + ' （看板/收集/实时更新/自愈/自动化）');
-  console.log('[HongHub-Desktop] writable=' + writable + ' reportToken=' + (!!REPORT_TOKEN) + ' fixToken=' + (!!FIX_TOKEN));
+/* 绑定非回环地址时必须带口令：首次启动生成一份并落盘，避免整个局域网无口令访问中枢 */
+function ensureAccessToken() {
+  if (ACCESS_TOKEN || HOST === '127.0.0.1' || HOST === '::1' || HOST === 'localhost') return;
+  const f = path.join(DATA_DIR, 'access-token.txt');
+  try { if (fs.existsSync(f)) ACCESS_TOKEN = fs.readFileSync(f, 'utf8').trim(); } catch (e) {}
+  if (!ACCESS_TOKEN) {
+    ACCESS_TOKEN = crypto.randomBytes(8).toString('hex');
+    try { fs.writeFileSync(f, ACCESS_TOKEN + '\n'); } catch (e) {}
+  }
+  console.log('[HongHub-Desktop] 局域网模式：访问口令 ' + ACCESS_TOKEN + '（可用 KH_ACCESS_TOKEN 覆盖）');
+}
+ensureAccessToken();
+
+const server = http.createServer((req, res) => {
+  try {
+    handleRequest(req, res);
+  } catch (e) {
+    try { console.error('[request-error] ' + (e && e.stack || e)); } catch (_) {}
+    try {
+      if (!res.headersSent) send(res, 500, { ok: false, error: 'internal error' });
+      else res.end();
+    } catch (_) {}
+  }
+});
+// 进程级兜底：异步回调里的意外错误只写日志，不让服务退出（客户端不能因一次异常白屏）
+process.on('uncaughtException', function (e) { try { console.error('[uncaughtException] ' + (e && e.stack || e)); } catch (_) {} });
+process.on('unhandledRejection', function (e) { try { console.error('[unhandledRejection] ' + (e && e.stack || e)); } catch (_) {} });
+
+server.listen(PORT, HOST, () => {
+  console.log('[HongHub-Desktop] 服务已启动：http://' + HOST + ':' + PORT + ' （buildId=' + buildId() + '）');
+  console.log('[HongHub-Desktop] writable=' + writable + ' reportToken=' + (!!REPORT_TOKEN) + ' fixToken=' + (!!FIX_TOKEN) + ' devMode=' + DEV_MODE);
   refreshPageFromPublic();
   const pageTimer = setInterval(refreshPageFromPublic, 10 * 60 * 1000); if (pageTimer.unref) pageTimer.unref();
   loadAutoRuns();

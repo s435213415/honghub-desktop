@@ -66,6 +66,8 @@ node server/server.js
 
 ```bash
 npm install        # 安装 electron / electron-builder（仅打包时需要）
+npm run dev:auto   # 开发者端一键自动化：版本门禁 → 静态检查 → 发版同步 → 哈希/签名/归档复检（不构建、不出包、不发布）
+npm run dev:auto:check # 同上但只读检查，CI / pre-commit 自动调用
 npm run pack       # 一键构建：发版 → 两端前端/HAP → 自检 → 出包 → 更新产物 → 桌面
 npm run verify       # 交付验收：版本 / SHA256 / 桌面交付 / 下载端点 / 自动修 Bug / 不限设备选路 / 自动更新 / 无假更新
 npm run test:bugfix  # 自动修 Bug 回归自检：注入 4 类故障，验证「自动处置 + 自动复检归零」后完整还原
@@ -536,8 +538,8 @@ curl -X POST http://localhost:8787/api/update-publish
 - 运行期数据：`server/data/*.json(l)`、页面热更新缓存（`app.page.html`）
 - 依赖与临时脚本：`node_modules/`、`_*.js`、`__pycache__/`、`*.log`
 
-> ⚠️ 签名密钥与 `.env` 口令**绝不提交**。重签 HAP 时用环境变量 `OH_KEY_PWD` 传入口令，密钥包只留本地（`签名密钥_v1.7.8/`）。
+> ⚠️ 签名密钥与 `.env` 口令**绝不提交**。重签 HAP 时用环境变量 `OH_KEY_PWD` 传入口令，密钥包只留本地（`harmony/signing/keys/`）；v1.7.15 沿用现有证书链，不随版本号改名。
 
-**当前基线**：`v1.7.8` / `versionCode 1000122`。版本号以 `server/manifest.json` 的 `release.latest` 为单一真相源，改动后跑 `npm run version:check` 校验全仓 9 处字段是否一致。
+**当前基线**：`v1.7.15` / `versionCode 1000129`。版本号以 `server/manifest.json` 的 `release.latest` 为单一真相源，改动后跑 `npm run version:check` 校验全仓 9 处字段是否一致。
 
 **源码与线上成品的关系**：线上只发布 6 个客户可用文件（下载页、`remote-manifest.json`、`app-page.html`、exe、HAP、免安装 zip 的 `.bin` 别名）。页面类修改可通过公网 `app-page.html` 热更新生效，无需重新出包；本体类修改才需要重打包并覆盖安装（不卸载、不删数据）。

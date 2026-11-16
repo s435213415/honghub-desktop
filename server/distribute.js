@@ -26,10 +26,23 @@ function fileConfig() {
 function config() {
   const f = fileConfig();
   const base = String(process.env.KH_PUBLIC_BASE_URL || f.baseUrl || '').replace(/\/+$/, '');
+  const shareQuery = String(process.env.KH_PUBLIC_SHARE_QUERY || f.shareQuery || '');
+  /* 多源清单：主源 + 备用源（f.mirrors）。任一存活即可完成更新检查，
+     避免单一临时域名失效后客户端彻底失去更新能力。 */
+  const mirrors = [];
+  if (base) mirrors.push({ baseUrl: base, shareQuery });
+  if (Array.isArray(f.mirrors)) {
+    f.mirrors.forEach(function (m) {
+      const u = String((m && (m.baseUrl || m)) || '').replace(/\/+$/, '');
+      if (!u || mirrors.some(function (x) { return x.baseUrl === u; })) return;
+      mirrors.push({ baseUrl: u, shareQuery: String((m && m.shareQuery) || '') });
+    });
+  }
   return {
     enabled: !!base,
     baseUrl: base,
-    shareQuery: String(process.env.KH_PUBLIC_SHARE_QUERY || f.shareQuery || ''),
+    shareQuery,
+    mirrors,
     bucket: String(process.env.KH_PUBLISH_BUCKET || ''),
     endpoint: String(process.env.KH_PUBLISH_ENDPOINT || ''),
     region: String(process.env.KH_PUBLISH_REGION || 'auto'),
@@ -39,14 +52,18 @@ function config() {
 
 // ---- 运行时公网清单：启动拉一次 + 周期刷新，请求处理保持同步、零阻塞 ----
 let remoteCache = null;
-function publicManifestUrl() {
+function publicManifestUrls() {
   const c = config();
-  if (!c.enabled) return null;
-  return c.baseUrl + '/remote-manifest.json' + (c.shareQuery || '');
+  if (!c.enabled) return [];
+  return (c.mirrors || []).map(function (m) {
+    return m.baseUrl + '/remote-manifest.json' + (m.shareQuery || '');
+  });
 }
-function refreshPublicManifest(cb, timeoutMs) {
-  const url = publicManifestUrl();
-  if (!url) { if (cb) cb(null); return; }
+function publicManifestUrl() {
+  const list = publicManifestUrls();
+  return list.length ? list[0] : null;
+}
+function fetchJson(url, timeoutMs, cb) {
   const lib = url.indexOf('https:') === 0 ? https : http;
   let settled = false;
   const done = (v) => { if (settled) return; settled = true; if (cb) cb(v); };
@@ -58,13 +75,25 @@ function refreshPublicManifest(cb, timeoutMs) {
       if (res.statusCode !== 200) return done(null);
       try {
         const j = JSON.parse(body);
-        if (j && j.versionCode && j.desktopUrl) { remoteCache = j; return done(j); }
+        if (j && j.versionCode && j.desktopUrl) return done(j);
       } catch (e) { /* 落到 null */ }
       done(null);
     });
   });
   req.on('timeout', () => { req.destroy(); done(null); });
   req.on('error', () => done(null));
+}
+/* 依次尝试主源与备用源，命中第一个可用清单即返回；全部失败则保留旧缓存 */
+function refreshPublicManifest(cb, timeoutMs) {
+  const urls = publicManifestUrls();
+  if (!urls.length) { if (cb) cb(null); return; }
+  (function next(i) {
+    if (i >= urls.length) { if (cb) cb(remoteCache); return; }
+    fetchJson(urls[i], timeoutMs, function (j) {
+      if (j) { remoteCache = j; if (cb) cb(j); return; }
+      next(i + 1);
+    });
+  })(0);
 }
 function startAutoRefresh(ms) {
   refreshPublicManifest();
