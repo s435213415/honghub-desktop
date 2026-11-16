@@ -1,0 +1,191 @@
+{
+  "schema": 1,
+  "generatedAt": "2026-11-15T16:00:49.363082Z",
+  "latest": {
+    "versionName": "1.7.8",
+    "versionCode": 1000122
+  },
+  "versions": [
+    {
+      "versionName": "1.7.8",
+      "versionCode": 1000122,
+      "publishedAt": "2026-11-15T16:00:49.363066Z",
+      "features": {
+        "versionName": "1.7.8",
+        "versionCode": 1000122,
+        "count": 30,
+        "hash": "14aba4044199f801"
+      },
+      "dir": "dist/public/honghub/v1.7.8",
+      "artifacts": {
+        "desktop": {
+          "path": "dist/public/honghub/v1.7.8/desktop-setup.exe",
+          "size": 77600255,
+          "sha256": "9df8894209166fbf8df9d6e29a2eae59aefb2dfaddaed8e65d6686cfa2efceb4"
+        },
+        "hap": {
+          "path": "dist/public/honghub/v1.7.8/HongHubMovie.hap",
+          "size": 841006,
+          "sha256": "7a3497480599a00357be291b346ebd14b82d9e77ebed47de0ef6a4403bf1ae57"
+        },
+        "zip": {
+          "path": "dist/public/honghub/v1.7.8/honghub-desktop-1.7.8-win.bin",
+          "size": 109709860,
+          "sha256": "05e962470470ce0d0d26c30e97f76014a9b1a54d9e82e3deb45394aa4bade383"
+        },
+        "page": {
+          "path": "dist/public/app-page.html",
+          "size": 270240,
+          "sha256": "935cc25e9d68252c8150bed6b2a2e9857d939c849ff2ce77ff63854666cb7a33"
+        }
+      },
+      "note": "当前版本；发布源为 dist/public，仅含客户可用成品；开发端资料留本地"
+    },
+    {
+      "versionName": "1.7.6",
+      "versionCode": 1000120,
+      "publishedAt": "2026-11-14T13:29:04.392Z",
+      "features": {
+        "versionName": "1.7.6",
+        "versionCode": 1000120,
+        "count": 21,
+        "hash": "14aba4044199f801",
+        "ids": [
+          "board",
+          "report",
+          "sourcespeed",
+          "fix",
+          "updatepublish",
+          "automation",
+          "updatecheck",
+          "govern",
+          "preset-open-dashboard",
+          "preset-dingtalk",
+          "preset-wecom",
+          "preset-feishu",
+          "preset-backup",
+          "preset-broadcast",
+          "feature-mine",
+          "auto-batch",
+          "arch-adaptive",
+          "play-smooth",
+          "mem-adaptive",
+          "auto-update",
+          "os-follow"
+        ]
+      },
+      "dir": "releases/v1.7.6",
+      "artifacts": {
+        "desktop": {
+          "path": "releases/v1.7.6/开鸿影视桌面版 Setup 1.7.6.exe",
+          "size": 78188903,
+          "sha256": "8fd0dd2e8982aa7e4ad327caa1fab930fa5c07cef0fad21ac2bb6d9d0472782e"
+        },
+        "hap": {
+          "path": "releases/v1.7.6/KaihongMovie.hap",
+          "size": 371357,
+          "sha256": "9ed8abf144c1b41fd3acb7a232a6a618a45baebbd2a22d239e0426c10ef7ac33"
+        }
+      },
+      "downloadUrl": "/download/archive/%E5%BC%80%E9%B8%BF%E5%BD%B1%E8%A7%86%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.6.exe",
+      "hapUrl": "/download/archive/KaihongMovie.hap",
+      "rollbackUrl": "/api/update/rollback?version=1.7.6"
+    },
+    {
+      "versionName": "1.7.5",
+      "versionCode": null,
+      "dir": "dist",
+      "historical": true,
+      "artifacts": {
+        "desktop": {
+          "path": "dist/开鸿影视桌面版 Setup 1.7.5.exe",
+          "size": 77936915,
+          "sha256": "0cc81aebc654e84cc0121cb219bc5ed94cdaa6234cdf5d84c50b93f25bb196b3"
+        },
+        "hap": null
+      },
+      "downloadUrl": "/download/%E5%BC%80%E9%B8%BF%E5%BD%B1%E8%A7%86%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.5.exe",
+      "rollbackUrl": "/api/update/rollback?version=1.7.5"
+    },
+    {
+      "versionName": "1.7.4",
+      "versionCode": null,
+      "dir": "dist",
+      "historical": true,
+      "artifacts": {
+        "desktop": {
+          "path": "dist/开鸿影视桌面版 Setup 1.7.4.exe",
+          "size": 77864227,
+          "sha256": "b4a9462f4310923b83ce9da99f13923902cd045ee49c5c69a9a0a922f96ba008"
+        },
+        "hap": null
+      },
+      "downloadUrl": "/download/%E5%BC%80%E9%B8%BF%E5%BD%B1%E8%A7%86%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.4.exe",
+      "rollbackUrl": "/api/update/rollback?version=1.7.4"
+    },
+    {
+      "versionName": "1.7.3",
+      "versionCode": null,
+      "dir": "dist",
+      "historical": true,
+      "artifacts": {
+        "desktop": {
+          "path": "dist/开鸿影视桌面版 Setup 1.7.3.exe",
+          "size": 77853375,
+          "sha256": "f9574604f894afdf498323adf66a0c560c456d8004f6d72d46a762bb967e9fe8"
+        },
+        "hap": null
+      },
+      "downloadUrl": "/download/%E5%BC%80%E9%B8%BF%E5%BD%B1%E8%A7%86%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.3.exe",
+      "rollbackUrl": "/api/update/rollback?version=1.7.3"
+    },
+    {
+      "versionName": "1.7.2",
+      "versionCode": null,
+      "dir": "dist",
+      "historical": true,
+      "artifacts": {
+        "desktop": {
+          "path": "dist/开鸿影视桌面版 Setup 1.7.2.exe",
+          "size": 77701101,
+          "sha256": "b61626b68184ddc957370eb16131db21104b0fae07372962c1c5bcfca7326a2b"
+        },
+        "hap": null
+      },
+      "downloadUrl": "/download/%E5%BC%80%E9%B8%BF%E5%BD%B1%E8%A7%86%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.2.exe",
+      "rollbackUrl": "/api/update/rollback?version=1.7.2"
+    },
+    {
+      "versionName": "1.7.1",
+      "versionCode": null,
+      "dir": "dist",
+      "historical": true,
+      "artifacts": {
+        "desktop": {
+          "path": "dist/开鸿影视桌面版 Setup 1.7.1.exe",
+          "size": 77405503,
+          "sha256": "52696d4b2d7390e21eed5f2e395e7850df4c83027d6775304e3097115e569e47"
+        },
+        "hap": null
+      },
+      "downloadUrl": "/download/%E5%BC%80%E9%B8%BF%E5%BD%B1%E8%A7%86%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.1.exe",
+      "rollbackUrl": "/api/update/rollback?version=1.7.1"
+    },
+    {
+      "versionName": "1.7.0",
+      "versionCode": null,
+      "dir": "dist",
+      "historical": true,
+      "artifacts": {
+        "desktop": {
+          "path": "dist/开鸿影视桌面版 Setup 1.7.0.exe",
+          "size": 77405117,
+          "sha256": "09e853694313ba62d681ea3f87ce6be1366be8c585c5d277f4e3c5e61a98957b"
+        },
+        "hap": null
+      },
+      "downloadUrl": "/download/%E5%BC%80%E9%B8%BF%E5%BD%B1%E8%A7%86%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.0.exe",
+      "rollbackUrl": "/api/update/rollback?version=1.7.0"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "versionCode": 1000119,
+  "builtAt": "2026-11-14T13:15:58.711Z",
+  "size": 371366,
+  "sha256": "cbcbc678b23a848c87a05e3b3426da525534e88f6086756c77835568ebaf81ed",
+  "source": "harmony/signing (项目内自包含签名链)"
+}

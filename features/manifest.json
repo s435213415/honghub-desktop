@@ -1,0 +1,255 @@
+[
+  {
+    "id": "board",
+    "name": "远程问题看板",
+    "desc": "查看所有用户自动上报的脱敏问题摘要与高频类别 Top",
+    "action": "open",
+    "url": "/"
+  },
+  {
+    "id": "report",
+    "name": "生成诊断报告",
+    "desc": "汇总设备 / 源清单 / 问题明细并复制到剪贴板，便于反馈",
+    "action": "builtin:report"
+  },
+  {
+    "id": "sourcespeed",
+    "name": "源线路排行",
+    "desc": "按可用线路数对所有直播频道排序，快速定位弱信号频道",
+    "action": "builtin:sourcespeed"
+  },
+  {
+    "id": "fix",
+    "name": "一键自愈",
+    "desc": "触发源体检重排并刷新线上清单（修复坏源 / 降级失效线路）",
+    "action": "builtin:fix"
+  },
+  {
+    "id": "updatepublish",
+    "name": "同步更新发布",
+    "desc": "一键同时重排源（更新）+ 升级版本号（发布），所有桌面端实时拉取新版本",
+    "action": "builtin:updatepublish"
+  },
+  {
+    "id": "automation",
+    "name": "自动化运行",
+    "desc": "查看定时更新+发布状态、运行历史，并立即触发一次自动化（与看板「⚙️ 自动化运行」一致）",
+    "action": "builtin:automation"
+  },
+  {
+    "id": "updatecheck",
+    "name": "检查新版本",
+    "desc": "立即向服务查询是否有新版本，若有则弹出「下载并安装」横幅（自动更新）",
+    "action": "builtin:updatecheck"
+  },
+  {
+    "id": "govern",
+    "name": "智能自治",
+    "desc": "一键运行自治循环：提取问题→修复坏源→优化清单→发布新版本→自动补装缺失的预设功能",
+    "action": "builtin:govern"
+  },
+  {
+    "id": "preset-open-dashboard",
+    "name": "打开在线看板",
+    "desc": "一键打开远程问题看板（收集 / 自愈 / 自动化 / 功能管理），免记地址",
+    "action": "open",
+    "icon": "📊",
+    "enabled": false,
+    "confirm": false,
+    "url": "/"
+  },
+  {
+    "id": "preset-dingtalk",
+    "name": "钉钉通知",
+    "desc": "向钉钉群机器人推送「自治完成 / 问题告警」消息。点「编辑」把机器人地址里的“在此粘贴”换成你的 Webhook 即可用。",
+    "action": "webhook",
+    "icon": "📨",
+    "enabled": false,
+    "confirm": false,
+    "url": "https://oapi.dingtalk.com/robot/send?access_token=在此粘贴",
+    "payload": {
+      "msgtype": "text",
+      "text": {
+        "content": "HongHub 自治已完成，源清单已刷新"
+      }
+    }
+  },
+  {
+    "id": "preset-wecom",
+    "name": "企业微信通知",
+    "desc": "向企业微信群机器人推送通知。编辑时把地址里的“在此粘贴”换成你的 key。",
+    "action": "webhook",
+    "icon": "💬",
+    "enabled": false,
+    "confirm": false,
+    "url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=在此粘贴",
+    "payload": {
+      "msgtype": "text",
+      "content": {
+        "content": "HongHub 自治已完成，源清单已刷新"
+      }
+    }
+  },
+  {
+    "id": "preset-feishu",
+    "name": "飞书通知",
+    "desc": "向飞书群机器人推送通知。编辑时把地址里的“在此粘贴”换成你的 Webhook。",
+    "action": "webhook",
+    "icon": "📲",
+    "enabled": false,
+    "confirm": false,
+    "url": "https://open.feishu.cn/open-apis/bot/v2/hook/在此粘贴",
+    "payload": {
+      "msg_type": "text",
+      "content": {
+        "text": "HongHub 自治已完成，源清单已刷新"
+      }
+    }
+  },
+  {
+    "id": "preset-backup",
+    "name": "每日自动备份清单",
+    "desc": "运行一条命令把当前 manifest 源清单备份到 server/backup/（建议配合「自动化运行」一起用）。",
+    "action": "script",
+    "icon": "💾",
+    "enabled": false,
+    "confirm": true,
+    "cmd": "node -e \"const fs=require('fs');fs.mkdirSync('server/backup',{recursive:true});fs.copyFileSync('server/manifest.json','server/backup/manifest.'+Date.now()+'.json');console.log('已备份清单到 server/backup')\""
+  },
+  {
+    "id": "preset-broadcast",
+    "name": "定时播报可看内容",
+    "desc": "运行命令生成本次可播放频道数摘要（可接自动化，或改成推到你自己的通知渠道）。",
+    "action": "script",
+    "icon": "📣",
+    "enabled": false,
+    "confirm": true,
+    "cmd": "node -e \"const m=require('./server/manifest.json');const c=m.sources.channels.length;const s=m.sources.channels.reduce((a,b)=>a+(b.sources?b.sources.length:0),0);console.log('可播放：'+c+' 频道 / '+s+' 条线路')\""
+  },
+  {
+    "id": "feature-mine",
+    "name": "反馈建议自动提取新功能",
+    "desc": "自动从反馈 / 建议 / 上报里提取新功能诉求，去重后自动加入功能清单并随发版同步",
+    "action": "builtin:mine",
+    "enabled": true,
+    "origin": "feedback-auto",
+    "minedAt": "2026-11-14T12:04:11.574Z"
+  },
+  {
+    "id": "auto-batch",
+    "name": "自动批量下发",
+    "desc": "自动生成本次发版的批量分发清单（多架构安装包 / 开鸿 HAP / 校验值），两端自动按架构取包",
+    "action": "builtin:batch",
+    "enabled": true,
+    "origin": "feedback-auto",
+    "minedAt": "2026-11-14T12:04:11.576Z"
+  },
+  {
+    "id": "arch-adaptive",
+    "name": "全架构自适应",
+    "desc": "自动识别 x64 / ia32 / arm64 并选择对应安装包；无原生包时回退通用包，弱机自动降档播放",
+    "action": "builtin:arch",
+    "enabled": true,
+    "origin": "feedback-auto",
+    "minedAt": "2026-11-14T12:04:11.576Z"
+  },
+  {
+    "id": "play-smooth",
+    "name": "自适应流畅播放",
+    "desc": "按 CPU / 内存 / 架构自动调整缓冲与码率上限，卡顿自动降档与切换备用源",
+    "action": "builtin:playback",
+    "enabled": true,
+    "origin": "feedback-auto",
+    "minedAt": "2026-11-14T12:04:11.576Z"
+  },
+  {
+    "id": "mem-adaptive",
+    "name": "不限内存大小都能看",
+    "desc": "自动下发按内存档选免安装轻量版或完整安装包；播放缓冲字节数与码率按内存设硬上限，小内存机器也能流畅看",
+    "action": "builtin:memory",
+    "enabled": true,
+    "origin": "feedback-auto",
+    "minedAt": "2026-11-14T12:04:11.576Z"
+  },
+  {
+    "id": "auto-update",
+    "name": "成品自动更新",
+    "desc": "两端启动自动比对版本，自动拉取最新功能 / 播放档位 / 成品校验值；低内存免安装通道永远最新，不制造假更新",
+    "action": "builtin:update",
+    "enabled": true,
+    "origin": "feedback-auto",
+    "minedAt": "2026-11-14T12:04:11.576Z"
+  },
+  {
+    "id": "os-follow",
+    "name": "跟随所有操作系统版本",
+    "desc": "自动检测并回传 OS 版本 / API / 架构 / 内存，按系统版本自动优化兼容策略、自动修复漂移后下发同步更新",
+    "action": "builtin:os",
+    "enabled": true,
+    "origin": "feedback-auto",
+    "minedAt": "2026-11-14T12:19:13.749Z"
+  },
+  {
+    "id": "ops-audit",
+    "name": "开发者端审计日志",
+    "desc": "自愈 / 发布 / 功能增删 / 回滚 / 自动化全部留痕，可按条数与结果查询",
+    "action": "builtin:audit",
+    "enabled": true
+  },
+  {
+    "id": "ops-trend",
+    "name": "数据趋势报表",
+    "desc": "按天累积源可用率、更新成功率、设备回传与失败 Top，趋势面板直读",
+    "action": "builtin:trend",
+    "enabled": true
+  },
+  {
+    "id": "ops-rollout",
+    "name": "灰度分批放量",
+    "desc": "按匿名设备 ID 稳定落组（权重切片），失败率超阈值自动暂停，人工确认后恢复",
+    "action": "builtin:rollout",
+    "enabled": true
+  },
+  {
+    "id": "ops-publish",
+    "name": "发布并校验闭环",
+    "desc": "上传（配置上传命令才真传）→ 回读远端清单核对版本与 SHA256，不一致明确报「仅本地就绪」",
+    "action": "builtin:publish",
+    "enabled": true
+  },
+  {
+    "id": "ops-smoke",
+    "name": "真机冒烟结果",
+    "desc": "读取真机冒烟与热插拔巡检结果；没跑过就明确报 no-run，绝不假装通过",
+    "action": "builtin:smoke",
+    "enabled": true
+  },
+  {
+    "id": "ops-alerts",
+    "name": "告警分级",
+    "desc": "critical / warn / info 归并去重，同码同窗口合并计数，不再重复播报",
+    "action": "builtin:alerts",
+    "enabled": true
+  },
+  {
+    "id": "ops-catalog",
+    "name": "全量资源目录与自动探测",
+    "desc": "频道 + 网络平台统一成带版本号的目录，定时探测可达性；客户端按增量热更新，源修好不用发新版",
+    "action": "builtin:catalog",
+    "enabled": true
+  },
+  {
+    "id": "ops-play",
+    "name": "播放回传与失败聚合",
+    "desc": "客户端播放失败自动回传（只记资源与结果，不记内容与 IP），按资源聚合失败率与错误码",
+    "action": "builtin:play",
+    "enabled": true
+  },
+  {
+    "id": "ops-issues",
+    "name": "问题自动建单与自动修复",
+    "desc": "探测失败或失败率超阈值自动建单 → 频道自动换可用源 → 复检通过自动关单，全程无人工",
+    "action": "builtin:issues",
+    "enabled": true
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "name": "entry",
+  "version": "1.7.0",
+  "description": "鸿汇影 深开鸿端入口模块",
+  "main": "",
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {}
+}

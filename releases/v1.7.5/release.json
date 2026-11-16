@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "versionName": "1.7.5",
+  "versionCode": 1000119,
+  "publishedAt": "2026-11-14T12:29:37.789Z",
+  "buildAt": "2026-11-14T13:21:58.395Z",
+  "artifacts": {
+    "desktop": {
+      "file": "desktop-setup.exe",
+      "size": 77936915,
+      "sha256": "0cc81aebc654e84cc0121cb219bc5ed94cdaa6234cdf5d84c50b93f25bb196b3"
+    },
+    "hap": {
+      "file": "kaihongcinema-harmony.hap",
+      "size": 371366,
+      "sha256": "cbcbc678b23a848c87a05e3b3426da525534e88f6086756c77835568ebaf81ed"
+    }
+  },
+  "features": {
+    "versionName": "1.7.5",
+    "versionCode": 1000119,
+    "count": 21,
+    "hash": "14aba4044199f801",
+    "ids": [
+      "board",
+      "report",
+      "sourcespeed",
+      "fix",
+      "updatepublish",
+      "automation",
+      "updatecheck",
+      "govern",
+      "preset-open-dashboard",
+      "preset-dingtalk",
+      "preset-wecom",
+      "preset-feishu",
+      "preset-backup",
+      "preset-broadcast",
+      "feature-mine",
+      "auto-batch",
+      "arch-adaptive",
+      "play-smooth",
+      "mem-adaptive",
+      "auto-update",
+      "os-follow"
+    ]
+  }
+}

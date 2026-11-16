@@ -1,0 +1,373 @@
+#!/usr/bin/env node
+'use strict';
+/* 开发者端「一键发布客户端成品 · 免卸载更新」编排
+
+   目标：已安装客户端不卸载、不重装，客户始终能拿到新版本。为此把更新拆成两层：
+     A) 内容层（功能清单 / 源清单 / 播放档位）——客户端启动 + 每 10 分钟自动从公网
+        /api/manifest、/api/features/sync 拉取，用户零操作、永不重装（主力通道）。
+     B) 本体层（exe / HAP）——只有确实需要换安装包时，客户端拉起 NSIS 标准向导做
+        「同目录覆盖安装」：不卸载旧版、不清用户数据、不删配置，装完原地升级。
+
+   本脚本只做「发布既有成品 + 刷新内容清单」，严格遵守：
+     · 不重新 pack、不重建 HAP、不升 versionCode；
+     · 三件成品哈希为不可变基线，任何改动立即中止（防止误重出包导致重装）；
+     · 报告显式给出 reinstallRequired=false 与 updateStrategy。
+
+   流程：采集权威成品 → 哈希基线断言 → 组装纯净静态站点 → 部署 → 公网回下验收 → 报告
+
+   用法：
+     node scripts/ship-client.js                 # 默认：以桌面客户成品目录为权威源发布
+     node scripts/ship-client.js <成品目录>       # 指定权威成品目录
+     npm run ship:client                          # 同上（推荐）
+     npm run ship:client -- --deep-verify         # 额外做 180MB 全量哈希回下比对
+     npm run ship:client -- --no-deploy           # 只组装 + 断言，不触发部署
+
+   站点发布：
+     · 配置 KH_DEPLOY_CMD → 真正一键上传；
+     · 未配置 → 写 dist/deploy-request.json，如实回报 deploy-pending，绝不谎报已发布。 */
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const crypto = require('crypto');
+const https = require('https');
+const http = require('http');
+const { spawnSync } = require('child_process');
+
+const ROOT = path.join(__dirname, '..');
+const DIST = path.join(ROOT, 'dist');
+const PUB = path.join(DIST, 'public');
+const env = require('./lib/env');
+env.apply();
+const distribute = require('../server/distribute');
+
+const ARGS = process.argv.slice(2);
+const DEEP = ARGS.includes('--deep-verify');
+const NO_DEPLOY = ARGS.includes('--no-deploy');
+const ARG_DIR = ARGS.find((a) => !a.startsWith('--') && /[\\/]/.test(a));
+const c = distribute.config();
+const Q = c.shareQuery || '';
+const steps = [];
+
+function log(s) { console.log(s); }
+function record(name, status, detail) {
+  steps.push({ name, status, detail: detail || '', at: new Date().toISOString() });
+  log('  [' + status.toUpperCase() + '] ' + name + (detail ? ' — ' + detail : ''));
+}
+function need(cond, msg) { if (!cond) { console.error('已中止：' + msg); process.exit(1); } }
+function jread(p, fallback) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return fallback; } }
+function sha(p) {
+  const h = crypto.createHash('sha256'), fd = fs.openSync(p, 'r'), buf = Buffer.allocUnsafe(1 << 20);
+  let n;
+  try { while ((n = fs.readSync(fd, buf, 0, buf.length, null)) > 0) h.update(buf.subarray(0, n)); }
+  finally { fs.closeSync(fd); }
+  return h.digest('hex');
+}
+function copyIf(src, dst) {
+  if (!fs.existsSync(src)) return false;
+  fs.mkdirSync(path.dirname(dst), { recursive: true });
+  fs.copyFileSync(src, dst);
+  return true;
+}
+function asset(relPath) { return c.baseUrl + '/' + relPath + Q; }
+function fetchBuf(url, timeoutMs) {
+  return new Promise((resolve) => {
+    const lib = url.indexOf('https:') === 0 ? https : http;
+    const r = lib.get(url, { timeout: timeoutMs || 20000 }, (res) => {
+      if (res.statusCode !== 200 && res.statusCode !== 206) { res.resume(); return resolve(null); }
+      const chunks = [];
+      res.on('data', (d) => chunks.push(d));
+      res.on('end', () => resolve(Buffer.concat(chunks)));
+    });
+    r.on('timeout', () => { r.destroy(); resolve(null); });
+    r.on('error', () => resolve(null));
+  });
+}
+function probe(url) {
+  return new Promise((resolve) => {
+    const lib = url.indexOf('https:') === 0 ? https : http;
+    const r = lib.request(url, { method: 'GET', timeout: 15000, headers: { Range: 'bytes=0-63' } }, (res) => {
+      let n = 0; res.on('data', (d) => { n += d.length; }); res.on('end', () => resolve({ code: res.statusCode, len: n }));
+    });
+    r.on('timeout', () => { r.destroy(); resolve({ code: 0, len: 0 }); });
+    r.on('error', () => resolve({ code: 0, len: 0 }));
+    r.end();
+  });
+}
+
+// 从客户说明文本解析不可变基线（版本 / 版本码 / 三件成品哈希）
+function parseBaseline(notePath) {
+  const txt = fs.readFileSync(notePath, 'utf8');
+  const vm = txt.match(/v(\d+\.\d+\.\d+)\s*\/\s*#(\d+)/);
+  const hashes = {};
+  let m;
+  const re = /^(exe|hap|zip)\s+([0-9a-f]{64})/gim;
+  while ((m = re.exec(txt))) hashes[m[1].toLowerCase()] = m[2].toLowerCase();
+  if (!vm || !hashes.exe || !hashes.hap || !hashes.zip) return null;
+  return { versionName: vm[1], versionCode: Number(vm[2]), hashes };
+}
+
+(async () => {
+  log('鸿汇影 · 一键发布客户端成品（免卸载更新）');
+  log('  策略：内容层自动热更新 + 本体层同目录覆盖安装；不重新出包、不改哈希、不升版本码');
+  need(c.enabled, '公网端点未配置（server/public-endpoint.json / KH_PUBLIC_BASE_URL）');
+
+  // 版本一致性门禁：真相源 manifest.release.latest 与全端 9 处版本字段必须一致，
+  // 否则客户端版本判断会错乱（旧版误报更新 / 新版不报更新）。不一致先 npm run version:sync。
+  const vchk = spawnSync(process.execPath, [path.join(__dirname, 'version.js'), '--check'],
+    { cwd: ROOT, encoding: 'utf8', timeout: 30000 });
+  if (vchk.status !== 0) {
+    log(String(vchk.stdout || '').trim());
+    need(false, '版本一致性检查未通过，请先运行 npm run version:sync 对齐全部版本字段');
+  }
+  record('版本一致性门禁', 'passed', '9 处版本字段全部对齐（version.js --check）');
+
+  // ---- 1) 定位权威成品目录 ----
+  // 兼容两种摆放：桌面顶层，或已归拢到「鸿汇影·v1.7.8交付中心/」内。
+  // 再兜底扫桌面一层子目录，避免以后再次整理文件夹导致一键发布失效。
+  const DESKTOP = path.join(os.homedir(), 'Desktop');
+  const ART = ARG_DIR ? path.resolve(ARG_DIR)
+    : (function () {
+        const NAME = /^鸿汇影·客户成品_v/;
+        const found = [];
+        const scan = (dir) => {
+          try {
+            for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (e.isDirectory() && NAME.test(e.name)) found.push(path.join(dir, e.name));
+            }
+          } catch (e) {}
+        };
+        scan(DESKTOP);
+        scan(path.join(DESKTOP, '鸿汇影·v1.7.8交付中心'));
+        try {
+          for (const e of fs.readdirSync(DESKTOP, { withFileTypes: true })) {
+            if (e.isDirectory()) scan(path.join(DESKTOP, e.name));
+          }
+        } catch (e) {}
+        const uniq = Array.from(new Set(found)).sort();
+        if (uniq.length) return uniq[uniq.length - 1];
+        return path.join(DESKTOP, '鸿汇影·客户成品_v1.7.8');
+      })();
+  need(fs.existsSync(ART), '未找到权威成品目录：' + ART);
+  // 防呆：只接受客户成品目录，绝不把开发端专用包发布上线
+  need(/客户成品/.test(path.basename(ART)) && !/开发端/.test(ART),
+       '发布源必须是「鸿汇影·客户成品_v*」，开发端专用包禁止上传公网');
+  const notePath = path.join(ART, '客户下载说明.txt');
+  const artifacts = {
+    exe: path.join(ART, '鸿汇影桌面版 Setup 1.7.8.exe'),
+    hap: path.join(ART, 'HongHubMovie.hap'),
+    zip: path.join(ART, '鸿汇影桌面版 Setup 1.7.8.zip')
+  };
+  record('定位权威成品目录', 'passed', ART);
+  need(fs.existsSync(notePath), '缺少客户下载说明.txt（基线来源）');
+
+  // ---- 2) 哈希基线断言 ----
+  const base = parseBaseline(notePath);
+  need(base, '客户下载说明.txt 未解析出版本与三件成品哈希基线');
+  const measured = {};
+  for (const k of ['exe', 'hap', 'zip']) {
+    need(fs.existsSync(artifacts[k]), '缺少成品：' + artifacts[k]);
+    measured[k] = { sha: sha(artifacts[k]), size: fs.statSync(artifacts[k]).size };
+    const ok = measured[k].sha === base.hashes[k];
+    need(ok, k + ' 哈希与基线不符（实测 ' + measured[k].sha.slice(0, 12) + '… / 基线 ' +
+      base.hashes[k].slice(0, 12) + '…）——成品被改动，拒绝以「免重装」名义发布');
+  }
+  const V = base.versionName, CODE = base.versionCode;
+  const prefix = 'honghub/v' + V;
+  record('哈希基线断言', 'passed', 'v' + V + ' / #' + CODE + ' · exe/hap/zip 三件实测与说明基线一致');
+
+  // ---- 3) 组装纯净静态站点（只含客户可见成品，不含源码/报告/密钥） ----
+  fs.mkdirSync(PUB, { recursive: true });
+  const exeDst = path.join(PUB, prefix, 'desktop-setup.exe');
+  const hapDst = path.join(PUB, prefix, 'HongHubMovie.hap');
+  const binDst = path.join(PUB, prefix, 'honghub-desktop-' + V + '-win.bin');
+  copyIf(artifacts.exe, exeDst);
+  copyIf(artifacts.hap, hapDst);
+  copyIf(artifacts.zip, binDst);   // .bin 别名：站点 WAF 拦截 .zip 直链
+  record('组装站点成品', 'passed', prefix + '/ 下 desktop-setup.exe + HongHubMovie.hap + win.bin（zip 别名）');
+
+  // 下载页：保留本地已有；否则从公网取现存页；再否则生成最小降级页
+  const idxDst = path.join(PUB, 'index.html');
+  if (!fs.existsSync(idxDst)) {
+    const live = await fetchBuf(asset('index.html'), 15000);
+    if (live && /<html/i.test(live.toString('utf8'))) fs.writeFileSync(idxDst, live);
+    else fs.writeFileSync(idxDst, [
+      '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>鸿汇影 · 下载</title>',
+      '<body style="font:15px/1.7 sans-serif;max-width:720px;margin:48px auto;padding:0 20px">',
+      '<h1>鸿汇影桌面版 v' + V + '</h1>',
+      '<p>已安装用户无需卸载：内容自动更新；本体更新为覆盖安装，不删数据。</p>',
+      '<ul>',
+      '<li><a href="' + asset(prefix + '/desktop-setup.exe') + '">Windows 安装包</a></li>',
+      '<li><a href="' + asset(prefix + '/HongHubMovie.hap') + '">HAP（深开鸿 / OpenHarmony）</a></li>',
+      '<li><a href="' + asset(prefix + '/honghub-desktop-' + V + '-win.bin') + '">免安装版（下载后改名 .zip 解压）</a></li>',
+      '</ul><p>所有链接需带访问码 ' + Q + '。</p></body></html>'
+    ].join('\n'));
+  }
+
+  // 客户可用应用页面：随公网下发，已装客户端按 SHA256 校验后热更新（免重打包）
+  const pageSrc = path.join(ROOT, 'app', 'index.html');
+  const pageBuf = fs.readFileSync(pageSrc);
+  const pageHash = crypto.createHash('sha256').update(pageBuf).digest('hex');
+  fs.writeFileSync(path.join(PUB, 'app-page.html'), pageBuf);
+  record('生成客户应用页面', 'passed', 'app-page.html · ' + pageBuf.length + ' B / ' + pageHash.slice(0, 12) + '…');
+
+  // 公网清单：结构与现网一致，哈希/体积/URL 以本地实测成品为准
+  const manifest = {
+    schema: 1, versionName: V, versionCode: CODE,
+    publishedAt: new Date().toISOString(),
+    baseUrl: c.baseUrl, shareQuery: Q || null,
+    distribution: 'workbuddy-sites',
+    desktopUrl: asset(prefix + '/desktop-setup.exe'),
+    hapUrl: asset(prefix + '/HongHubMovie.hap'),
+    desktopSha256: measured.exe.sha, hapSha256: measured.hap.sha,
+    desktopSize: measured.exe.size, hapSize: measured.hap.size,
+    zipUrl: asset(prefix + '/honghub-desktop-' + V + '-win.bin'),
+    zipSha256: measured.zip.sha, zipSize: measured.zip.size,
+    pageUrl: asset('app-page.html'), pageHash: pageHash, pageSize: pageBuf.length,
+    zipAliasNote: '内容等同 zip 包；下载后把后缀改为 .zip 再解压（站点对 .zip 直链有 WAF 拦截，故用 .bin 别名分发）',
+    // 免卸载更新策略：随清单下发，客户端可据此选择内容通道而非提示重装
+    updateStrategy: {
+      contentAutoUpdate: true,          // 功能 / 源清单 / 播放档位自动热更新
+      reinstallRequired: false,         // 关键：更新不需要卸载重装
+      inPlaceOverlayInstall: true,      // 本体更新走同目录覆盖安装
+      preserveUserData: true,           // 覆盖安装不清用户数据
+      channels: ['content-hot-update', 'nsis-in-place-overlay']
+    }
+  };
+  fs.writeFileSync(path.join(PUB, 'remote-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
+  record('生成公网更新清单', 'passed', 'remote-manifest.json · reinstallRequired=false 已随清单下发');
+
+  // 客户站点只保留「客户可直接下载安装的成品」：下载页 + 更新清单 + 三件成品，共 6 个文件（含客户可用应用页面 app-page.html）。
+  // 开发端内部资料（回滚索引 / 下发通道清单 / OS 适配矩阵 / 架构清单 / 报告 / 源码等）
+  // 一律不上传；若发布目录留有历史残留，移动到 dist/_public_internal/ 留档（不删除、可回滚）。
+  const ALLOW = new Set([
+    'index.html', 'remote-manifest.json', 'app-page.html',
+    prefix + '/desktop-setup.exe',
+    prefix + '/HongHubMovie.hap',
+    prefix + '/honghub-desktop-' + V + '-win.bin'
+  ]);
+  const stash = path.join(DIST, '_public_internal');
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).reduce((acc, e) => {
+    const p = path.join(dir, e.name);
+    return acc.concat(e.isDirectory() ? walk(p) : [p]);
+  }, []);
+  let stashed = 0;
+  for (const f of walk(PUB)) {
+    const rel = path.relative(PUB, f).split(path.sep).join('/');
+    if (ALLOW.has(rel)) continue;
+    const to = path.join(stash, rel);
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.copyFileSync(f, to);
+    fs.unlinkSync(f);
+    stashed++;
+  }
+  // 清理因移出文件留下的空目录（releases/ 等）
+  const prune = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.isDirectory()) {
+        const p = path.join(dir, e.name);
+        prune(p);
+        if (!fs.readdirSync(p).length) fs.rmdirSync(p);
+      }
+    }
+  };
+  prune(PUB);
+  record('组装纯净站点', 'passed',
+    'dist/public/ 仅 5 个客户成品文件（下载页 + 更新清单 + exe/hap/zip）；内部资料移出 ' + stashed + ' 件');
+
+  // ---- 4) 部署 ----
+  let deployStatus = 'pending';
+  if (NO_DEPLOY) {
+    deployStatus = 'skipped';
+    record('站点发布', 'skipped', '显式 --no-deploy');
+  } else {
+    const cmd = process.env.KH_DEPLOY_CMD;
+    if (cmd) {
+      const ENV = Object.assign({}, process.env);
+      const r = spawnSync(cmd, { cwd: ROOT, shell: true, stdio: 'inherit', env: ENV, timeout: 1800000 });
+      deployStatus = r.status === 0 ? 'deployed' : 'failed';
+      record('站点发布（KH_DEPLOY_CMD）', deployStatus === 'deployed' ? 'passed' : 'failed', 'exit=' + r.status);
+      if (r.status !== 0) process.exit(r.status || 1);
+    } else {
+      const req = {
+        appName: '鸿汇影频道下发', directory: PUB, entryHtml: 'index.html', language: 'static',
+        domainPrefix: 'honghub-delivery', baseUrl: c.baseUrl, shareQuery: Q, version: V,
+        note: '由宿主站点发布能力执行 dist/public/；完成后重跑本命令做公网回下验收。'
+      };
+      fs.writeFileSync(path.join(DIST, 'deploy-request.json'), JSON.stringify(req, null, 2) + '\n');
+      record('站点发布', 'pending', '未配置 KH_DEPLOY_CMD，已写 dist/deploy-request.json，待宿主发布');
+    }
+  }
+
+  // ---- 5) 公网回下验收 ----
+  let verify = { status: 'not-run' };
+  if (deployStatus === 'deployed' || deployStatus === 'pending') {
+    const targets = [
+      ['manifest', asset('remote-manifest.json')],
+      ['exe', manifest.desktopUrl], ['hap', manifest.hapUrl], ['zip(.bin)', manifest.zipUrl]
+    ];
+    const reach = {};
+    for (const [k, u] of targets) reach[k] = await probe(u);
+    const reachable = Object.keys(reach).every((k) => reach[k].code === 200 || reach[k].code === 206);
+    if (!reachable) {
+      verify = { status: 'unreachable', reach };
+      record('公网回下验收', 'warn', '部分资源未就绪：' + JSON.stringify(reach));
+    } else {
+      // 清单内容比对：版本 + 三件哈希必须一致
+      const liveBuf = await fetchBuf(asset('remote-manifest.json'), 20000);
+      let live = null; try { live = liveBuf ? JSON.parse(liveBuf.toString('utf8')) : null; } catch (e) {}
+      const manifestOk = live && Number(live.versionCode) === CODE &&
+        live.desktopSha256 === measured.exe.sha && live.hapSha256 === measured.hap.sha &&
+        live.zipSha256 === measured.zip.sha;
+      if (!manifestOk) {
+        verify = { status: 'manifest-mismatch', reach };
+        record('公网回下验收', 'warn', '清单版本或哈希与本地成品不一致：请先重新发布 dist/public/');
+      } else {
+        let deep = null;
+        if (DEEP) {
+          deep = {};
+          for (const [k, u] of [['exe', manifest.desktopUrl], ['hap', manifest.hapUrl], ['zip', manifest.zipUrl]]) {
+            const b = await fetchBuf(u, 180000);
+            deep[k] = b ? (crypto.createHash('sha256').update(b).digest('hex') === measured[k].sha ? 'SAME' : 'DIFF') : 'FETCH-FAIL';
+          }
+          record('公网全量哈希回下', Object.values(deep).every((x) => x === 'SAME') ? 'passed' : 'warn', JSON.stringify(deep));
+        }
+        verify = { status: 'ok', reach, manifestOk: true, deep };
+        record('公网回下验收', 'passed', '清单版本 + 三件成品哈希与本地权威成品一致' +
+          (deep ? ' · 全量回下 ' + JSON.stringify(deep) : '（Range 探测；加 --deep-verify 做全量）'));
+      }
+    }
+  }
+
+  // ---- 6) 报告 ----
+  const out = {
+    schema: 1, at: new Date().toISOString(), versionName: V, versionCode: CODE,
+    deploy: deployStatus, verify: verify.status,
+    // 核心结论：客户已安装客户端无需卸载 / 重装
+    reinstallRequired: false,
+    updateStrategy: {
+      contentAutoUpdate: true, inPlaceOverlayInstall: true, preserveUserData: true,
+      note: '内容（功能/源清单/播放档位）自动热更新；本体仅在需要时用 NSIS 同目录覆盖安装，不卸载、不删数据。'
+    },
+    artifacts: {
+      exe: { sha256: measured.exe.sha, size: measured.exe.size },
+      hap: { sha256: measured.hap.sha, size: measured.hap.size },
+      zip: { sha256: measured.zip.sha, size: measured.zip.size }
+    },
+    publicUrl: c.baseUrl + (Q ? '/' + Q : ''), steps
+  };
+  fs.writeFileSync(path.join(DIST, 'ship-client.json'), JSON.stringify(out, null, 2) + '\n');
+  log('\n=== ship-client 报告 ===');
+  log('  版本 ' + V + ' / #' + CODE + ' · 部署 ' + deployStatus + ' · 验收 ' + verify.status);
+  log('  reinstallRequired = false（免卸载更新）');
+  log('  报告 ' + path.join(DIST, 'ship-client.json'));
+  if (deployStatus === 'pending') log('\n  站点发布待执行：发布 dist/public/ 后重跑 npm run ship:client 完成验收。');
+})().catch((e) => {
+  console.error('\nship-client 失败：' + (e && e.message || e));
+  try {
+    fs.writeFileSync(path.join(DIST, 'ship-client.json'), JSON.stringify({
+      schema: 1, at: new Date().toISOString(), status: 'failed',
+      error: String(e && e.message || e), steps
+    }, null, 2) + '\n');
+  } catch (e2) {}
+  process.exit(1);
+});

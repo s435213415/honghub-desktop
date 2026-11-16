@@ -1,0 +1,73 @@
+[
+  {
+    "id": "tpl-publish",
+    "name": "发布并校验（闭环）",
+    "icon": "📤",
+    "desc": "跑一次发布闭环：上传（配置 KH_DEPLOY_CMD 才真传）→ 回读远端清单核对版本与 SHA256。校验不过会明确报「仅本地就绪」。",
+    "action": "builtin:updatepublish",
+    "autoEnabled": false,
+    "requiresConfirm": true
+  },
+  {
+    "id": "tpl-selfheal",
+    "name": "源线路体检与重排",
+    "icon": "🔧",
+    "desc": "重排失效 / 慢速源并刷新清单，跑完写审计与源健康快照，趋势里立刻可见。",
+    "action": "builtin:fix",
+    "autoEnabled": false
+  },
+  {
+    "id": "tpl-govern",
+    "name": "跑一轮智能自治",
+    "icon": "🤖",
+    "desc": "提取问题 → 建议 → 自动反馈 → 优化 → 自愈 → 发布，一轮产出汇总为最终成品。",
+    "action": "builtin:govern",
+    "autoEnabled": false
+  },
+  {
+    "id": "tpl-automation",
+    "name": "立即运行自动化",
+    "icon": "⚙️",
+    "desc": "按当前自动化配置立刻跑一次定时任务（默认每日一轮，可在中枢设置里改）。",
+    "action": "builtin:automation",
+    "autoEnabled": false
+  },
+  {
+    "id": "tpl-report",
+    "name": "设备诊断报告",
+    "icon": "📋",
+    "desc": "拉取当前设备指纹与健康诊断（磁盘 / 内存 / 日志水位 / 告警分级）。",
+    "action": "builtin:report",
+    "autoEnabled": false
+  },
+  {
+    "id": "tpl-updatecheck",
+    "name": "检查更新",
+    "icon": "🔄",
+    "desc": "比对本地版本码与下发清单，判断是否需要提示安装（内容始终自动同步）。",
+    "action": "builtin:updatecheck",
+    "autoEnabled": false
+  },
+  {
+    "id": "tpl-deploy",
+    "name": "上传发布包到站点",
+    "icon": "☁️",
+    "desc": "调用自定义上传命令（把 cmd 里的占位换成你的 rsync / ossutil / 站点 CLI）。不配置就读不到命令，不会假装上传成功。",
+    "action": "script",
+    "cmd": "echo 在此粘贴上传命令（例如 rsync -av dist/public/ user@host:/srv/www/）",
+    "confirm": true,
+    "autoEnabled": false,
+    "requiresConfirm": true
+  },
+  {
+    "id": "tpl-hapsmoke",
+    "name": "真机冒烟（接设备后执行）",
+    "icon": "📱",
+    "desc": "接上深开鸿设备跑一次安装 → 启动 → 抓日志 → 断言，结果写 dist/hap-smoke.json 并在运维面板可见。",
+    "action": "script",
+    "cmd": "node scripts/smoke-hap.js",
+    "confirm": true,
+    "autoEnabled": false,
+    "requiresConfirm": true
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "name": "honghub-harmony",
+  "version": "1.7.0",
+  "description": "鸿汇影 深开鸿 KaihongOS / OpenHarmony 端",
+  "main": "",
+  "author": "",
+  "license": "Apache-2.0",
+  "dependencies": {},
+  "devDependencies": {}
+}

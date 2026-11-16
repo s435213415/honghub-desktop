@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "versionName": "1.7.6",
+  "generatedAt": "2026-11-14T13:29:52.973Z",
+  "archs": {
+    "x64": {
+      "status": "ready",
+      "file": "desktop-setup.exe",
+      "size": 78188903,
+      "sha256": "8fd0dd2e8982aa7e4ad327caa1fab930fa5c07cef0fad21ac2bb6d9d0472782e",
+      "url": "/download/desktop-setup.exe",
+      "native": false
+    },
+    "ia32": {
+      "status": "fallback",
+      "file": "开鸿影视桌面版 Setup 1.7.6-ia32.exe",
+      "url": "/download/desktop-setup.exe",
+      "fallbackTo": "x64",
+      "note": "无原生包，自动回退 x64 通用包（ARM64 Windows 可经系统模拟运行）"
+    },
+    "arm64": {
+      "status": "fallback",
+      "file": "开鸿影视桌面版 Setup 1.7.6-arm64.exe",
+      "url": "/download/desktop-setup.exe",
+      "fallbackTo": "x64",
+      "note": "无原生包，自动回退 x64 通用包（ARM64 Windows 可经系统模拟运行）"
+    }
+  },
+  "hap": {
+    "status": "ready",
+    "file": "kaihongcinema-harmony.hap",
+    "size": 371357,
+    "sha256": "9ed8abf144c1b41fd3acb7a232a6a618a45baebbd2a22d239e0426c10ef7ac33",
+    "url": "/download/kaihongcinema-harmony.hap"
+  },
+  "features": {
+    "count": 21,
+    "hash": "14aba4044199f801",
+    "ids": [
+      "board",
+      "report",
+      "sourcespeed",
+      "fix",
+      "updatepublish",
+      "automation",
+      "updatecheck",
+      "govern",
+      "preset-open-dashboard",
+      "preset-dingtalk",
+      "preset-wecom",
+      "preset-feishu",
+      "preset-backup",
+      "preset-broadcast",
+      "feature-mine",
+      "auto-batch",
+      "arch-adaptive",
+      "play-smooth",
+      "mem-adaptive",
+      "auto-update",
+      "os-follow"
+    ]
+  }
+}

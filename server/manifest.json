@@ -1,0 +1,2599 @@
+{
+  "sources": {
+    "v": 18,
+    "updatedAt": "2026-11-15T12:24:25.148Z",
+    "count": 68,
+    "channels": [
+      {
+        "id": "cn001",
+        "name": "CCTV-1 综合",
+        "group": "央视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://124.165.251.82:85/tsfile/live/0001_1.m3u8?key=txiptv&playlive=1&authid=0"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn002",
+        "name": "CCTV-2 财经",
+        "group": "央视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://124.165.251.82:85/tsfile/live/0002_1.m3u8?key=txiptv&playlive=1&authid=0"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn003",
+        "name": "CCTV-3 综艺",
+        "group": "央视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://124.165.251.82:85/tsfile/live/0003_1.m3u8?key=txiptv&playlive=1&authid=0"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn004",
+        "name": "CCTV-4 中文国际",
+        "group": "央视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://124.165.251.82:85/tsfile/live/0004_1.m3u8?key=txiptv&playlive=1&authid=0"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn005",
+        "name": "CCTV-5 体育",
+        "group": "央视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://124.165.251.82:85/tsfile/live/0005_1.m3u8?key=txiptv&playlive=1&authid=0"
+          },
+          {
+            "label": "备用源 2",
+            "url": "http://gmxw.7766.org:808/hls/93/index.m3u8"
+          },
+          {
+            "label": "备用源 3",
+            "url": "http://223.78.65.165:9901/tsfile/live/0006_1.m3u8?key=txiptv&playlive=1&authid=0"
+          }
+        ],
+        "sourceCount": 3
+      },
+      {
+        "id": "cn006",
+        "name": "CCTV-5+ 体育赛事",
+        "group": "央视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://124.165.251.82:85/tsfile/live/0006_1.m3u8?key=txiptv&playlive=1&authid=0"
+          },
+          {
+            "label": "备用源 2",
+            "url": "http://gmxw.7766.org:808/hls/93/index.m3u8"
+          },
+          {
+            "label": "备用源 3",
+            "url": "http://223.78.65.165:9901/tsfile/live/0006_1.m3u8?key=txiptv&playlive=1&authid=0"
+          }
+        ],
+        "sourceCount": 3
+      },
+      {
+        "id": "cn007",
+        "name": "CCTV-6 电影",
+        "group": "央视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://124.165.251.82:85/tsfile/live/0006_1.m3u8?key=txiptv&playlive=1&authid=0"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn008",
+        "name": "CCTV-7 国防军事",
+        "group": "央视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://124.165.251.82:85/tsfile/live/0007_1.m3u8?key=txiptv&playlive=1&authid=0"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn009",
+        "name": "CCTV-8 电视剧",
+        "group": "央视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://124.165.251.82:85/tsfile/live/0008_1.m3u8?key=txiptv&playlive=1&authid=0"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn010",
+        "name": "CCTV-9 纪录",
+        "group": "央视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://124.165.251.82:85/tsfile/live/0009_1.m3u8?key=txiptv&playlive=1&authid=0"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn011",
+        "name": "CCTV-10 科教",
+        "group": "央视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://124.165.251.82:85/tsfile/live/0010_1.m3u8?key=txiptv&playlive=1&authid=0"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn012",
+        "name": "CCTV-11 戏曲",
+        "group": "央视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://124.165.251.82:85/tsfile/live/0011_1.m3u8?key=txiptv&playlive=1&authid=0"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn013",
+        "name": "CCTV-12 社会与法",
+        "group": "央视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://124.165.251.82:85/tsfile/live/0012_1.m3u8?key=txiptv&playlive=1&authid=0"
+          },
+          {
+            "label": "备用源 2",
+            "url": "http://74.91.26.218:82/live/cctv12hd.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn014",
+        "name": "CCTV-13 新闻",
+        "group": "央视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://124.165.251.82:85/tsfile/live/0013_1.m3u8?key=txiptv&playlive=1&authid=0"
+          },
+          {
+            "label": "备用源 2",
+            "url": "http://ali-m-l.cztv.com/channels/lantian/channel21/1080p.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn015",
+        "name": "CCTV-14 少儿",
+        "group": "央视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://124.165.251.82:85/tsfile/live/0014_1.m3u8?key=txiptv&playlive=1&authid=0"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn016",
+        "name": "CCTV-15 音乐",
+        "group": "央视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://124.165.251.82:85/tsfile/live/0015_1.m3u8?key=txiptv&playlive=1&authid=0"
+          },
+          {
+            "label": "备用源 2",
+            "url": "http://gmxw.7766.org:808/hls/102/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn017",
+        "name": "CCTV-16 奥林匹克",
+        "group": "央视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://gmxw.7766.org:808/hls/169/index.m3u8"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn019",
+        "name": "CGTN 英语新闻",
+        "group": "央视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://0472.org/hls/cgtn.m3u8"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn020",
+        "name": "湖南卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://hlsal-ldvt.qing.mgtv.com/nn_live/nn_x64/dWlwPTEyNy4wLjAuMSZ1aWQ9cWluZy1jbXMmbm5fdGltZXpvbmU9OCZjZG5leF9pZD1hbF9obHNfbGR2dCZ1dWlkPTliODY4NmU5ZTM2YzYwMmMmZT02OTE0NjA0JnY9MSZpZD1ITldTWkdTVCZzPTcwN2RiYTc2YzJjNmJmMTQ4MmUyZGYzOWU2NWM3YWFi/HNWSZGST.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "http://hlsal-ldvt.qing.mgtv.com/nn_live/nn_x64/dWlwPTEyNy4wLjAuMSZ1aWQ9cWluZy1jbXMmbm5fdGltZXpvbmU9OCZjZG5leF9pZD1hbF9obHNfbGR2dCZ1dWlkPTliODY4NmU5ZTM2YzYwMmMmZT02OTE0NjA0JnY9MSZpZD1ITldTWkdTVCZzPTcwN2RiYTc2YzJjNmJmMTQ4MmUyZGYzOWU2NWM3YWFi/HNWSZGST.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn021",
+        "name": "浙江卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://ali-m-l.cztv.com:80/channels/lantian/channel001/1080p.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "http://39.134.115.163:8080/PLTV/88888910/224/3221225703/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn022",
+        "name": "江苏卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://39.134.24.166/dbiptv.sn.chinamobile.com/PLTV/88888890/224/3221226200/index.m3u8"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn023",
+        "name": "东方卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://bp-resource-dfl.bestv.cn/148/3/video.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://bp-resource-dfl.bestv.cn/148/3/video.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn024",
+        "name": "北京卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://go.bkpcp.top/mg/bjws"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://cctvalih5ca.v.myalicdn.com/wstv/beijing_2/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn025",
+        "name": "广东卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://h5cul1yar48um3t.wcetv.com/hls/gdsatellite.m3u8"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn026",
+        "name": "山东卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://125.210.152.18:9090/live/SDWSHD_H265.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "http://39.134.115.163:8080/PLTV/88888910/224/3221225697/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn027",
+        "name": "四川卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://39.134.115.163:8080/PLTV/88888910/224/3221225733/index.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://cctvalih5ca.v.myalicdn.com/wstv/sichuan_2/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn028",
+        "name": "安徽卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://restream.pdtvhd.com/memfs/c1cd2ed0-3b2b-4c25-af98-a7fb0b1eb130.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "http://gmxw.7766.org:808/hls/40/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn029",
+        "name": "河南卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://cctvalih5ca.v.myalicdn.com/wstv/henan_2/index.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "http://cctvalih5ca.v.myalicdn.com/wstv/henan_2/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn030",
+        "name": "湖北卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://cctvalih5ca.v.myalicdn.com/wstv/hubei_2/index.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "http://cctvalih5ca.v.myalicdn.com/wstv/hubei_2/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn031",
+        "name": "东南卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://live.zohi.tv/video/s10001-fztv-3/index.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://cctvalih5ca.v.myalicdn.com/wstv/dongnan_2/index.m3u8"
+          },
+          {
+            "label": "备用源 3",
+            "url": "http://39.134.115.163:8080/PLTV/88888910/224/3221226341/index.m3u8"
+          }
+        ],
+        "sourceCount": 3
+      },
+      {
+        "id": "cn032",
+        "name": "深圳卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://gmxw.7766.org:808/hls/45/index.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://livepull-tcms.sztv.com.cn/live/sz4Kpgm.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn033",
+        "name": "天津卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://39.134.115.163:8080/PLTV/88888910/224/3221225698/index.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://cctvalih5ca.v.myalicdn.com/wstv/tianjin_2/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn034",
+        "name": "重庆卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://cctvalih5ca.v.myalicdn.com/wstv/chongqing_2/index.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://cctvtxyh5ca.liveplay.myqcloud.com/wstv/chongqing_2/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn035",
+        "name": "辽宁卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://61.136.172.236:9901/tsfile/live/0121_1.m3u8?key=txiptv&playlive=1&authid=0"
+          },
+          {
+            "label": "备用源 2",
+            "url": "http://39.134.39.37/PLTV/88888888/224/3221226209/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn036",
+        "name": "黑龙江卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://idclive.hljtv.com:4430/live/hljws_own.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://ls.qingting.fm/live/4972/64k.m3u8"
+          },
+          {
+            "label": "备用源 3",
+            "url": "http://223.110.245.161/ott.js.chinamobile.com/PLTV/3/224/3221227492/index.m3u8"
+          }
+        ],
+        "sourceCount": 3
+      },
+      {
+        "id": "cn037",
+        "name": "河北卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://event.pull.hebtv.com/live/live101.m3u8"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn038",
+        "name": "陕西卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://39.134.115.163:8080/TVOD/88888892/224/3221226223/422332704.smil/index.m3u8?fmt=ts2hls"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://cctvalih5ca.v.myalicdn.com/wstv/shaanxi_2/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn039",
+        "name": "江西卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://112.27.5.218:9901/tsfile/live/faacts/0138_1.m3u8?key=txiptv&playlive=1&authid=0"
+          },
+          {
+            "label": "备用源 2",
+            "url": "http://39.134.115.163:8080/PLTV/88888910/224/3221225705/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn040",
+        "name": "广西卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://111.59.24.227:8181/tsfile/live/1001_1.m3u8?authid=0&key=txiptv&playlive=1"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://cctvalih5ca.v.myalicdn.com/wstv/guangxi_2/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn041",
+        "name": "云南卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://hwapi.yunshicloud.com/8xughf/e0bx15.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://cctvalih5ca.v.myalicdn.com/wstv/yunnan_2/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn042",
+        "name": "贵州卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://183.207.248.71/gitv/live1/G_GUIZHOU/G_GUIZHOU"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn043",
+        "name": "吉林卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://cctvalih5ca.v.myalicdn.com/wstv/jilin_2/index.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "http://cctvalih5ca.v.myalicdn.com/wstv/jilin_2/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn044",
+        "name": "甘肃卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://218.13.170.98:9901/tsfile/live/0141_1.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://cctvalih5ca.v.myalicdn.com/wstv/gansu_2/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn045",
+        "name": "内蒙古卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://play1-qk.nmtv.cn/live/1769652018126032.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://cdn4.skygo.mn/live/disk1/NeigMGL/HLSv3-FTA/NeigMGL.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn046",
+        "name": "山西卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://m3u8.channel.wsrtv.com.cn/cms/videos/nmip-media/channellive/channel7/playlist.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://cctvalih5ca.v.myalicdn.com/wstv/shanxi_2/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn047",
+        "name": "海南卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://cctvalih5ca.v.myalicdn.com/wstv/hainan_2/index.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "http://39.134.115.163:8080/PLTV/88888910/224/3221226480/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn048",
+        "name": "宁夏卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://39.134.115.163:8080/PLTV/88888910/224/3221225726/index.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://hls.ningxiahuangheyun.com/live/nxws1M.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn049",
+        "name": "青海卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://39.134.115.163:8080/PLTV/88888910/224/3221225727/index.m3u8"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn050",
+        "name": "西藏卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://pili-live-hls-zdzz-tv.zzxwcm.cn/zdzz-tv/nqzh.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "http://112.27.5.218:9901/tsfile/live/0111_1.m3u8?key=txiptv&playlive=1&authid=0"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn051",
+        "name": "新疆卫视",
+        "group": "卫视频道",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://218.84.12.186:8001/hls/main/playlist.m3u8?zxinjd;http://218.84.12.186:8001/hls/main/playlist.m3u8zxinjd"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://klmysjtzb.rcsxzx.com/hls/klmy2.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn064",
+        "name": "五星体育",
+        "group": "体育竞技",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://rnttwmjcin.turknet.ercdn.net/lcpmvefbyo/aspor/aspor.m3u8"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn066",
+        "name": "北京体育休闲",
+        "group": "体育竞技",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://rnttwmjcin.turknet.ercdn.net/lcpmvefbyo/aspor/aspor.m3u8"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn067",
+        "name": "劲爆体育",
+        "group": "体育竞技",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://rnttwmjcin.turknet.ercdn.net/lcpmvefbyo/aspor/aspor.m3u8"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn073",
+        "name": "东方新闻",
+        "group": "新闻资讯",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://bp-resource-dfl.bestv.cn/148/3/video.m3u8"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn077",
+        "name": "东方电影",
+        "group": "影视剧场",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://bp-resource-dfl.bestv.cn/148/3/video.m3u8"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn091",
+        "name": "MTV 中文",
+        "group": "音乐娱乐",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://7xshreeshyam.akamaized.net/7XPunjabi/index.m3u8"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn093",
+        "name": "演唱会直播",
+        "group": "音乐娱乐",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://7xshreeshyam.akamaized.net/7XPunjabi/index.m3u8"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn094",
+        "name": "校园音乐",
+        "group": "音乐娱乐",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://7xshreeshyam.akamaized.net/7XPunjabi/index.m3u8"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn096",
+        "name": "第一财经",
+        "group": "财经生活",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://30a-tv.com/feeds/xodglobal/30atv.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://streamw.m.ro/Aleph/ngrp:Alephbiz.stream_all/playlist.m3u8"
+          },
+          {
+            "label": "备用源 3",
+            "url": "https://satellitepull.cnr.cn/live/wx32dycjgb/playlist.m3u8"
+          }
+        ],
+        "sourceCount": 3
+      },
+      {
+        "id": "cn097",
+        "name": "旅游卫视",
+        "group": "财经生活",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://30a-tv.com/feeds/xodglobal/30atv.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://tv.nucast.tv/lb/ge/bmg/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn098",
+        "name": "时尚生活",
+        "group": "财经生活",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://streamw.m.ro/Aleph/ngrp:Alephbiz.stream_all/playlist.m3u8"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "cn099",
+        "name": "美食频道",
+        "group": "财经生活",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://streamw.m.ro/Aleph/ngrp:Alephbiz.stream_all/playlist.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://tv.nucast.tv/lb/ge/bmg/index.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "cn100",
+        "name": "汽车频道",
+        "group": "财经生活",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://tv.nucast.tv/lb/ge/bmg/index.m3u8"
+          },
+          {
+            "label": "备用源 2",
+            "url": "https://30a-tv.com/feeds/xodglobal/30atv.m3u8"
+          }
+        ],
+        "sourceCount": 2
+      },
+      {
+        "id": "net001",
+        "name": "Anhui TV",
+        "group": "网络直播",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://restream.pdtvhd.com/memfs/c1cd2ed0-3b2b-4c25-af98-a7fb0b1eb130.m3u8"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "net002",
+        "name": "Anshun Comprehensive New",
+        "group": "网络直播",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://hplayer1.juyun.tv/camera/154379194.m3u8"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "net003",
+        "name": "Bread TV",
+        "group": "网络直播",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "https://video.bread-tv.com:8091/hls-live24/online/index.m3u8"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "net004",
+        "name": "CCTV-4 Europe",
+        "group": "网络直播",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://124.165.251.82:85/tsfile/live/0004_1.m3u8?key=txiptv&playlive=1&authid=0"
+          }
+        ],
+        "sourceCount": 1
+      },
+      {
+        "id": "net005",
+        "name": "CCTV-9",
+        "group": "网络直播",
+        "sources": [
+          {
+            "label": "直播主源",
+            "url": "http://124.165.251.82:85/tsfile/live/0009_1.m3u8?key=txiptv&playlive=1&authid=0"
+          }
+        ],
+        "sourceCount": 1
+      }
+    ],
+    "sites": [
+      {
+        "name": "哔哩哔哩",
+        "url": "https://www.bilibili.com",
+        "color": "#FB7299",
+        "tag": "B",
+        "cat": "综合视频",
+        "mobile": "https://m.bilibili.com/",
+        "mode": "wap"
+      },
+      {
+        "name": "腾讯视频",
+        "url": "https://v.qq.com",
+        "color": "#FF6A00",
+        "tag": "腾",
+        "cat": "综合视频",
+        "mobile": "https://m.v.qq.com/",
+        "mode": "wap"
+      },
+      {
+        "name": "爱奇艺",
+        "url": "https://www.iqiyi.com",
+        "color": "#00BE06",
+        "tag": "爱",
+        "cat": "综合视频",
+        "mobile": "https://m.iqiyi.com/",
+        "mode": "wap"
+      },
+      {
+        "name": "优酷",
+        "url": "https://www.youku.com",
+        "color": "#1E8FFF",
+        "tag": "优",
+        "cat": "综合视频",
+        "mobile": "https://m.youku.com/",
+        "mode": "wap"
+      },
+      {
+        "name": "芒果TV",
+        "url": "https://www.mgtv.com",
+        "color": "#FF7A2F",
+        "tag": "芒",
+        "cat": "综合视频",
+        "mobile": "https://m.mgtv.com/",
+        "mode": "wap"
+      },
+      {
+        "name": "西瓜视频",
+        "url": "https://www.ixigua.com",
+        "color": "#F04142",
+        "tag": "西",
+        "cat": "综合视频",
+        "mobile": "https://m.ixigua.com/",
+        "mode": "wap"
+      },
+      {
+        "name": "咪咕视频",
+        "url": "https://www.miguvideo.com",
+        "color": "#E60012",
+        "tag": "咪",
+        "cat": "综合视频",
+        "mobile": "https://m.miguvideo.com/",
+        "mode": "wap"
+      },
+      {
+        "name": "AcFun",
+        "url": "https://www.acfun.cn",
+        "color": "#FD4C5B",
+        "tag": "A",
+        "cat": "综合视频",
+        "mobile": "https://m.acfun.cn/",
+        "mode": "wap"
+      },
+      {
+        "name": "搜狐视频",
+        "url": "https://tv.sohu.com",
+        "color": "#FF6600",
+        "tag": "搜",
+        "cat": "综合视频",
+        "mode": "pc"
+      },
+      {
+        "name": "乐视视频",
+        "url": "https://www.le.com",
+        "color": "#D4237A",
+        "tag": "乐",
+        "cat": "综合视频",
+        "mobile": "https://m.le.com/",
+        "mode": "wap"
+      },
+      {
+        "name": "PPTV 聚力",
+        "url": "https://www.pptv.com",
+        "color": "#1E8FFF",
+        "tag": "P",
+        "cat": "综合视频",
+        "mobile": "https://m.pptv.com/",
+        "mode": "wap"
+      },
+      {
+        "name": "抖音",
+        "url": "https://www.douyin.com",
+        "color": "#161823",
+        "tag": "抖",
+        "cat": "短视频/社区",
+        "mode": "pc"
+      },
+      {
+        "name": "快手",
+        "url": "https://www.kuaishou.com",
+        "color": "#FF4906",
+        "tag": "快",
+        "cat": "短视频/社区",
+        "mode": "wap"
+      },
+      {
+        "name": "梨视频",
+        "url": "https://www.pearvideo.com",
+        "color": "#FF6633",
+        "tag": "梨",
+        "cat": "短视频/社区",
+        "mode": "pc"
+      },
+      {
+        "name": "腾讯微视",
+        "url": "https://weishi.qq.com",
+        "color": "#FF6A00",
+        "tag": "微",
+        "cat": "短视频/社区",
+        "mode": "wap"
+      },
+      {
+        "name": "豆瓣电影",
+        "url": "https://movie.douban.com",
+        "color": "#2E963D",
+        "tag": "豆",
+        "cat": "影视资讯/数据库",
+        "mobile": "https://m.douban.com/movie/",
+        "mode": "wap"
+      },
+      {
+        "name": "1905电影网",
+        "url": "https://www.1905.com",
+        "color": "#C8102E",
+        "tag": "19",
+        "cat": "影视资讯/数据库",
+        "mobile": "https://m.1905.com/",
+        "mode": "wap"
+      },
+      {
+        "name": "猫眼电影",
+        "url": "https://www.maoyan.com",
+        "color": "#EE4D2D",
+        "tag": "猫",
+        "cat": "影视资讯/数据库",
+        "mobile": "https://m.maoyan.com/",
+        "mode": "wap"
+      },
+      {
+        "name": "淘票票",
+        "url": "https://dianying.taobao.com",
+        "color": "#FF5000",
+        "tag": "淘",
+        "cat": "影视资讯/数据库",
+        "mobile": "https://m.taopiaopiao.com/",
+        "mode": "wap"
+      },
+      {
+        "name": "斗鱼",
+        "url": "https://www.douyu.com",
+        "color": "#FF5C00",
+        "tag": "鱼",
+        "cat": "直播平台",
+        "mobile": "https://m.douyu.com/",
+        "mode": "pc"
+      },
+      {
+        "name": "虎牙直播",
+        "url": "https://www.huya.com",
+        "color": "#FF8000",
+        "tag": "虎",
+        "cat": "直播平台",
+        "mobile": "https://m.huya.com/",
+        "mode": "wap"
+      },
+      {
+        "name": "YY直播",
+        "url": "https://www.yy.com",
+        "color": "#FF6A00",
+        "tag": "Y",
+        "cat": "直播平台",
+        "mobile": "https://m.yy.com/",
+        "mode": "wap"
+      },
+      {
+        "name": "IMDb",
+        "url": "https://www.imdb.com",
+        "color": "#F5C518",
+        "tag": "IM",
+        "cat": "海外官方",
+        "mode": "oversea"
+      },
+      {
+        "name": "烂番茄",
+        "url": "https://www.rottentomatoes.com",
+        "color": "#FA320A",
+        "tag": "RT",
+        "cat": "海外官方",
+        "mode": "oversea"
+      },
+      {
+        "name": "YouTube",
+        "url": "https://www.youtube.com",
+        "color": "#FF0000",
+        "tag": "YT",
+        "cat": "海外官方",
+        "mode": "oversea"
+      },
+      {
+        "name": "Vimeo",
+        "url": "https://vimeo.com",
+        "color": "#1AB7EA",
+        "tag": "VM",
+        "cat": "海外官方",
+        "mode": "oversea"
+      },
+      {
+        "name": "找剧AI",
+        "url": "https://zhaoju4.com/",
+        "color": "#7C5CFF",
+        "tag": "找",
+        "cat": "AI 搜剧",
+        "mode": "pc"
+      },
+      {
+        "name": "红果短剧",
+        "url": "https://hongguoduanju.com/",
+        "color": "#FF4D4F",
+        "tag": "红",
+        "cat": "短剧平台",
+        "mode": "wap"
+      },
+      {
+        "name": "hongguo-player",
+        "url": "https://git.hiwiki.org/zh-CN/repo/yangbin1322/hongguo-player",
+        "color": "#3B456B",
+        "tag": "H",
+        "cat": "第三方桌面端",
+        "mode": "project"
+      },
+      {
+        "name": "U-NEXT",
+        "url": "https://video.unext.jp",
+        "color": "#3B456B",
+        "cat": "日韩平台",
+        "region": "jpkr",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "ABEMA",
+        "url": "https://abema.tv",
+        "color": "#3B456B",
+        "cat": "日韩平台",
+        "region": "jpkr",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "TVer",
+        "url": "https://tver.jp",
+        "color": "#3B456B",
+        "cat": "日韩平台",
+        "region": "jpkr",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Wavve",
+        "url": "https://www.wavve.com",
+        "color": "#3B456B",
+        "cat": "日韩平台",
+        "region": "jpkr",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "TVING",
+        "url": "https://www.tving.com",
+        "color": "#3B456B",
+        "cat": "日韩平台",
+        "region": "jpkr",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Coupang Play",
+        "url": "https://www.coupangplay.com",
+        "color": "#3B456B",
+        "cat": "日韩平台",
+        "region": "jpkr",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "WATCHA",
+        "url": "https://watcha.com",
+        "color": "#3B456B",
+        "cat": "日韩平台",
+        "region": "jpkr",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Naver TV",
+        "url": "https://tv.naver.com",
+        "color": "#3B456B",
+        "cat": "日韩平台",
+        "region": "jpkr",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Kakao TV",
+        "url": "https://tv.kakao.com",
+        "color": "#3B456B",
+        "cat": "日韩平台",
+        "region": "jpkr",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "KBS",
+        "url": "https://www.kbs.co.kr",
+        "color": "#3B456B",
+        "cat": "日韩平台",
+        "region": "jpkr",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "MBC",
+        "url": "https://www.mbc.co.kr",
+        "color": "#3B456B",
+        "cat": "日韩平台",
+        "region": "jpkr",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "SBS Korea",
+        "url": "https://www.sbs.co.kr",
+        "color": "#3B456B",
+        "cat": "日韩平台",
+        "region": "jpkr",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "NHK",
+        "url": "https://www.nhk.or.jp",
+        "color": "#3B456B",
+        "cat": "日韩平台",
+        "region": "jpkr",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Nippon TV",
+        "url": "https://www.ntv.co.jp",
+        "color": "#3B456B",
+        "cat": "日韩平台",
+        "region": "jpkr",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Fuji TV",
+        "url": "https://www.fujitv.co.jp",
+        "color": "#3B456B",
+        "cat": "日韩平台",
+        "region": "jpkr",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "TV Asahi",
+        "url": "https://www.tv-asahi.co.jp",
+        "color": "#3B456B",
+        "cat": "日韩平台",
+        "region": "jpkr",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "TBS Japan",
+        "url": "https://www.tbs.co.jp",
+        "color": "#3B456B",
+        "cat": "日韩平台",
+        "region": "jpkr",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "TV Tokyo",
+        "url": "https://www.tv-tokyo.co.jp",
+        "color": "#3B456B",
+        "cat": "日韩平台",
+        "region": "jpkr",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Netflix",
+        "url": "https://www.netflix.com",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Disney+",
+        "url": "https://www.disneyplus.com",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Prime Video",
+        "url": "https://www.primevideo.com",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Hulu",
+        "url": "https://www.hulu.com",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Max",
+        "url": "https://www.max.com",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Paramount+",
+        "url": "https://www.paramountplus.com",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Apple TV+",
+        "url": "https://tv.apple.com",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Peacock",
+        "url": "https://www.peacocktv.com",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "The Roku Channel",
+        "url": "https://therokuchannel.roku.com",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Pluto TV",
+        "url": "https://pluto.tv",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Crackle",
+        "url": "https://www.crackle.com",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Plex",
+        "url": "https://www.plex.tv",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "BBC iPlayer",
+        "url": "https://www.bbc.co.uk/iplayer",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "ITVX",
+        "url": "https://www.itvx.com",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Channel 4",
+        "url": "https://www.channel4.com",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "My5",
+        "url": "https://www.channel5.com",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "france.tv",
+        "url": "https://www.france.tv",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "ARTE",
+        "url": "https://www.arte.tv",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "ZDF",
+        "url": "https://www.zdf.de",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "RTL+",
+        "url": "https://plus.rtl.de",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Joyn",
+        "url": "https://www.joyn.de",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "RAI Play",
+        "url": "https://www.raiplay.it",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Mediaset Infinity",
+        "url": "https://mediasetinfinity.mediaset.it",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "RTVE",
+        "url": "https://www.rtve.es",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Antena 3",
+        "url": "https://www.antena3.com",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "TF1",
+        "url": "https://www.tf1.fr",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "M6",
+        "url": "https://www.m6.fr",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Viaplay",
+        "url": "https://viaplay.com",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "SVT Play",
+        "url": "https://www.svtplay.se",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "NRK TV",
+        "url": "https://tv.nrk.no",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "DR",
+        "url": "https://www.dr.dk",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "YLE Areena",
+        "url": "https://areena.yle.fi",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "RTP Play",
+        "url": "https://www.rtp.pt",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Dailymotion",
+        "url": "https://www.dailymotion.com",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Twitch",
+        "url": "https://www.twitch.tv",
+        "color": "#3B456B",
+        "cat": "欧美平台",
+        "region": "euus",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Samsung TV Plus",
+        "url": "https://www.samsungtvplus.com",
+        "color": "#3B456B",
+        "cat": "FAST 免费频道",
+        "region": "global",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Rakuten TV",
+        "url": "https://rakuten.tv",
+        "color": "#3B456B",
+        "cat": "FAST 免费频道",
+        "region": "global",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Amazon Freevee",
+        "url": "https://www.amazon.com/freevee",
+        "color": "#3B456B",
+        "cat": "FAST 免费频道",
+        "region": "global",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Xumo Play",
+        "url": "https://play.xumo.com",
+        "color": "#3B456B",
+        "cat": "FAST 免费频道",
+        "region": "global",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Red Bull TV",
+        "url": "https://www.redbull.com/tv",
+        "color": "#3B456B",
+        "cat": "FAST 免费频道",
+        "region": "global",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "NHK World",
+        "url": "https://www3.nhk.or.jp/nhkworld/",
+        "color": "#3B456B",
+        "cat": "公共广播官方",
+        "region": "global",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Deutsche Welle",
+        "url": "https://www.dw.com",
+        "color": "#3B456B",
+        "cat": "公共广播官方",
+        "region": "global",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "France 24",
+        "url": "https://www.france24.com",
+        "color": "#3B456B",
+        "cat": "公共广播官方",
+        "region": "global",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Al Jazeera",
+        "url": "https://www.aljazeera.com",
+        "color": "#3B456B",
+        "cat": "公共广播官方",
+        "region": "global",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "CNA",
+        "url": "https://www.channelnewsasia.com",
+        "color": "#3B456B",
+        "cat": "公共广播官方",
+        "region": "global",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "ABC Australia",
+        "url": "https://www.abc.net.au",
+        "color": "#3B456B",
+        "cat": "公共广播官方",
+        "region": "global",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "CBC",
+        "url": "https://www.cbc.ca",
+        "color": "#3B456B",
+        "cat": "公共广播官方",
+        "region": "global",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "NASA TV",
+        "url": "https://www.nasa.gov",
+        "color": "#3B456B",
+        "cat": "公共广播官方",
+        "region": "global",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Viu",
+        "url": "https://www.viu.com",
+        "color": "#3B456B",
+        "cat": "东南亚平台",
+        "region": "asean",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "WeTV",
+        "url": "https://wetv.vip",
+        "color": "#3B456B",
+        "cat": "东南亚平台",
+        "region": "asean",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "iQIYI International",
+        "url": "https://www.iq.com",
+        "color": "#3B456B",
+        "cat": "东南亚平台",
+        "region": "asean",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "TrueID",
+        "url": "https://trueid.net",
+        "color": "#3B456B",
+        "cat": "东南亚平台",
+        "region": "asean",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "GMM25",
+        "url": "https://www.gmm25.com",
+        "color": "#3B456B",
+        "cat": "东南亚平台",
+        "region": "asean",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "ONE31",
+        "url": "https://www.one31.net",
+        "color": "#3B456B",
+        "cat": "东南亚平台",
+        "region": "asean",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "CH3 Thailand",
+        "url": "https://www.ch3thailand.com",
+        "color": "#3B456B",
+        "cat": "东南亚平台",
+        "region": "asean",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Vidio",
+        "url": "https://www.vidio.com",
+        "color": "#3B456B",
+        "cat": "东南亚平台",
+        "region": "asean",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "RCTI+",
+        "url": "https://www.rctiplus.com",
+        "color": "#3B456B",
+        "cat": "东南亚平台",
+        "region": "asean",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "iWantTFC",
+        "url": "https://www.iwanttfc.com",
+        "color": "#3B456B",
+        "cat": "东南亚平台",
+        "region": "asean",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "GMA Network",
+        "url": "https://www.gmanetwork.com",
+        "color": "#3B456B",
+        "cat": "东南亚平台",
+        "region": "asean",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "meWATCH",
+        "url": "https://www.mewatch.sg",
+        "color": "#3B456B",
+        "cat": "东南亚平台",
+        "region": "asean",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Shahid",
+        "url": "https://shahid.mbc.net",
+        "color": "#3B456B",
+        "cat": "中东平台",
+        "region": "mea",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "OSN",
+        "url": "https://www.osn.com",
+        "color": "#3B456B",
+        "cat": "中东平台",
+        "region": "mea",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "STARZPLAY Arabia",
+        "url": "https://starzplay.com",
+        "color": "#3B456B",
+        "cat": "中东平台",
+        "region": "mea",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "beIN",
+        "url": "https://www.bein.com",
+        "color": "#3B456B",
+        "cat": "中东平台",
+        "region": "mea",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Rotana",
+        "url": "https://rotana.net",
+        "color": "#3B456B",
+        "cat": "中东平台",
+        "region": "mea",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Globoplay",
+        "url": "https://globoplay.globo.com",
+        "color": "#3B456B",
+        "cat": "拉美平台",
+        "region": "latam",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "ViX",
+        "url": "https://vix.com",
+        "color": "#3B456B",
+        "cat": "拉美平台",
+        "region": "latam",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Caracol Play",
+        "url": "https://www.caracoltv.com",
+        "color": "#3B456B",
+        "cat": "拉美平台",
+        "region": "latam",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Canal RCN",
+        "url": "https://www.canalrcn.com",
+        "color": "#3B456B",
+        "cat": "拉美平台",
+        "region": "latam",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Chilevision",
+        "url": "https://www.chilevision.cl",
+        "color": "#3B456B",
+        "cat": "拉美平台",
+        "region": "latam",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "TV Azteca",
+        "url": "https://www.tvazteca.com",
+        "color": "#3B456B",
+        "cat": "拉美平台",
+        "region": "latam",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Canal 13",
+        "url": "https://www.13.cl",
+        "color": "#3B456B",
+        "cat": "拉美平台",
+        "region": "latam",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Telefe",
+        "url": "https://www.telefe.com",
+        "color": "#3B456B",
+        "cat": "拉美平台",
+        "region": "latam",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Hotstar",
+        "url": "https://www.hotstar.com",
+        "color": "#3B456B",
+        "cat": "印巴平台",
+        "region": "in",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "SonyLIV",
+        "url": "https://www.sonyliv.com",
+        "color": "#3B456B",
+        "cat": "印巴平台",
+        "region": "in",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Zee5",
+        "url": "https://www.zee5.com",
+        "color": "#3B456B",
+        "cat": "印巴平台",
+        "region": "in",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "JioCinema",
+        "url": "https://www.jiocinema.com",
+        "color": "#3B456B",
+        "cat": "印巴平台",
+        "region": "in",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Amazon miniTV",
+        "url": "https://www.amazon.in/minitv",
+        "color": "#3B456B",
+        "cat": "印巴平台",
+        "region": "in",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Sun NXT",
+        "url": "https://www.sunnxt.com",
+        "color": "#3B456B",
+        "cat": "印巴平台",
+        "region": "in",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "ARY Digital",
+        "url": "https://arydigital.tv",
+        "color": "#3B456B",
+        "cat": "印巴平台",
+        "region": "in",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Stan",
+        "url": "https://www.stan.com.au",
+        "color": "#3B456B",
+        "cat": "澳新平台",
+        "region": "anz",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "9Now",
+        "url": "https://www.9now.com.au",
+        "color": "#3B456B",
+        "cat": "澳新平台",
+        "region": "anz",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "10 Play",
+        "url": "https://10play.com.au",
+        "color": "#3B456B",
+        "cat": "澳新平台",
+        "region": "anz",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "ABC iview",
+        "url": "https://iview.abc.net.au",
+        "color": "#3B456B",
+        "cat": "澳新平台",
+        "region": "anz",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "SBS On Demand",
+        "url": "https://www.sbs.com.au/ondemand",
+        "color": "#3B456B",
+        "cat": "澳新平台",
+        "region": "anz",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "TVNZ+",
+        "url": "https://www.tvnz.co.nz",
+        "color": "#3B456B",
+        "cat": "澳新平台",
+        "region": "anz",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "ThreeNow",
+        "url": "https://www.threenow.co.nz",
+        "color": "#3B456B",
+        "cat": "澳新平台",
+        "region": "anz",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Showmax",
+        "url": "https://www.showmax.com",
+        "color": "#3B456B",
+        "cat": "非洲平台",
+        "region": "africa",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "myTV SUPER",
+        "url": "https://www.mytvsuper.com",
+        "color": "#3B456B",
+        "cat": "港澳台平台",
+        "region": "cn-hmt",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Viu TV",
+        "url": "https://viu.tv",
+        "color": "#3B456B",
+        "cat": "港澳台平台",
+        "region": "cn-hmt",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "HOY",
+        "url": "https://hoy.tv",
+        "color": "#3B456B",
+        "cat": "港澳台平台",
+        "region": "cn-hmt",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "myVideo",
+        "url": "https://www.myvideo.net.tw",
+        "color": "#3B456B",
+        "cat": "港澳台平台",
+        "region": "cn-hmt",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "KKTV",
+        "url": "https://www.kktv.me",
+        "color": "#3B456B",
+        "cat": "港澳台平台",
+        "region": "cn-hmt",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "LiTV",
+        "url": "https://www.litv.tv",
+        "color": "#3B456B",
+        "cat": "港澳台平台",
+        "region": "cn-hmt",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "friDay影音",
+        "url": "https://video.friday.tw",
+        "color": "#3B456B",
+        "cat": "港澳台平台",
+        "region": "cn-hmt",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Hami Video",
+        "url": "https://hamivideo.hinet.net",
+        "color": "#3B456B",
+        "cat": "港澳台平台",
+        "region": "cn-hmt",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "LINE TV",
+        "url": "https://www.linetv.tw",
+        "color": "#3B456B",
+        "cat": "港澳台平台",
+        "region": "cn-hmt",
+        "mode": "oversea",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      }
+    ],
+    "searchTpl": {
+      "哔哩哔哩": "https://search.bilibili.com/all?keyword={kw}",
+      "腾讯视频": "https://v.qq.com/x/search/?q={kw}",
+      "爱奇艺": "https://so.iqiyi.com/so/q_{kw}",
+      "优酷": "https://so.youku.com/search_video/q_{kw}",
+      "芒果TV": "https://www.mgtv.com/so/?keyword={kw}",
+      "西瓜视频": "https://www.ixigua.com/search/{kw}/",
+      "咪咕视频": "https://www.miguvideo.com/mgs/website/prd/search.html?keyword={kw}",
+      "AcFun": "https://www.acfun.cn/search?keyword={kw}",
+      "乐视视频": "https://so.le.com/s?wd={kw}",
+      "PPTV 聚力": "https://search.pptv.com/s_video?kw={kw}",
+      "抖音": "https://www.douyin.com/search/{kw}",
+      "快手": "https://www.kuaishou.com/search/video?searchKey={kw}",
+      "腾讯微视": "https://weishi.qq.com/search?keyword={kw}",
+      "豆瓣电影": "https://search.douban.com/movie/subject_search?search_text={kw}",
+      "猫眼电影": "https://m.maoyan.com/apollo/search?query={kw}",
+      "斗鱼": "https://www.douyu.com/search?kw={kw}",
+      "虎牙直播": "https://www.huya.com/search?kw={kw}",
+      "找剧AI": "https://zhaoju4.com/search?keyword={kw}",
+      "红果短剧": "https://hongguoduanju.com/search?keyword={kw}"
+    },
+    "quick": {
+      "hgHome": "https://hongguoduanju.com/",
+      "hgRank": "https://hongguoduanju.com/rank/hot-drama",
+      "hgDetail": "https://hongguoduanju.com/detail?series_id=7705741128217152574",
+      "zjHome": "https://zhaoju4.com/",
+      "zjSearch": "https://zhaoju4.com/search"
+    },
+    "remoteUrl": "",
+    "siteCount": 144
+  },
+  "release": {
+    "schema": 1,
+    "generatedAt": "2026-11-14T13:29:04.392Z",
+    "latest": {
+      "versionName": "1.7.8",
+      "versionCode": 1000122,
+      "publishedAt": "2026-11-15T12:26:08.489Z",
+      "minApi": 12,
+      "targetApi": 26,
+      "compatibleSdk": "5.0.0(12)",
+      "targetSdk": "26.0.1",
+      "abi": [
+        "any"
+      ],
+      "deviceTypes": [
+        "default",
+        "tablet",
+        "tv",
+        "2in1"
+      ],
+      "osCompat": [
+        {
+          "name": "KaihongOS",
+          "min": "4.0",
+          "apiMin": 12,
+          "note": "API 12 起可安装；系统升级后自动沿用最新兼容策略"
+        },
+        {
+          "name": "OpenHarmony",
+          "min": "4.0",
+          "apiMin": 12,
+          "note": "纯 ArkTS 字节码，无 native so，跨 x86_64 / arm64 通用"
+        }
+      ],
+      "variants": {
+        "low": {
+          "watchdogMs": 9000,
+          "concurrency": 2,
+          "lazyPx": 1000,
+          "columns": 2
+        },
+        "mid": {
+          "watchdogMs": 7500,
+          "concurrency": 4,
+          "lazyPx": 1800,
+          "columns": 3
+        },
+        "high": {
+          "watchdogMs": 6500,
+          "concurrency": 6,
+          "lazyPx": 2600,
+          "columns": 4
+        }
+      },
+      "notes": "自动更新：发现新版本后下载更新包 → 核对 SHA256 → 由用户在安装向导 / 系统安装器确认安装（应用内不静默安装）",
+      "downloadPage": "https://www.workbuddy.cn/space/d/roaB3djIExONHwJ3lGoFTo",
+      "hapPath": "HongHubMovie.hap",
+      "hapShaFile": "HongHubMovie.hap.sha256",
+      "hapAutoInstall": false,
+      "hapUrl": "/download/honghub-harmony.hap",
+      "downloadUrl": "/download/desktop-setup.exe",
+      "generatedAt": "2026-11-14T13:29:04.392Z"
+    }
+  }
+}

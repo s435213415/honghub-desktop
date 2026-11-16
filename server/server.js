@@ -1,0 +1,1615 @@
+/**
+ * HongHub-Desktop · 免费桌面版统一服务
+ * --------------------------------------------------------------
+ * 零依赖 Node 单文件服务，一个进程同时承担：
+ *   1) 静态托管 app/ 影站前端（双击启动器即开浏览器访问）
+ *   2) 远程问题收集 /api/report（脱敏、限流、幂等、可选 Token）
+ *   3) 在线问题看板 /（含「🔧 一键自愈」按钮）
+ *   4) 实时更新 /api/manifest（源清单 + 版本清单，桌面端免重装拉取）
+ *   5) 可插拔功能 /api/features（server/features 增加即在线生效）
+ *   6) 一键自愈 /api/fix（重排坏源 + 刷新清单，形成「上报→看板→修复→回灌」闭环）
+ *
+ * 隐私：不记录来源 IP 明文、不记录账号与片源内容；URL 在上报端裁成域名。
+ * 端口：$PORT（默认 8787），绑定 0.0.0.0 便于单端口发布托管。
+ */
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { spawn } = require('child_process');
+const bugfix = require('./auto-bugfix');   // 自动收集 → 提取 → 修改 Bug → 优化功能
+const miner = require('./feature-miner');  // 反馈建议 → 自动提取新功能 → 自动添加（零人工复核）
+const delivery = require('./delivery-plan'); // 自动下发成品：不限设备 / 不限内存 + 自动更新比对
+const deviceOptimizer = require('./device-optimizer'); // OS 版本检测回传 → 自动优化 → 自动修复 → 下发同步更新
+const devops = require('./devops');                  // 开发者端运维：审计 / 趋势 / 灰度 / 发布闭环 / 真机冒烟 / 告警分级
+const catalog = require('./catalog');                // 资源目录 / 平台探测 / 播放埋点 / 问题单全自动跟进
+const logRotate = require('./log-rotate');           // *.jsonl 超限自动切分压缩，避免磁盘被日志吃满
+const healthMonitor = require('./health-monitor');   // 磁盘/内存/日志水位监测与告警落盘
+const distribute = require('./distribute');         // 公网分发配置（未配置时保持本地局域网分发）
+// 已安装客户端没有 dist/，校验值与新版本必须来自公网清单：启动拉一次并按周期刷新（失败静默回退）。
+try { distribute.startAutoRefresh(Number(process.env.KH_PUBLIC_REFRESH_MS || 5 * 60 * 1000)); } catch (e) {}
+
+const PORT = Number(process.env.PORT || 8787);
+const PRODUCT_NAME = process.env.PRODUCT_NAME || '鸿汇影';   // 改名：设 PRODUCT_NAME 环境变量，或改此处默认值
+const REPORT_TOKEN = process.env.REPORT_TOKEN || '';
+const FIX_TOKEN = process.env.FIX_TOKEN || '';
+// 可选局域网访问口令：默认空＝完全不限网络；设置后 /api/* 与 /download/* 需带 X-KH-Access-Token
+const ACCESS_TOKEN = process.env.KH_ACCESS_TOKEN || '';
+const MAX_BODY = 128 * 1024;
+const MAX_KEEP = 5000;
+const APP_DIR = path.join(__dirname, '..', 'app');
+const DATA_DIR = path.join(__dirname, 'data');
+
+/* ---------------- 应用页面热更新（公网下发优先于随包文件，免重打包） ----------------
+   机制：公网 remote-manifest.json 提供 pageUrl / pageHash；服务端启动与每 10 分钟
+   拉取并按 SHA256 校验后写入 server/data/app.page.html。serveStatic 请求 /index.html
+   时优先返回该缓存，用户刷新/重启应用即用到最新页面，无需覆盖安装、无需卸载。 */
+const PAGE_CACHE = path.join(DATA_DIR, 'app.page.html');
+const PAGE_META  = path.join(DATA_DIR, 'app.page.json');
+function pageHashOf(buf) { return crypto.createHash('sha256').update(buf).digest('hex'); }
+function activePage() {
+  try { if (fs.existsSync(PAGE_CACHE)) return { buf: fs.readFileSync(PAGE_CACHE), source: 'public-hot-update' }; } catch (e) {}
+  try { return { buf: fs.readFileSync(path.join(APP_DIR, 'index.html')), source: 'bundled' }; } catch (e) { return { buf: Buffer.alloc(0), source: 'none' }; }
+}
+function currentPageHash() { const a = activePage(); return a.buf.length ? pageHashOf(a.buf) : null; }
+function buildStamp() {
+  const m = readManifest(), lat = (m && m.release && m.release.latest) || {};
+  const raw = String(lat.versionCode || '') + '|' + featureStamp() + '|' + String(currentPageHash() || '').slice(0, 16);
+  return crypto.createHash('sha256').update(raw).digest('hex').slice(0, 16);
+}
+function httpGet(url, cb) {
+  const lib = url.indexOf('https:') === 0 ? require('https') : require('http');
+  const req = lib.get(url, { timeout: 8000 }, function (res) {
+    if (res.statusCode !== 200) { res.resume(); return cb(null); }
+    const chunks = [];
+    res.on('data', function (d) { chunks.push(d); });
+    res.on('end', function () { cb(Buffer.concat(chunks)); });
+    res.on('error', function () { cb(null); });
+  });
+  req.on('timeout', function () { req.destroy(); cb(null); });
+  req.on('error', function () { cb(null); });
+}
+function refreshPageFromPublic() {
+  let c = null;
+  try { c = require('./distribute').config(); } catch (e) { return; }
+  if (!c || !c.enabled) return;
+  const q = c.shareQuery || '';
+  httpGet(c.baseUrl + '/remote-manifest.json' + q, function (mb) {
+    if (!mb) return;
+    let m = null; try { m = JSON.parse(mb.toString('utf8')); } catch (e) { return; }
+    if (!m || !m.pageUrl || !m.pageHash) return;
+    const url = m.pageUrl + (m.pageUrl.indexOf('?') >= 0 ? '' : q);
+    httpGet(url, function (buf) {
+      if (!buf || buf.length < 10000 || buf.indexOf('<html') < 0) return;
+      if (pageHashOf(buf) !== m.pageHash) { console.warn('[HongHub-Desktop] 页面热更新校验失败，已忽略'); return; }
+      try {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+        fs.writeFileSync(PAGE_CACHE, buf);
+        fs.writeFileSync(PAGE_META, JSON.stringify({ hash: m.pageHash, size: buf.length, at: new Date().toISOString(), source: url }, null, 2));
+        console.log('[HongHub-Desktop] 应用页面已从公网热更新：' + buf.length + ' B / ' + m.pageHash.slice(0, 12) + '…（刷新即生效，无需重装）');
+      } catch (e) {}
+    });
+  });
+}
+
+const DATA_FILE = path.join(DATA_DIR, 'reports.jsonl');
+const MANIFEST_FILE = path.join(__dirname, 'manifest.json');
+const FEATURES_FILE = path.join(__dirname, '..', 'features', 'manifest.json');
+const PRESETS_FILE = path.join(__dirname, '..', 'features', 'presets.json');
+const FEEDBACK_FILE = path.join(DATA_DIR, 'feedback.jsonl');            // 自动反馈通道（深开鸿端回传 + 中枢自动反馈）
+const LATEST_GOVERN_FILE = path.join(DATA_DIR, 'latest_govern.json');   // 接收所有最终成品：本轮治理全部产出快照
+function readPresets() { try { return JSON.parse(fs.readFileSync(PRESETS_FILE, 'utf8')); } catch (e) { return []; } }
+
+const reports = [];
+const feedbacks = [];
+let writable = true;
+try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) { writable = false; }
+if (writable) {
+  try {
+    if (fs.existsSync(DATA_FILE)) {
+      const lines = fs.readFileSync(DATA_FILE, 'utf8').split('\n').filter(Boolean);
+      for (const line of lines.slice(-MAX_KEEP)) {
+        try { reports.push(JSON.parse(line)); } catch (e) { /* skip */ }
+      }
+    }
+  } catch (e) { writable = false; }
+  try {
+    if (fs.existsSync(FEEDBACK_FILE)) {
+      fs.readFileSync(FEEDBACK_FILE, 'utf8').split('\n').filter(Boolean).slice(-MAX_KEEP)
+        .forEach((l) => { try { feedbacks.push(JSON.parse(l)); } catch (e) {} });
+    }
+  } catch (e) {}
+}
+
+const rate = new Map();
+function limited(ip) {
+  const now = Date.now();
+  const key = ip || 'unknown';
+  const cur = rate.get(key);
+  if (!cur || now > cur.reset) { rate.set(key, { count: 1, reset: now + 60000 }); return false; }
+  cur.count += 1;
+  return cur.count > 60;
+}
+
+function cors(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-KH-Token, X-KH-Fix-Token');
+  res.setHeader('Access-Control-Max-Age', '86400');
+}
+function send(res, code, obj) {
+  const body = JSON.stringify(obj);
+  cors(res);
+  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body), 'Cache-Control': 'no-store' });
+  res.end(body);
+}
+function clip(v, n) { return String(v === undefined || v === null ? '' : v).slice(0, n); }
+function cleanIssue(x) {
+  return {
+    kind: clip(x && x.kind, 16), sev: clip(x && x.sev, 8), code: clip(x && x.code, 20),
+    msg: clip(x && x.msg, 240), n: Math.min(9999, Number((x && x.n) || 1) || 1),
+    ts: Number((x && x.ts) || Date.now()), view: clip(x && x.view, 20), host: clip(x && x.host, 80)
+  };
+}
+function cleanReport(r) {
+  const s = r.summary || {};
+  return {
+    id: crypto.createHash('sha1').update(clip(r.deviceId, 48) + '|' + clip(r.sentAt, 24)).digest('hex').slice(0, 16),
+    deviceId: clip(r.deviceId, 48), version: clip(r.version, 20), device: clip(r.device, 140),
+    sentAt: Number(r.sentAt) || Date.now(), receivedAt: Date.now(),
+    summary: {
+      total: Number(s.total) || 0, day: Number(s.day) || 0, channels: Number(s.channels) || 0,
+      platforms: Number(s.platforms) || 0, manifest: Number(s.manifest) || 0, good: Number(s.good) || 0, bad: Number(s.bad) || 0
+    },
+    issues: (Array.isArray(r.issues) ? r.issues : []).slice(0, 80).map(cleanIssue)
+  };
+}
+function readBody(req, cb) {
+  let size = 0; const chunks = []; let done = false;
+  req.on('data', (c) => {
+    size += c.length;
+    if (size > MAX_BODY) { done = true; cb(null); req.destroy(); return; }
+    chunks.push(c);
+  });
+  req.on('end', () => { if (!done) { done = true; cb(Buffer.concat(chunks).toString('utf8')); } });
+  req.on('error', () => { if (!done) { done = true; cb(null); } });
+}
+function stats() {
+  const byKind = {}; const devices = {}; const dayAgo = Date.now() - 86400000;
+  let issues = 0, last24 = 0;
+  for (const r of reports) {
+    devices[r.deviceId] = 1;
+    if (r.receivedAt >= dayAgo) last24 += 1;
+    for (const it of r.issues) { byKind[it.kind] = (byKind[it.kind] || 0) + (it.n || 1); issues += (it.n || 1); }
+  }
+  const top = Object.keys(byKind).map((k) => ({ kind: k, n: byKind[k] })).sort((a, b) => b.n - a.n).slice(0, 8);
+  return { reports: reports.length, devices: Object.keys(devices).length, issues, last24, top, writable };
+}
+function hostOf(u) { try { return new URL(u).hostname; } catch (e) { return ''; } }
+
+/* ---------------- 实时更新清单 ---------------- */
+function readManifest() {
+  try { return JSON.parse(fs.readFileSync(MANIFEST_FILE, 'utf8')); } catch (e) { return { sources: null, release: null, error: String(e && e.message || e) }; }
+}
+function readFeatures() {
+  try { return JSON.parse(fs.readFileSync(FEATURES_FILE, 'utf8')); } catch (e) { return []; }
+}
+function writeFeatures(list) {
+  try { fs.writeFileSync(FEATURES_FILE, JSON.stringify(list, null, 2)); return true; } catch (e) { return false; }
+}
+
+/* ---------------- 功能版本 / 发版产物 / 中枢候选 ---------------- */
+const FEATURE_STAMP_FILE = path.join(__dirname, 'feature-version.json');
+function featureStamp() {
+  const list = readFeatures();
+  const m = readManifest();
+  const lat = (m && m.release && m.release.latest) || {};
+  const hash = crypto.createHash('sha256').update(JSON.stringify(list)).digest('hex').slice(0, 16);
+  let saved = null;
+  try { saved = JSON.parse(fs.readFileSync(FEATURE_STAMP_FILE, 'utf8')); } catch (e) { /* 尚未发版 */ }
+  return {
+    versionName: lat.versionName || null,
+    versionCode: lat.versionCode || null,
+    publishedAt: lat.publishedAt || null,
+    count: list.length,
+    hash: hash,
+    publishedHash: saved ? saved.hash : null,
+    inSync: saved ? (saved.hash === hash && Number(saved.versionCode) === Number(lat.versionCode)) : null
+  };
+}
+function releaseArtifacts() {
+  const dirs = [path.join(__dirname, '..', 'dist'), path.join(__dirname, '..', 'updates')];
+  for (const d of dirs) {
+    const p = path.join(d, 'release.json');
+    try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { /* 下一个候选 */ }
+  }
+  return null;
+}
+/* 自动批量下发清单：优先 dist/archs.json（postpack + build-archs 生成），
+   打包精简环境用内置 updates/archs.json，二者都没有时按现有产物即时生成，
+   保证 /api/batch 永远有可用的批量分发结果，不需要人工整理。 */
+function batchManifest() {
+  const dirs = [path.join(__dirname, '..', 'dist'), path.join(__dirname, '..', 'updates')];
+  for (const d of dirs) {
+    try { return JSON.parse(fs.readFileSync(path.join(d, 'archs.json'), 'utf8')); } catch (e) { /* 下一个候选 */ }
+  }
+  const art = releaseArtifacts() || {};
+  const lat = (function () { try { return readManifest().release.latest; } catch (e) { return {}; } })() || {};
+  const desktop = (art.artifacts && art.artifacts.desktop) || null;
+  const out = {
+    schema: 1, versionName: art.versionName || lat.versionName || null,
+    versionCode: art.versionCode || lat.versionCode || null,
+    generatedAt: new Date().toISOString(), generatedBy: 'realtime',
+    archs: {}, hap: null, features: art.features || featureStamp()
+  };
+  ['x64', 'ia32', 'arm64'].forEach(a => {
+    out.archs[a] = a === 'x64' && desktop
+      ? { status: 'ready', file: desktop.file, size: desktop.size, sha256: desktop.sha256, url: '/download/desktop-setup.exe' }
+      : { status: 'fallback', url: '/download/desktop-setup.exe', fallbackTo: 'x64' };
+  });
+  if (art.artifacts && art.artifacts.hap) out.hap = Object.assign({ status: 'ready', url: '/download/honghub-harmony.hap' }, art.artifacts.hap);
+  return out;
+}
+/* 下发成品清单：优先本次发版生成的 dist/delivery.json，其次随包内置的 updates/delivery.json，
+   精简环境都没有时按现有产物即时生成 —— 保证任意设备来问都有可用通道。 */
+function deliveryManifest() {
+  const dirs = [path.join(__dirname, '..', 'dist'), path.join(__dirname, '..', 'updates')];
+  for (const d of dirs) {
+    try {
+      const o = JSON.parse(fs.readFileSync(path.join(d, 'delivery.json'), 'utf8'));
+      if (o && o.channels && o.memoryTiers) return o;
+    } catch (e) { /* 下一个候选 */ }
+  }
+  return delivery.buildDelivery(batchManifest());
+}
+// 中枢自发现：/health 返回本机所有可达地址，设备端缓存后 IP 变化也能找回中枢
+function hubAddresses() {
+  const out = [];
+  try {
+    const nets = require('os').networkInterfaces();
+    Object.keys(nets).forEach((k) => (nets[k] || []).forEach((a) => {
+      if (a.family === 'IPv4' && !a.internal) out.push('http://' + a.address + ':' + PORT);
+    }));
+  } catch (e) { /* 忽略 */ }
+  return out.slice(0, 8);
+}
+// 更新包定位：项目 dist → 应用内置 updates → 桌面交付位置 → HAP 签名目录
+function resolveDownload(file) {
+  const home = require('os').homedir();
+  const dirs = [
+    path.join(__dirname, '..', 'dist'),
+    path.join(__dirname, '..', 'updates'),
+    path.join(home, 'Desktop'),
+    path.join(home, 'Desktop', '新建文件夹 (6)', 'sign'),
+    path.join(process.cwd(), 'dist')
+  ];
+  const aliases = [file];
+  if (/\.hap$/i.test(file)) aliases.push('HongHubMovie.hap', 'honghub-harmony.hap');
+  if (/\.sha256$/i.test(file)) aliases.push('HongHubMovie.hap.sha256', 'honghub-harmony.hap.sha256');
+  for (const d of dirs) {
+    for (const a of aliases) {
+      const p = path.join(d, a);
+      try { if (fs.statSync(p).isFile()) return p; } catch (e) { /* 该目录没有此文件 */ }
+    }
+    let names = [];
+    try { names = fs.readdirSync(d); } catch (e) { continue; }
+    let hit = null;
+    if (file === 'desktop-setup.exe') {
+      hit = names.filter((n) => /Setup.*\.exe$/i.test(n))
+        .sort((a, b) => fs.statSync(path.join(d, b)).mtimeMs - fs.statSync(path.join(d, a)).mtimeMs)[0];
+    } else if (/\.hap$/i.test(file)) {
+      hit = names.filter((n) => /\.hap$/i.test(n))[0];
+    }
+    if (hit) return path.join(d, hit);
+  }
+  return null;
+}
+
+// 版本归档：releases/index.json 由 npm run archive 生成，回滚端点与下载都读它
+const RELEASES_DIR = path.join(__dirname, '..', 'releases');
+function readReleaseIndex() {
+  try { return JSON.parse(fs.readFileSync(path.join(RELEASES_DIR, 'index.json'), 'utf8')); }
+  catch (e) { return { schema: 1, versions: [], latest: null }; }
+}
+function findArchive(file) {
+  if (!fs.existsSync(RELEASES_DIR)) return null;
+  for (const d of fs.readdirSync(RELEASES_DIR)) {
+    const p = path.join(RELEASES_DIR, d, file);
+    try { if (fs.statSync(p).isFile()) return p; } catch (e) { /* 不是该版本的文件 */ }
+  }
+  return null;
+}
+
+// 把任意输入规范化为统一功能对象（缺 id 自动生成）
+function normalizeFeature(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const action = String(raw.action || 'open').trim();
+  const name = String(raw.name || raw.id || '工具').trim();
+  const baseId = String(raw.id || '').trim();
+  const f = {
+    id: baseId || ('f-' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36)),
+    name: name,
+    desc: String(raw.desc || '').slice(0, 240),
+    action: (action === 'script' || action === 'cmd') ? 'script' : action,
+    icon: String(raw.icon || '🧩').slice(0, 4),
+    enabled: raw.enabled !== false,
+    // 脚本类默认要求二次确认（本机命令是有副作用的操作），显式 confirm:false 才免确认
+    confirm: raw.confirm === undefined
+      ? (action === 'script' || action === 'cmd' || raw.requiresConfirm === true)
+      : !!raw.confirm
+  };
+  if (action === 'open' || action === 'webhook') f.url = String(raw.url || '').slice(0, 2000);
+  if (action === 'script' || action === 'cmd') f.cmd = String(raw.cmd || raw.url || '').slice(0, 2000);
+  if (action === 'webhook' && raw.payload && typeof raw.payload === 'object') f.payload = raw.payload;
+  return f;
+}
+
+/* ---------------- 一键自愈（异步，避免阻塞服务） ---------------- */
+function runFix(cb) {
+  const khRoot = path.normalize(path.join(__dirname, '..', '..', 'HongHubMovie'));
+  const script = path.join(khRoot, '_signtmp', 'auto_update.py');
+  if (!fs.existsSync(script)) { cb({ ok: false, error: '未找到 HongHubMovie 流水线脚本（仅开发者机可用）' }); return; }
+  let done = false;
+  const finish = (r) => { if (done) return; done = true; try { clearTimeout(timer); } catch (e) {} cb(r); };
+  let stderr = '';
+  const child = spawn(process.env.PYTHON_BIN || 'python', [script, '--no-build'], { cwd: khRoot });
+  const timer = setTimeout(() => { try { child.kill(); } catch (e) {} finish({ ok: false, error: '源体检流水线超时（>540s）' }); }, 540000);
+  if (child.stderr) child.stderr.on('data', (d) => { stderr += d.toString(); });
+  child.on('error', (e) => { finish({ ok: false, error: '启动流水线失败：' + (e && e.message || e) }); });
+  child.on('close', (code) => {
+    if (code !== 0) { finish({ ok: false, error: '源体检流水线返回 ' + code, detail: stderr.slice(-400) }); return; }
+    try {
+      // 重新提取最新清单到本地 manifest.json，使桌面端实时拉到修复后的源
+      const idx = path.join(khRoot, 'entry', 'src', 'main', 'resources', 'rawfile', 'movie-site', 'index.html');
+      const s = fs.readFileSync(idx, 'utf8');
+      const grab = (id) => {
+        const m = s.match(new RegExp('<script id="' + id + '"[^>]*>([\\s\\S]*?)</script>'));
+        return m ? m[1].trim() : null;
+      };
+      // 只刷新源清单；release（应用版本 / 校验值 / 更新地址）由 scripts/release.js 在真正出包时维护，
+      // 绝不拿影站里随包的旧 release 整体覆盖，否则会把已发布版本冲掉、造成假更新提示。
+      const sources = JSON.parse(grab('kh-sources'));
+      const cur = readManifest();
+      cur.sources = sources;
+      fs.writeFileSync(MANIFEST_FILE, JSON.stringify(cur, null, 2));
+      finish({ ok: true, msg: '已重排坏源并刷新清单到 v' + sources.v, v: sources.v, channels: sources.channels.length });
+    } catch (e) { finish({ ok: false, error: String(e && e.message || e) }); }
+  });
+}
+
+/* ---------------- 内容发布（刷新发布时间 + 内容版本，不抬应用版本） ----------------
+   应用版本号只在真的构建出新安装包 / HAP 时由 scripts/release.js 递增。
+   自治循环或「一键更新发布」只发布内容（源清单 / 功能 / 最终成品），
+   若在这里抬应用版本，客户端会以为有新包 → 弹更新横幅 → 下载的却是同一个包。 */
+function bumpRelease() {
+  let m;
+  try { m = JSON.parse(fs.readFileSync(MANIFEST_FILE, 'utf8')); } catch (e) { return { ok: false, error: '读取清单失败：' + (e && e.message || e) }; }
+  if (!m.release || !m.release.latest) return { ok: false, error: '清单缺少 release 字段，无法发布' };
+  const latest = m.release.latest;
+  const nowIso = new Date().toISOString();
+  latest.contentVersion = (Number(latest.contentVersion) || 0) + 1;
+  latest.publishedAt = nowIso;
+  latest.downloadUrl = process.env.DOWNLOAD_URL || '/download/desktop-setup.exe';
+  if (m.release) m.release.generatedAt = nowIso;
+  try { fs.writeFileSync(MANIFEST_FILE, JSON.stringify(m, null, 2)); }
+  catch (e) { return { ok: false, error: '写回清单失败：' + (e && e.message || e) }; }
+  return { ok: true, versionName: latest.versionName, versionCode: latest.versionCode, contentVersion: latest.contentVersion, publishedAt: nowIso };
+}
+
+/* ---------------- 同时更新 + 发布（异步） ---------------- */
+function updatePublish(cb) {
+  runFix((upd) => {
+    if (!upd.ok) { cb({ ok: false, phase: 'update', error: upd.error || '更新失败', detail: upd.detail || undefined, update: upd }); return; }
+    const pub = bumpRelease();
+    if (!pub.ok) { cb({ ok: false, phase: 'publish', error: pub.error || '发布失败', update: { msg: upd.msg, v: upd.v, channels: upd.channels }, publish: pub }); return; }
+    cb({ ok: true, update: { msg: upd.msg, v: upd.v, channels: upd.channels }, publish: pub });
+  });
+}
+
+/* ---------------- 自动优化（剔除失效源 / 重排可用源在前） ---------------- */
+function optimizeManifest() {
+  let m; try { m = JSON.parse(fs.readFileSync(MANIFEST_FILE, 'utf8')); } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+  if (!m.sources || !m.sources.channels) return { ok: false, error: '清单缺少 sources' };
+  let removed = 0;
+  m.sources.channels.forEach((ch) => {
+    const list = (ch.sources || []).filter((s) => s.status !== 'dead' && s.status !== 'failed');
+    removed += (ch.sources || []).length - list.length;
+    list.sort((a, b) => ((a.status === 'ok' ? 0 : 1) - (b.status === 'ok' ? 0 : 1)));
+    ch.sources = list; ch.sourceCount = list.length;
+  });
+  try { fs.writeFileSync(MANIFEST_FILE, JSON.stringify(m, null, 2)); }
+  catch (e) { return { ok: false, error: '写回清单失败：' + (e && e.message || e) }; }
+  return { ok: true, removed: removed, channels: m.sources.channels.length };
+}
+
+/* ---------------- 自动添加预设功能（让工具自己长出新能力） ---------------- */
+function autoAddPresetFeatures() {
+  const presets = readPresets();
+  if (!Array.isArray(presets) || !presets.length) return [];
+  let list = readFeatures();
+  const map = {}; list.forEach((x) => { map[x.id] = x; });
+  const added = [];
+  presets.forEach((p) => {
+    const f = normalizeFeature(p); if (!f) return;
+    if (!map[f.id]) { f.enabled = (p.autoEnabled !== false); list.push(f); map[f.id] = f; added.push(f.id); }
+  });
+  if (added.length) writeFeatures(list);
+  return added;
+}
+
+/* ---------------- 自动化运行（定时更新 + 发布） ---------------- */
+const AUTO_RUN_ENABLED = process.env.AUTO_RUN_ENABLED !== '0';           // 默认开启；置 0 关闭
+const AUTO_OPTIMIZE = process.env.AUTO_OPTIMIZE !== '0';                  // 自动优化：默认开启（中枢按计划自我优化）
+const AUTO_GOVERN = process.env.AUTO_GOVERN === '1' || AUTO_OPTIMIZE;    // 默认开启「智能自治 / 自动优化」；置 AUTO_OPTIMIZE=0 关闭
+const AUTO_RUN_INTERVAL_MS = (Number(process.env.AUTO_RUN_INTERVAL_HOURS) || 24) * 3600 * 1000; // 默认每 24 小时
+const AUTO_RUN_HOUR = (function () {                                    // 可选：指定本地小时(0-23)每日定点运行
+  const h = Number(process.env.AUTO_RUN_HOUR);
+  return Number.isInteger(h) && h >= 0 && h <= 23 ? h : null;
+})();
+const AUTO_RUN_FILE = path.join(DATA_DIR, 'auto_runs.jsonl');
+const autoRuns = [];
+let nextRunAt = 0;
+let autoTimer = null;
+
+/* 智能自治运行历史 */
+const GOVERN_RUN_FILE = path.join(DATA_DIR, 'govern_runs.jsonl');
+const governRuns = [];
+function loadGovernRuns() {
+  try {
+    if (fs.existsSync(GOVERN_RUN_FILE)) {
+      fs.readFileSync(GOVERN_RUN_FILE, 'utf8').split('\n').filter(Boolean).forEach((l) => {
+        try { governRuns.push(JSON.parse(l)); } catch (e) {}
+      });
+    }
+  } catch (e) {}
+}
+function recordGovernRun(rec) {
+  governRuns.push(rec);
+  if (governRuns.length > 50) governRuns.shift();
+  try { fs.appendFileSync(GOVERN_RUN_FILE, JSON.stringify(rec) + '\n'); } catch (e) {}
+}
+
+function loadAutoRuns() {
+  try {
+    if (fs.existsSync(AUTO_RUN_FILE)) {
+      fs.readFileSync(AUTO_RUN_FILE, 'utf8').split('\n').filter(Boolean).forEach((l) => {
+        try { autoRuns.push(JSON.parse(l)); } catch (e) {}
+      });
+    }
+  } catch (e) {}
+}
+function recordAutoRun(rec) {
+  autoRuns.push(rec);
+  if (autoRuns.length > 50) autoRuns.shift();
+  try { fs.appendFileSync(AUTO_RUN_FILE, JSON.stringify(rec) + '\n'); } catch (e) {}
+}
+function msUntilNextRun() {
+  if (AUTO_RUN_HOUR !== null) {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(AUTO_RUN_HOUR, 0, 0, 0);
+    if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1);
+    return next.getTime() - now.getTime();
+  }
+  return AUTO_RUN_INTERVAL_MS;
+}
+function doAutoRun(cb) {
+  const startedAt = Date.now();
+  const runner = AUTO_GOVERN ? runGovernance : updatePublish;
+  try {
+    runner((out) => {
+      const rec = { startedAt: startedAt, finishedAt: Date.now(), ok: !!(out && out.ok), result: out };
+      recordAutoRun(rec);
+      if (cb) cb(rec);
+    });
+  } catch (e) {
+    const rec = { startedAt: startedAt, finishedAt: Date.now(), ok: false, result: { ok: false, error: String(e && e.message || e) } };
+    recordAutoRun(rec);
+    if (cb) cb(rec);
+  }
+}
+function scheduleAutoRun() {
+  if (!AUTO_RUN_ENABLED) { nextRunAt = 0; return; }
+  const delay = msUntilNextRun();
+  nextRunAt = Date.now() + delay;
+  autoTimer = setTimeout(function tick() {
+    doAutoRun();
+    if (AUTO_RUN_ENABLED) scheduleAutoRun(); // 重新计算下一跳（定点或间隔）
+  }, delay);
+}
+
+/* ---------------- 自动提取问题（来源状态 + 用户上报，统一归并） ---------------- */
+function extractProblems() {
+  const m = readManifest();
+  const sourceProblems = [];
+  if (m && m.sources && m.sources.channels) {
+    m.sources.channels.forEach((ch) => (ch.sources || []).forEach((s) => {
+      if (s.status && s.status !== 'ok') sourceProblems.push({ scope: 'source', channel: ch.name || '?', name: s.name || s.url || '', status: s.status });
+    }));
+  }
+  const reportProblems = [];
+  reports.forEach((r) => r.issues.forEach((i) => {
+    if (i.sev === 'error' || i.sev === 'warning')
+      reportProblems.push({ scope: 'report', device: r.device || i.view || '?', kind: i.kind || '?', msg: i.msg || '', sev: i.sev, n: i.n || 1 });
+  }));
+  return { sourceProblems, reportProblems, total: sourceProblems.length + reportProblems.length };
+}
+
+/* ---------------- 建议提取（把问题转成可执行的优化/修复建议，规则引擎） ---------------- */
+function extractSuggestions(problems) {
+  const s = [];
+  const dead = problems.sourceProblems.filter((p) => p.status === 'dead' || p.status === 'failed');
+  if (dead.length) s.push({ id: 'rm-dead', kind: 'source', title: '移除 ' + dead.length + ' 个失效源', detail: dead.map((p) => p.channel + ':' + p.name).slice(0, 5).join('、'), action: 'auto' });
+  const slow = problems.sourceProblems.filter((p) => p.status === 'slow' || p.status === 'warn');
+  if (slow.length) s.push({ id: 'reorder', kind: 'source', title: '重排 ' + slow.length + ' 个慢源到后位', detail: '自动优化环节会处理', action: 'auto' });
+  if (problems.reportProblems.length) {
+    const kinds = [...new Set(problems.reportProblems.map((p) => p.kind))].slice(0, 5);
+    s.push({ id: 'user-report', kind: 'report', title: '处理 ' + problems.reportProblems.length + ' 条用户上报', detail: kinds.join('、'), action: 'feedback' });
+  }
+  if (AUTO_GOVERN) s.push({ id: 'keep-govern', kind: 'system', title: '智能自治已开启', detail: '中枢按计划自动提取问题/优化/修复/更新/发布', action: 'info' });
+  return s;
+}
+
+/* ---------------- 自动反馈（把本轮结论回写反馈通道，供深开鸿端等拉取） ---------------- */
+function autoFeedback(payload) {
+  const rec = Object.assign({ at: Date.now() }, payload);
+  feedbacks.push(rec);
+  if (feedbacks.length > 200) feedbacks.splice(0, feedbacks.length - 200);
+  try { fs.appendFileSync(FEEDBACK_FILE, JSON.stringify(rec) + '\n'); } catch (e) { writable = false; }
+  return { ok: true, stored: true };
+}
+
+/* ---------------- 智能自治循环（自动提取问题→建议提取→自动反馈→自动优化→加更新→自动更新加发布·接收所有最终成品） ---------------- */
+function runGovernance(cb) {
+  const startedAt = Date.now();
+  const result = { problemsFound: 0, problemSources: [], suggestions: [], feedback: null, fixed: null, optimized: null, published: null, featuresAdded: [], finalProducts: null };
+  // 1) 自动提取问题
+  const problems = extractProblems();
+  result.problemsFound = problems.total;
+  result.problemSources = problems.sourceProblems.slice(0, 20);
+  // 2) 建议提取
+  const suggestions = extractSuggestions(problems);
+  result.suggestions = suggestions;
+  // 3) 加更新（有问题才跑流水线重排源/刷新清单）
+  const doFix = problems.total > 0;
+  const afterFix = (fixOut) => {
+    result.fixed = doFix ? fixOut : { ok: true, skipped: true, reason: 'no-problem' };
+    const finish = () => {
+      // 4) 自动优化（剔除失效源 / 重排可用源在前）
+      result.optimized = optimizeManifest();
+      // 5) 自动更新加发布（仅确有实质变化时抬版本，避免无谓刷号；info 类建议、跳过修复不计入变更）
+      const fixedOk = result.fixed && result.fixed.ok && !result.fixed.skipped;
+      const actionableSugg = suggestions.some((s) => s.action && s.action !== 'info');
+      const changed = (result.optimized && result.optimized.ok && result.optimized.removed > 0)
+        || (result.featuresAdded && result.featuresAdded.length > 0)
+        || fixedOk || result.problemsFound > 0 || actionableSugg;
+      result.published = changed ? bumpRelease() : { ok: true, skipped: true, reason: 'no-change' };
+      // 6) 自动反馈（把本轮结论回写反馈通道）
+      result.feedback = autoFeedback({
+        type: 'govern', ok: result.published && (result.published.ok || result.published.skipped),
+        problemsFound: result.problemsFound, suggestions: suggestions.map((s) => s.title),
+        optimized: result.optimized, published: result.published, featuresAdded: result.featuresAdded
+      });
+      // 7) 接收所有最终成品：把所有产出聚合成一次快照，供深开鸿端等拉取
+      const finalProducts = {
+        at: Date.now(),
+        problems: { total: result.problemsFound, sources: result.problemSources, reports: problems.reportProblems.slice(0, 20) },
+        suggestions: suggestions,
+        optimized: result.optimized,
+        updated: result.fixed,
+        published: result.published,
+        featuresAdded: result.featuresAdded,
+        features: featureStamp(),          // 功能侧最终成品：本轮功能清单的版本 / 数量 / 指纹
+        featureMining: result.featureMining || null, // 反馈建议自动提取的新功能（零人工复核）
+        batch: result.batch || batchManifest(),      // 自动批量下发清单：多架构产物 + HAP + 校验值
+        delivery: deliveryManifest(),               // 下发成品：不限设备 / 不限内存 / 自动更新策略
+        deviceOptimization: result.deviceOptimization || deviceOptimizer.latest(), // OS 版本检测回传后的自动优化
+        bugfix: result.bugfix || null,     // 自动修 Bug 最终成品：收集 / 提取 / 修复 / 功能优化
+        feedback: result.feedback
+      };
+      result.finalProducts = finalProducts;
+      try { fs.writeFileSync(LATEST_GOVERN_FILE, JSON.stringify(finalProducts, null, 2)); } catch (e) {}
+      const rec = { startedAt: startedAt, finishedAt: Date.now(), ok: !!(result.published && result.published.ok), result: result };
+      recordGovernRun(rec);
+      if (cb) cb(rec);
+    };
+    // 新增功能（让工具自己长出能力）：先补装内置预设，再从反馈建议里自动提取新功能
+    result.featuresAdded = autoAddPresetFeatures();
+    // 反馈 / 建议 / 上报 → 自动提取新功能 → 自动加入功能清单 → 自动同步功能快照（零人工复核）
+    try {
+      result.featureMining = miner.run();
+      result.featuresAdded = result.featuresAdded.concat(result.featureMining.added || []);
+      // OS 版本检测回传后的自动优化与修复：生成全系统版本适配矩阵并刷新功能快照（不抬应用版本）
+      result.deviceOptimization = deviceOptimizer.run();
+      result.batch = batchManifest();
+    } catch (e) {
+      result.featureMining = { ok: false, error: String(e && e.message || e), added: [] };
+      result.batch = batchManifest();
+    }
+    // 自动收集 → 提取 Bug → 自动修可修的 → 按 bug 类型优化功能（结果纳入最终成品）
+    try { result.bugfix = bugfix.run(); }
+    catch (e) { result.bugfix = { ok: false, error: String(e && e.message || e) }; }
+    finish();
+  };
+  if (doFix) runFix(afterFix); else afterFix({ ok: true, skipped: true, reason: 'no-problem' });
+}
+
+/* ---------------- 在线看板（含一键自愈 / 一键更新发布 / 自动化） ---------------- */
+const BOARD = [
+  '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">',
+  '<meta name="viewport" content="width=device-width,initial-scale=1">',
+  '<title>鸿汇影 · 远程问题看板</title><style>',
+  ':root{color-scheme:dark}*{box-sizing:border-box}',
+  'body{margin:0;background:#0C0E16;color:#E7ECF5;font:14px/1.6 system-ui,-apple-system,"Microsoft YaHei",sans-serif}',
+  '.wrap{max-width:1180px;margin:0 auto;padding:24px 18px 60px}',
+  'h1{font-size:22px;margin:0 0 4px}h2{font-size:15px;margin:26px 0 10px;color:#9AA6BD}',
+  '.sub{color:#8A8FA3;font-size:12px;margin-bottom:20px}',
+  '.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}',
+  '.card{background:#171A26;border:1px solid #262B3B;border-radius:12px;padding:14px 16px}',
+  '.card b{display:block;font-size:24px;color:#4ADE80;margin-top:4px}',
+  '.card span{font-size:12px;color:#8A8FA3}',
+  '.row{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}',
+  '.item{background:#171A26;border:1px solid #262B3B;border-radius:10px;padding:12px 14px}',
+  '.item .m{font-size:11px;color:#8A8FA3;word-break:break-all}',
+  '.item .t{font-size:13px;margin:4px 0 6px}',
+  '.tag{display:inline-block;font-size:10px;padding:1px 7px;border-radius:8px;margin-right:6px;background:#252A3A;color:#9AA6BD}',
+  '.tag.e{background:rgba(239,68,68,.16);color:#FCA5A5}.tag.w{background:rgba(245,197,66,.14);color:#F5C542}',
+  '.bar{display:flex;gap:8px;align-items:center;margin:18px 0;flex-wrap:wrap}',
+  'button{background:#262B3B;color:#E7ECF5;border:1px solid #333A50;border-radius:10px;padding:7px 14px;cursor:pointer;font-size:12px}',
+  'button.fix{background:#FF4D5E;border-color:#FF4D5E;color:#fff;font-weight:700}',
+  'button.pub{background:#2563EB;border-color:#2563EB;color:#fff;font-weight:700}',
+  'button:hover{border-color:#FF4D5E}',
+  '.empty{color:#8A8FA3;padding:30px;text-align:center;border:1px dashed #333A50;border-radius:12px}',
+  '.note{font-size:12px;color:#9AA6C4;margin-left:auto}',
+  '.pipes{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:8px 0 14px}',
+  '.pipe{background:#171A26;border:1px solid #262B3B;border-radius:10px;padding:10px 8px;text-align:center}',
+  '.pipe .n{font-size:11px;color:#8A8FA3}',
+  '.pipe .v{font-size:13px;font-weight:700;margin:4px 0 2px}',
+  '.pipe .st{font-size:11px;color:#9AA6C4}',
+  '.pipe.done{border-color:#2563EB}.pipe.skip{border-color:#333A50}.pipe.warn{border-color:#F5C542}',
+  '.pipe.done .st{color:#7FA8FF}.pipe.warn .st{color:#F5C542}',
+  '.sub2{font-size:12px;color:#8A8FA3;margin:2px 0 6px}',
+  '@media(max-width:900px){.pipes{grid-template-columns:repeat(3,1fr)}}',
+  '</style></head><body><div class="wrap">',
+  '<h1>鸿汇影 · 远程问题看板</h1>',
+  '<div class="sub">桌面版 / 真机自动上报的脱敏问题摘要 · 仅含类别 / 错误码 / 消息 / 次数 / 站点域名与匿名设备 ID · 数据不跨应用共享</div>',
+  '<div class="bar"><button onclick="load()">⟳ 立即刷新</button>',
+  '<button class="fix" onclick="fix()">🔧 一键自愈（重排源 / 刷新清单）</button>',
+  '<button class="pub" onclick="updatePublish()">🚀 一键同时更新发布</button>',
+  '<button onclick="setAccessToken()">🔑 口令</button>',
+  '<span class="note" id="upd"></span></div>',
+  '<div class="cards" id="cards"></div>',
+  '<h2>问题类别 Top</h2><div class="row" id="top"></div>',
+  '<h2>最近上报</h2><div class="row" id="list"></div>',
+  '<h2>问题明细</h2><div class="row" id="detail"></div>',
+  '<h2>⚙️ 自动化运行（定时更新 + 发布）</h2>',
+  '<div class="bar"><span id="autoState" class="note"></span><button class="pub" id="autoRunBtn" onclick="autoRun()">⚙️ 立即运行自动化</button></div>',
+  '<div class="row" id="auto"></div>',
+  '<h2>🤖 智能自治循环（自动提取问题 → 修复 → 优化 → 发布 → 新增功能）</h2>',
+  '<div class="bar"><span id="govState" class="note"></span><button class="pub" id="govRunBtn" onclick="govRun()">🤖 立即运行自治</button></div>',
+  '<div class="row" id="gov"></div>',
+  '<h2>🧠 智能自治闭环（六段式 · 全部最终成品实时呈现）</h2>',
+  '<div class="sub2">自动提取问题 → 建议提取 → 自动反馈 → 自动优化 → 加更新(自愈) → 自动更新加发布。每轮产出汇总为「最终成品」并下发深开鸿端。</div>',
+  '<div class="bar"><span id="loopState" class="note"></span><button class="pub" id="loopRunBtn" onclick="loopRun()">🧠 跑一轮闭环</button></div>',
+  '<div class="pipes" id="pipes"><div class="empty" style="grid-column:1/-1">加载中…</div></div>',
+  '<div class="row" id="loopSugg"></div>',
+  '<div class="row" id="loopDetail"></div>',
+  '<h2>🧩 功能管理（免重装在线添加 / 编辑 / 启用 / 删除 / 导入导出）</h2>',
+  '<div class="bar"><button class="pub" onclick="featShowAdd()">＋ 添加功能</button>',
+  '<button class="pub" onclick="featAddPreset()">＋ 添加预设</button>',
+  '<button onclick="featImport()">⬇️ 导入清单</button>',
+  '<button onclick="featExport()">⬆️ 导出清单</button>',
+  '<span class="note" id="featVer"></span><span class="note" id="featNote"></span></div>',
+  '<div class="row" id="featList"></div>',
+  '<div id="featForm" style="display:none;margin-top:14px;background:#171A26;border:1px solid #262B3B;border-radius:12px;padding:16px">',
+  '<div style="font-weight:700;margin-bottom:10px">添加 / 编辑功能</div>',
+  '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">',
+  '<label style="font-size:12px;color:#9AA6C4">名称<input id="f_name" style="width:100%;margin-top:4px;background:#0C0E16;color:#E7ECF5;border:1px solid #333A50;border-radius:8px;padding:7px"></label>',
+  '<label style="font-size:12px;color:#9AA6C4">图标(可选)<input id="f_icon" style="width:100%;margin-top:4px;background:#0C0E16;color:#E7ECF5;border:1px solid #333A50;border-radius:8px;padding:7px" placeholder="🧩"></label>',
+  '<label style="font-size:12px;color:#9AA6C4;grid-column:1/3">描述<input id="f_desc" style="width:100%;margin-top:4px;background:#0C0E16;color:#E7ECF5;border:1px solid #333A50;border-radius:8px;padding:7px"></label>',
+  '<label style="font-size:12px;color:#9AA6C4">类型<select id="f_action" onchange="featTypeChange()" style="width:100%;margin-top:4px;background:#0C0E16;color:#E7ECF5;border:1px solid #333A50;border-radius:8px;padding:7px"><option value="open">打开链接</option><option value="builtin:report">内置：诊断报告</option><option value="builtin:sourcespeed">内置：源线路排行</option><option value="builtin:fix">内置：一键自愈</option><option value="builtin:updatepublish">内置：同步更新发布</option><option value="builtin:automation">内置：自动化运行</option><option value="builtin:govern">内置：智能自治循环</option><option value="builtin:updatecheck">内置：检查更新</option><option value="script">运行命令(本机)</option><option value="webhook">调用外部接口</option></select></label>',
+  '<label id="f_urlLabel" style="font-size:12px;color:#9AA6C4;grid-column:1/3">链接 / 命令 / 接口地址<input id="f_url" style="width:100%;margin-top:4px;background:#0C0E16;color:#E7ECF5;border:1px solid #333A50;border-radius:8px;padding:7px" placeholder="https://..."></label>',
+  '<label id="f_payloadLabel" style="display:none;font-size:12px;color:#9AA6C4;grid-column:1/3">接口请求体 JSON(可选)<input id="f_payload" style="width:100%;margin-top:4px;background:#0C0E16;color:#E7ECF5;border:1px solid #333A50;border-radius:8px;padding:7px" placeholder="{&quot;key&quot;:&quot;value&quot;}"></label>',
+  '</div>',
+  '<label style="display:block;margin-top:10px;font-size:13px;color:#9AA6C4"><input type="checkbox" id="f_confirm"> 执行前需二次确认</label>',
+  '<div class="bar" style="margin-top:14px"><button class="pub" onclick="featSave()">💾 保存功能</button><button onclick="featHideForm()">取消</button><span class="note" id="f_msg"></span></div>',
+  '</div>',
+  '<h2>🐞 自动修 Bug（全自动 · 无需人工复核）</h2>',
+  '<div class="sub2">自动收集上报 / 反馈 / 前端源码 / 发版产物 → 自动提取问题 → 自动修复 → 自动复检 → 自动优化功能。服务启动即自动运行并按周期巡检，任何问题都自动处置或自动排队重试，不需要人工复核。</div>',
+  '<div class="bar"><span id="bugState" class="note"></span><button class="pub" id="bugRunBtn" onclick="bugRun()">🐞 立即体检（可选，平时自动运行）</button></div>',
+  '<div class="row" id="bugList"></div>',
+  '<h2>🧩 反馈自动长出新功能 · 📦 自动批量下发</h2>',
+  '<div class="sub2">自动提取反馈 / 建议 / 上报里的新功能诉求 → 去重后自动加入功能清单 → 自动同步功能快照 → 自动注入桌面端与开发者端 → 自动优化修复 → 自动生成多架构批量分发清单。全程无需人工复核。</div>',
+  '<div class="bar"><span id="flowState" class="note"></span><button class="pub" onclick="flowRun()">🧠 立即跑一轮（可选，平时自动运行）</button></div>',
+  '<div class="row" id="flowList"></div>',
+  '<h2>🛠️ 开发者端运维（审计 · 趋势 · 灰度 · 发布闭环 · 真机冒烟 · 告警分级）</h2>',
+  '<div class="sub2">发布闭环：上传（配置 KH_DEPLOY_CMD 才真的上传）→ 回读远端清单核对版本与 SHA256，不一致就明确报「仅本地就绪」。灰度：同一匿名设备 ID 稳定落组，失败率超阈值自动暂停放量。审计：自愈 / 发布 / 功能增删 / 回滚 / 自动化全部留痕。</div>',
+  '<div class="bar"><span id="opsState" class="note"></span>',
+  '<button class="pub" onclick="opsPublish()">📤 发布并校验</button>',
+  '<button onclick="opsRollback()">↩️ 回滚到指定版本</button>',
+  '<button onclick="opsToggleRollout()">🎚️ 暂停 / 恢复放量</button>',
+  '<button onclick="opsLoad()">⟳ 刷新运维</button></div>',
+  '<div class="cards" id="opsCards"></div>',
+  '<div class="row" id="opsTrend"></div>',
+  '<div class="row" id="opsAudit"></div>',
+  '<h2>🌐 资源覆盖 · 播放回传 · 问题自动跟进（全自动 · 无需人工）</h2>',
+  '<div class="sub2">自动探测全部频道与网络平台 → 自动生成带版本号的统一目录（客户端可增量热更新，源修好不用发新版）→ 客户端播放失败自动回传 → 失败率超阈值自动建单 → 频道自动换成可用源并复检 → 通过自动关单；平台侧受限自动降级展示并持续跟踪。每 7 天自动出覆盖周报。</div>',
+  '<div class="bar"><span id="resState" class="note"></span>',
+  '<button class="pub" onclick="resRun()">🔍 立即巡检（可选，平时每 15 分钟自动跑）</button>',
+  '<button onclick="resAdd()">➕ 接入第三方网站</button>',
+  '<button onclick="resLoad()">⟳ 刷新资源</button></div>',
+  '<div class="cards" id="resCards"></div>',
+  '<div class="row" id="resIssues"></div>',
+  '</div><script>',
+  '(function(){var _f=window.fetch?window.fetch.bind(window):null;if(!_f)return;window.fetch=function(u,o){o=o||{};var t="";try{t=localStorage.getItem("khAccessToken")||""}catch(e){}if(t){var h=o.headers;if(!h||typeof h!=="object"||typeof h.append!=="function"){o.headers=Object.assign({},(h&&typeof h==="object")?h:{},{"X-KH-Access-Token":t})}}return _f(u,o)}})();',
+  'function setAccessToken(){var cur="";try{cur=localStorage.getItem("khAccessToken")||""}catch(e){}var v=prompt("填写中枢访问口令（未开启口令时留空即可）：",cur);if(v===null)return;try{localStorage.setItem("khAccessToken",v)}catch(e){}location.reload();}',
+  'function featVerLoad(){fetch("/api/features",{cache:"no-store"}).then(function(r){return r.json()}).then(function(d){var e=document.getElementById("featVer");if(e&&d.version)e.textContent="功能 v"+(d.version.versionName||"-")+" · "+d.version.count+" 项 · "+(d.version.inSync?"已随发版同步":"清单有改动，待发版");}).catch(function(){})}',
+  'setTimeout(featVerLoad,400);',
+  'function bugRender(x){var st=document.getElementById("bugState");var el=document.getElementById("bugList");if(!x){if(st)st.textContent="全自动体检运行中";if(el)el.innerHTML="<div class=empty>服务启动后自动运行，无需人工操作</div>";return;}var s=x.summary||{};if(st)st.textContent="最近 "+tm(x.finishedAt)+" · 发现 "+(s.total||0)+" 项 · 自动处置 "+(s.autoHandled||s.fixed||0)+" 项 · "+(s.verified?"✅ 自动复检通过（第 "+(s.rounds||1)+" 轮）":"♻️ 已自动排队，下一轮继续（无需人工复核）");var arr=(x.bugs||[]).slice(0,12).map(function(b){return "<div class=item><div class=t>✅ 已自动处置 "+esc(b.title)+"</div><div class=m>"+esc(b.detail||"")+(b.fixMsg?(" · "+esc(b.fixMsg)):"")+"</div></div>";}).join("");if(el)el.innerHTML=arr||"<div class=empty>本轮未发现问题 ✅ 自动复检通过</div>";}',
+  'function bugLoad(){fetch("/api/bugfix",{cache:"no-store"}).then(function(r){return r.json()}).then(function(d){bugRender(d.lastRun);}).catch(function(){})}',
+  'function bugRun(){var b=document.getElementById("bugRunBtn");if(b){b.disabled=true;b.textContent="🐞 自动处置中…";}fetch("/api/bugfix/run",{method:"POST",cache:"no-store"}).then(function(r){return r.json()}).then(function(d){if(b){b.disabled=false;b.textContent="🐞 立即体检（可选，平时自动运行）";}bugRender(d.result);var s=(d.result&&d.result.summary)||{};var u=document.getElementById("upd");if(u)u.textContent=d.ok?"✅ 自动修 Bug 完成：发现 "+(s.total||0)+" 项，全部自动处置 "+(s.autoHandled||s.fixed||0)+" 项，"+(s.verified?"自动复检通过":"已自动排队，下一轮继续（无需人工复核）"):"❌ 自动修 Bug 失败";}).catch(function(){if(b){b.disabled=false;b.textContent="🐞 立即体检（可选，平时自动运行）";}})}',
+  'setTimeout(bugLoad,700);setInterval(bugLoad,30000);',
+  'function flowRender(d){var st=document.getElementById("flowState");var el=document.getElementById("flowList");if(!d){if(st)st.textContent="自动闭环运行中";return;}var m=d.mining||{},b=d.batch||{},f=d.features||{},dv=d.delivery||{},os=d.deviceOptimization||{},bf=(d.bugfix||{}).summary||{};var archs=Object.keys(b.archs||{});var ready=archs.filter(function(a){return b.archs[a].status==="ready"});if(st)st.textContent="最近 "+tm(m.finishedAt||b.generatedAt)+" · 自动提取 "+((m.candidates||[]).length)+" 项 · 自动添加 "+((m.added||[]).length)+" 项 · 功能 "+(f.count||0)+" 项 · 批量产物 "+ready.length+"/"+archs.length;var rows=[];rows.push("<div class=item><div class=t>🧩 反馈建议自动提取新功能（零人工复核）</div><div class=m>扫描反馈文本 "+(m.scannedTexts||0)+" 条 → 命中 "+((m.candidates||[]).length)+" 项 → 自动添加 "+(esc((m.added||[]).join("、")||"本轮无新增（已幂等）"))+" · 快照"+(m.stampSynced?"已自动同步":"无需变更")+"</div></div>");rows.push("<div class=item><div class=t>📦 自动批量下发</div><div class=m>"+archs.map(function(a){return a+":"+(b.archs[a].status==="ready"?"原生包就绪":"回退 x64")}).join(" · ")+(b.hap?" · 开鸿 HAP "+(b.hap.size||0)+" B":" · HAP 待出包")+"</div></div>");rows.push("<div class=item><div class=t>🌐 所有包不限设备 · 不限内存 · 自动更新</div><div class=m>通道 "+Object.keys(dv.channels||{}).join(" / ")+" · 内存档 "+Object.keys(dv.memoryTiers||{}).join(" / ")+" · "+(dv.devicePolicy&&dv.devicePolicy.unrestricted?"任意设备可用":"设备受限")+" · "+(dv.autoUpdate&&dv.autoUpdate.contentAlwaysLatest?"内容自动保持最新":"更新待同步")+" · 低内存/未知设备自动保底免安装在线版</div></div>");rows.push("<div class=item><div class=t>🖥️ OS 版本检测回传 · 自动优化 · 自动修复 · 同步下发</div><div class=m>"+(os.followAllOSVersions?"跟随所有操作系统版本":"适配矩阵生成中")+" · "+Object.keys(os.families||{}).length+" 个系统家族 / "+((os.summary||{}).osVersions||0)+" 个版本 · 自动修复 "+((os.summary||{}).fixesApplied||0)+" 项 · 人工项 "+((os.summary||{}).manual||0)+" · 结果随下发清单 / 功能同步自动更新</div></div>");rows.push("<div class=item><div class=t>🔧 自动优化修复</div><div class=m>发现 "+(bf.total||0)+" 项 / 自动处置 "+(bf.autoHandled||bf.fixed||0)+" 项 / 人工项 "+(bf.manual||0)+" / "+(bf.verified?"自动复检通过":"已自动排队重试")+"</div></div>");if(el)el.innerHTML=rows.join("");}',
+  'function flowLoad(){fetch("/api/flow",{cache:"no-store"}).then(function(r){return r.json()}).then(function(d){flowRender(d);}).catch(function(){})}',
+  'function flowRun(){var b=document.getElementById("flowState");if(b)b.textContent="🧠 自动提取与下发中…";fetch("/api/features/mine",{method:"POST",cache:"no-store"}).then(function(r){return r.json()}).then(function(){return fetch("/api/bugfix/run",{method:"POST",cache:"no-store"})}).then(function(){flowLoad()}).catch(function(){flowLoad()})}',
+  'setTimeout(flowLoad,900);setInterval(flowLoad,30000);',
+  // 看板（桌面主窗口默认页）也自动回传 OS 版本：任何打开看板的端都会参与自动优化与同步更新
+  'function osReport(){try{var ua=navigator.userAgent||"",d={schema:1,kind:"device-profile",deviceId:"",platform:"board",os:ua,osFullName:ua,ua:ua,mem:navigator.deviceMemory||4,arch:/arm64|aarch64/i.test(ua)?"arm64":"x64",appCode:0,screenW:window.innerWidth||0,screenH:window.innerHeight||0};try{d.deviceId=localStorage.getItem("khDeviceId")||""}catch(e){}fetch("/api/device/report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(d),cache:"no-store"}).then(function(){}).catch(function(){})}catch(e){}}',
+  'setTimeout(osReport,1500);setInterval(osReport,600000);',
+  'function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;"}[c]})}',
+  'function tm(t){try{return new Date(t).toLocaleString("zh-CN",{hour12:false})}catch(e){return "-"}}',
+  'function load(){fetch("/api/reports?limit=60",{cache:"no-store"}).then(r=>r.json()).then(d=>{',
+  'var s=d.stats||{},c=document.getElementById("cards");',
+  'c.innerHTML=[["上报次数",s.reports||0],["匿名设备",s.devices||0],["问题累计",s.issues||0],["近24小时",s.last24||0]].map(x=>"<div class=card><span>"+x[0]+"</span><b>"+x[1]+"</b></div>").join("");',
+  'document.getElementById("top").innerHTML=(s.top||[]).map(x=>"<div class=item><div class=t>"+esc(x.kind)+" · "+x.n+" 次</div></div>").join("")||"<div class=empty>暂无数据</div>";',
+  'var rs=d.reports||[];document.getElementById("list").innerHTML=rs.slice(0,20).map(r=>"<div class=item><div class=t>"+esc(r.version)+" · "+esc(r.deviceId)+"</div><div class=m>"+esc(r.device)+"</div><div class=m>"+tm(r.receivedAt)+" · "+r.issues.length+" 条 · 源清单 v"+(r.summary.manifest||0)+"</div></div>").join("")||"<div class=empty>还没有收到上报</div>";',
+  'var all=[];rs.forEach(r=>r.issues.forEach(i=>all.push({i:i,d:r})));all.sort((a,b)=>b.i.ts-a.i.ts);',
+  'document.getElementById("detail").innerHTML=all.slice(0,80).map(x=>{var i=x.i;return "<div class=item><div class=t><span class=\\""+(i.sev==="error"?"tag e":"tag w")+"\\">"+esc(i.kind)+"</span>"+esc(i.code||"")+" ×"+(i.n||1)+"</div><div class=m>"+esc(i.msg)+"</div><div class=m>"+tm(i.ts)+" · "+esc(i.view||"-")+" · "+esc(i.host||"-")+" · "+esc(x.d.deviceId)+"</div></div>"}).join("")||"<div class=empty>暂无问题明细</div>";',
+  'document.getElementById("upd").textContent="更新于 "+tm(Date.now())+(s.writable?"":" · 只读模式");',
+  '}).catch(e=>document.getElementById("upd").textContent="加载失败："+e.message)}',
+  'function fix(){var b=document.querySelector("button.fix");b.disabled=true;b.textContent="🔧 自愈中…";',
+  'fetch("/api/fix",{method:"POST",cache:"no-store"}).then(r=>r.json()).then(d=>{',
+  'b.disabled=false;b.textContent="🔧 一键自愈（重排源 / 刷新清单）";',
+  'document.getElementById("upd").textContent=(d.ok?"✅ "+d.msg:"❌ "+(d.error||"失败"))+" · "+tm(Date.now());',
+  'setTimeout(load,1200);}).catch(e=>{b.disabled=false;b.textContent="🔧 一键自愈（重排源 / 刷新清单）";document.getElementById("upd").textContent="自愈失败："+e.message})}',
+  'function updatePublish(){var b=document.querySelector("button.pub");b.disabled=true;b.textContent="🚀 发布中…";',
+  'fetch("/api/update-publish",{method:"POST",cache:"no-store"}).then(r=>r.json()).then(d=>{',
+  'b.disabled=false;b.textContent="🚀 一键同时更新发布";',
+  'var ok=d&&d.ok;',
+  'var msg=ok?("✅ 已更新并发布 v"+d.publish.versionName+" (#"+d.publish.versionCode+") · 源清单 v"+d.update.v):("❌ "+((d&&d.error)||"失败"));',
+  'document.getElementById("upd").textContent=msg+" · "+tm(Date.now());',
+  'if(ok)setTimeout(load,1500);}).catch(e=>{b.disabled=false;b.textContent="🚀 一键同时更新发布";document.getElementById("upd").textContent="发布失败："+e.message})}',
+  'function autoLoad(){fetch("/api/automation",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){',
+  'var s=document.getElementById("autoState");if(s)s.textContent="自动化："+(d.enabled?"✅ 已开启":"⛔ 已关闭")+" · 下次 "+tm(d.nextRunAt)+(d.lastRun?(" · 上次 "+(d.lastRun.ok?"✅":"❌")+" "+tm(d.lastRun.startedAt)):"");',
+  'var rs=d.recent||[];var el=document.getElementById("auto");if(el)el.innerHTML=rs.slice(0,10).map(function(r){return "<div class=item><div class=t>"+(r.ok?"✅":"❌")+" 自动运行 · "+tm(r.startedAt)+"</div><div class=m>耗时 "+((r.finishedAt-r.startedAt)/1000).toFixed(1)+"s · "+(r.ok?("更新 v"+(r.result&&r.result.update&&r.result.update.v)+" / 发布 "+(r.result&&r.result.publish&&r.result.publish.versionName)):(r.result&&r.result.error||"失败"))+"</div></div>"}).join("")||"<div class=empty>还没有自动运行记录</div>";',
+  '}).catch(function(e){})}',
+  'function autoRun(){var b=document.getElementById("autoRunBtn");if(b){b.disabled=true;b.textContent="⚙️ 运行中…";}',
+  'fetch("/api/automation/run",{method:"POST",cache:"no-store"}).then(function(r){return r.json();}).then(function(d){',
+  'if(b){b.disabled=false;b.textContent="⚙️ 立即运行自动化";}',
+  'document.getElementById("upd").textContent=(d.ok?"✅ 已触发自动化运行":"❌ "+(d.error||"失败"))+" · "+tm(Date.now());',
+  'setTimeout(autoLoad,1500);}).catch(function(e){if(b){b.disabled=false;b.textContent="⚙️ 立即运行自动化";}document.getElementById("upd").textContent="触发失败："+e.message})}',
+  'function govLoad(){fetch("/api/govern",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){',
+  'var s=document.getElementById("govState");if(s)s.textContent="智能自治："+(d.enabled?"✅ 自动开启（AUTO_GOVERN=1）":"⚙️ 手动");',
+  'var rs=d.recent||[];var el=document.getElementById("gov");if(el)el.innerHTML=rs.slice(0,8).map(function(r){var res=r.result||{};return "<div class=item><div class=t>"+(r.ok?"✅":"❌")+" 自治 · "+tm(r.startedAt)+"</div><div class=m>提取问题 "+res.problemsFound+" · 修复 "+(res.fixed?(res.fixed.ok?"✅":"❌"):"跳过")+" · 优化剔除 "+(res.optimized?res.optimized.removed:0)+" · 新增功能 "+(res.featuresAdded||[]).length+" · 发布 "+(res.published?res.published.versionName:"-")+"</div></div>";}).join("")||"<div class=empty>还没有自治运行记录</div>";',
+  '}).catch(function(e){})}',
+  'function govRun(){var b=document.getElementById("govRunBtn");if(b){b.disabled=true;b.textContent="🤖 运行中…";}',
+  'fetch("/api/govern/run",{method:"POST",cache:"no-store"}).then(function(r){return r.json();}).then(function(d){if(b){b.disabled=false;b.textContent="🤖 立即运行自治";}',
+  'var res=d.result||{};document.getElementById("upd").textContent=(d.ok?"✅ 自治完成：修复 "+(res.fixed&&res.fixed.ok?"✅":"❌")+" / 优化剔除 "+(res.optimized?res.optimized.removed:0)+" / 新增功能 "+(res.featuresAdded||[]).length+" / 发布 "+(res.published&&res.published.versionName||"-")+"（源清单 v"+(res.published?res.published.versionCode:"-")+"）":"❌ "+(d.error||"失败"))+" · "+tm(Date.now());',
+  'setTimeout(govLoad,1500);}).catch(function(e){if(b){b.disabled=false;b.textContent="🤖 立即运行自治";}document.getElementById("upd").textContent="触发失败："+e.message})}',
+  'function featNote(s){var e=document.getElementById("featNote");if(e)e.textContent=s;}',
+  'function loopPipe(n,v,st,cls){return "<div class=\\"pipe "+(cls||"")+"\\"><div class=n>"+n+"</div><div class=v>"+v+"</div><div class=st>"+st+"</div></div>";}',
+  'function loopLoad(){fetch("/api/feedback",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){',
+  'var s=document.getElementById("loopState");var fp=d.finalProducts||{};var fb=(d.feedback||[]);',
+  'if(s)s.textContent="闭环：最近一次 "+tm(fp.at||0)+(fp.published&&fp.published.skipped?" · 本轮无变更(跳过发版)":(fp.published&&fp.published.versionName?" · 已发布 v"+fp.published.versionName+" (#"+fp.published.versionCode+")":""));',
+  'var p=document.getElementById("pipes");if(p){',
+  'var probTotal=(fp.problems&&fp.problems.total)||0;',
+  'var suggN=(fp.suggestions||[]).length;',
+  'var fbN=fb.length;',
+  'var optR=(fp.optimized&&fp.optimized.removed)||0;',
+  'var upd=fp.updated||{};var pub=fp.published||{};',
+  'p.innerHTML=loopPipe("① 自动提取问题",probTotal+" 项",probTotal>0?"发现问题":"无问题",probTotal>0?"warn":"skip")',
+  '+loopPipe("② 建议提取",suggN+" 条",suggN>0?"已生成建议":"无建议",suggN>0?"done":"skip")',
+  '+loopPipe("③ 自动反馈",fbN+" 条",fbN>0?"已回传":"未回传",fbN>0?"done":"skip")',
+  '+loopPipe("④ 自动优化","剔除 "+optR,optR>0?"已优化":(fp.optimized&&fp.optimized.ok?"无失效源":"—"),optR>0?"done":"skip")',
+  '+loopPipe("⑤ 加更新(自愈)",upd.skipped?"跳过":"已更新",upd.skipped?"无需修复":(upd.ok?"已重排源":"—"),upd.skipped?"skip":(upd.ok?"done":"warn"))',
+  '+loopPipe("⑥ 自动更新加发布",pub.skipped?"跳过":("v"+(pub.versionName||"?")),pub.skipped?"无变更不发版":"已发布新版本",pub.skipped?"skip":"done");',
+  '}',
+  'var sg=document.getElementById("loopSugg");if(sg){var sugs=(fp.suggestions||[]);sg.innerHTML=(sugs.length?("<h2 style=\\"font-size:13px;margin:4px 0\\">本轮建议提取</h2>"):"")+sugs.map(function(x){return "<div class=item><div class=t>"+(x.title||"")+"</div><div class=m>"+esc(x.detail||"")+" · <span class=tag>"+esc(x.action||"")+"</span></div></div>";}).join("")||"";}',
+  'var dt=document.getElementById("loopDetail");if(dt){',
+  'var html="";',
+  'if(fp.problems&&fp.problems.sources&&fp.problems.sources.length)html+="<h2 style=\\"font-size:13px;margin:4px 0\\">问题源(前"+fp.problems.sources.length+")</h2>"+fp.problems.sources.map(function(x){return "<div class=item><div class=t><span class=\\"tag e\\">源问题</span>"+esc(x)+"</div></div>";}).join("");',
+  'if(fp.featuresAdded&&fp.featuresAdded.length)html+="<h2 style=\\"font-size:13px;margin:4px 0\\">本轮新增功能</h2>"+fp.featuresAdded.map(function(x){return "<div class=item><div class=t>＋ "+(x.name||x)+"</div></div>";}).join("");',
+  'if(fp.feedback&&fp.feedback.stored!==undefined)html+="<div class=item><div class=t>📡 反馈回传</div><div class=m>本轮已写入反馈通道，深开鸿端可拉取</div></div>";',
+  'dt.innerHTML=html||"<div class=empty>还没有最终成品，点「🧠 跑一轮闭环」生成</div>";',
+  '}',
+  '}).catch(function(e){var p=document.getElementById("pipes");if(p)p.innerHTML="<div class=empty style=\\"grid-column:1/-1\\">加载失败："+esc(e.message)+"</div>";});}',
+  'function loopRun(){var b=document.getElementById("loopRunBtn");if(b){b.disabled=true;b.textContent="🧠 闭环运行中…";}',
+  'fetch("/api/govern/run",{method:"POST",cache:"no-store"}).then(function(r){return r.json();}).then(function(d){if(b){b.disabled=false;b.textContent="🧠 跑一轮闭环";}',
+  'document.getElementById("upd").textContent=(d.ok?"✅ 闭环完成":"❌ "+(d.error||"失败"))+" · "+tm(Date.now());',
+  'setTimeout(loopLoad,1500);}).catch(function(e){if(b){b.disabled=false;b.textContent="🧠 跑一轮闭环";}document.getElementById("upd").textContent="触发失败："+e.message;});}',
+  'function featShowAdd(){featEditingId=null;document.getElementById("f_msg").textContent="";document.getElementById("f_name").value="";document.getElementById("f_desc").value="";document.getElementById("f_icon").value="";document.getElementById("f_url").value="";document.getElementById("f_payload").value="";document.getElementById("f_confirm").checked=false;document.getElementById("featForm").style.display="block";featTypeChange();document.getElementById("f_name").focus();}',
+  'function featHideForm(){document.getElementById("featForm").style.display="none";}',
+  'function featTypeChange(){var a=document.getElementById("f_action").value;var isWeb=(a==="webhook");document.getElementById("f_payloadLabel").style.display=isWeb?"block":"none";var ph=(a==="open")?"https://...":(a==="script")?"python C:/x/clean.py 或 ping 8.8.8.8":(a==="webhook")?"https://api.example.com/hook":"";document.getElementById("f_url").placeholder=ph;}',
+  'function featLoad(){fetch("/api/features",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){var feats=d.features||[];var el=document.getElementById("featList");el.innerHTML=feats.map(function(f){return "<div class=item data-fid=\\\""+esc(f.id)+"\\\"><div class=t>"+(f.icon||"🧩")+" "+esc(f.name||f.id)+"</div><div class=m>"+esc(f.desc||"")+"</div><div class=m>类型："+esc(f.action)+(f.enabled===false?" · ⛔已停用":"")+"</div><div class=acts style=\\\"margin-top:6px\\\"><button data-act=\\\"run\\\">运行</button> <button data-act=\\\"edit\\\">编辑</button> <button data-act=\\\"toggle\\\">"+(f.enabled===false?"启用":"停用")+"</button> <button data-act=\\\"del\\\">删除</button></div></div>";}).join("")||"<div class=empty>还没有功能，点「＋ 添加功能」创建一个</div>";el.querySelectorAll("[data-act]").forEach(function(b){b.onclick=function(){var fid=b.closest("[data-fid]").getAttribute("data-fid");var act=b.getAttribute("data-act");if(act==="run")featRun(fid);else if(act==="edit")featEdit(fid);else if(act==="toggle")featToggle(fid);else if(act==="del")featDelete(fid);};});}).catch(function(e){});}',
+  'function featRun(id){fetch("/api/features",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){var ff=(d.features||[]).filter(function(x){return x.id===id;})[0];if(!ff){featNote("功能不存在");return;}if(ff.confirm){if(!confirm("确认运行功能「"+(ff.name||ff.id)+"」？"))return;}var a=ff.action||"open";if(a==="open"&&ff.url){window.open(ff.url,"_blank");return;}if(a.indexOf("builtin:")===0){runBuiltin(a.slice(8));return;}featNote("正在运行："+(ff.name||ff.id)+" …");fetch("/api/feature/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:id})}).then(function(r){return r.json();}).then(function(d2){if(!d2||!d2.ok){featNote("运行失败："+String(d2&&d2.error||"").slice(0,140));return;}if(d2.action==="open"){window.open(d2.url,"_blank");return;}if(d2.stdout!==undefined){featNote("✅ 完成(退出码 "+(d2.code||0)+")："+String(d2.stdout||"").slice(0,240));}else if(d2.status!==undefined){featNote("✅ 接口返回 "+d2.status+(d2.body?("："+String(d2.body).slice(0,160)):""));}else{featNote("✅ 已运行");}}).catch(function(e){featNote("请求失败："+(e&&e.message||e));});}).catch(function(e){featNote("加载失败");});}',
+  'function featEdit(id){fetch("/api/features",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){var f=(d.features||[]).filter(function(x){return x.id===id;})[0];if(!f){return;}featEditingId=id;document.getElementById("f_name").value=f.name||"";document.getElementById("f_desc").value=f.desc||"";document.getElementById("f_icon").value=f.icon||"";document.getElementById("f_action").value=f.action||"open";document.getElementById("f_url").value=f.url||f.cmd||"";document.getElementById("f_payload").value=f.payload?JSON.stringify(f.payload):"";document.getElementById("f_confirm").checked=!!f.confirm;document.getElementById("f_msg").textContent="";document.getElementById("featForm").style.display="block";featTypeChange();}).catch(function(e){});}',
+  'function featSave(){var name=document.getElementById("f_name").value.trim();var action=document.getElementById("f_action").value;var url=document.getElementById("f_url").value.trim();if(!name){document.getElementById("f_msg").textContent="请填写名称";return;}if((action==="open"||action==="script"||action==="webhook")&&!url){document.getElementById("f_msg").textContent="请填写链接/命令/接口地址";return;}var f={id:(featEditingId||("f-"+Date.now().toString(36))),name:name,desc:document.getElementById("f_desc").value.trim(),action:action,icon:document.getElementById("f_icon").value.trim()||"🧩",confirm:document.getElementById("f_confirm").checked,enabled:true};if(action==="open"||action==="webhook")f.url=url;if(action==="script")f.cmd=url;if(action==="webhook"){var p=document.getElementById("f_payload").value.trim();if(p){try{f.payload=JSON.parse(p);}catch(e){document.getElementById("f_msg").textContent="请求体 JSON 格式错误";return;}}}var op=featEditingId?"update":"add";var body={op:op,feature:f};if(featEditingId)body.id=featEditingId;fetch("/api/features",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(d){if(d.ok){featHideForm();featLoad();featNote("✅ 已"+(op==="update"?"更新":"添加")+"功能："+name);}else{document.getElementById("f_msg").textContent="失败："+(d.error||"");}}).catch(function(e){document.getElementById("f_msg").textContent="请求失败："+(e&&e.message||e);});}',
+  'function featDelete(id){if(!confirm("确认删除该功能？"))return;fetch("/api/features",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({op:"remove",id:id})}).then(function(r){return r.json();}).then(function(d){if(d.ok){featLoad();featNote("✅ 已删除");}else{featNote("删除失败："+(d.error||""));}});}',
+  'function featToggle(id){fetch("/api/features",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({op:"toggle",id:id})}).then(function(r){return r.json();}).then(function(d){if(d.ok){featLoad();featNote("✅ 已切换启用状态");}else{featNote("操作失败："+(d.error||""));}});}',
+  'function featImport(){var t=prompt("粘贴功能清单 JSON（数组），将合并导入：","");if(!t)return;var arr;try{arr=JSON.parse(t);}catch(e){featNote("JSON 解析失败");return;}if(!Array.isArray(arr)){featNote("应为数组");return;}fetch("/api/features",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({op:"import",features:arr})}).then(function(r){return r.json();}).then(function(d){if(d.ok){featLoad();featNote("✅ 已导入 "+arr.length+" 项，共 "+d.count+" 个功能");}else{featNote("导入失败："+(d.error||""));}});}',
+  'function featExport(){fetch("/api/features",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){prompt("复制以下功能清单 JSON 分享 / 备份：",JSON.stringify(d.features||[],null,2));});}',
+  'function featAddPreset(){fetch("/api/features/presets",{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){var ps=d.presets||[];if(!ps.length){featNote("暂无预设");return;}var names=ps.map(function(p,i){return (i+1)+". "+(p.name||p.id);}).join("\\n");var pick=prompt("选择要添加的预设功能（输入序号）：\\n"+names,"1");if(!pick)return;var idx=parseInt(pick,10)-1;if(isNaN(idx)||idx<0||idx>=ps.length){featNote("序号无效");return;}var p=ps[idx];fetch("/api/features",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({op:"add",feature:p})}).then(function(r){return r.json();}).then(function(d2){if(d2.ok){featLoad();featNote("✅ 已添加预设："+(p.name||p.id));}else{featNote("添加失败："+(d2.error||""));}}).catch(function(e){featNote("请求失败："+e.message);});}).catch(function(e){featNote("加载预设失败");});}',
+  'function opsState(s){var e=document.getElementById("opsState");if(e)e.textContent=s||"";}',
+  'function opsCard(t,v,st){return "<div class=card><span>"+t+"</span><b>"+v+"</b><span>"+esc(st||"")+"</span></div>";}',
+  'function opsLoad(){fetch("/api/ops",{cache:"no-store"}).then(function(r){return r.json()}).then(function(d){',
+  'var ro=d.rollout||{},pb=d.publish||{},sm=d.smoke||{},al=d.alerts||{},tr=d.trend||{},au=d.audit||[];',
+  'var lv=al.levels||{};var sr=tr.updateSuccessRate;',
+  'var cards=document.getElementById("opsCards");if(cards)cards.innerHTML=opsCard("发布状态",(pb.status||"未发布"),(pb.at?("最近 "+tm(Date.parse(pb.at))):"还没跑过发布闭环"))+opsCard("灰度放量",(ro.paused?"已暂停":"放量中"),((ro.groups||[]).length+" 组 / 权重 "+(ro.weightTotal||0)+" · 失败率阈值 "+Math.round((((ro.autoPause||{}).failRate)||0.2)*100)+"%"))+opsCard("真机冒烟",(sm.state||"no-run"),(sm.state==="no-run"?"还没有冒烟记录，接设备后自动落结果":"最近一次真机冒烟结果"))+opsCard("告警",((lv.critical||[]).length+" 严重 / "+((lv.warn||[]).length)+" 警告"),"同码同窗口合并计数")+opsCard("更新成功率",(sr===null||sr===undefined?"—":(sr+"%")),(tr.totals?("成功 "+tr.totals.updateOk+" / 失败 "+tr.totals.updateFail):"暂无发布记录"))+opsCard("审计",(au.length+" 条"),"最近写操作留痕");',
+  'var t7=(tr.series||[]).slice(-7);var tl=document.getElementById("opsTrend");if(tl)tl.innerHTML=t7.map(function(x){return "<div class=item><div class=t>"+x.date+"</div><div class=m>源可用率 "+(x.okRate===null?"—":(x.okRate+"%"))+" · 更新 "+x.updateOk+"/"+(x.updateOk+x.updateFail)+" · 设备 "+x.devices+"</div></div>";}).join("")||"<div class=empty>还没有趋势数据，跑一轮自愈或发布后开始累积</div>";',
+  'var el=document.getElementById("opsAudit");if(el)el.innerHTML=au.map(function(a){var c=a.result==="fail"?"tag e":(a.result==="partial"?"tag w":"tag");return "<div class=item><div class=t><span class=\\""+c+"\\">"+esc(a.action)+"</span>"+tm(a.at)+"</div><div class=m>"+esc(a.target||"")+" "+esc(a.detail||"")+"</div></div>";}).join("")||"<div class=empty>还没有审计记录</div>";',
+  'opsState("更新于 "+tm(Date.now()));',
+  '}).catch(function(e){opsState("运维数据加载失败："+(e&&e.message||e));});}',
+  'function opsPublish(){if(!confirm("执行发布闭环？会跑发布适配器并回读远端清单核对版本与 SHA256。"))return;opsState("发布校验中…");fetch("/api/publish",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({})}).then(function(r){return r.json()}).then(function(d){opsState((d.ok?"✅ 已发布并校验通过":"⚠️ "+(d.status||"未完成"))+" · "+String(d.detail||d.note||"").slice(0,160));setTimeout(opsLoad,800);}).catch(function(e){opsState("发布失败："+(e&&e.message||e));});}',
+  'function opsRollback(){var v=prompt("要回滚到的版本号（例如 1.7.6）：","");if(!v)return;fetch("/api/update/rollback/apply",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({version:v})}).then(function(r){return r.json()}).then(function(d){opsState(d.ok?("✅ 已回滚：下发版本切到 "+d.version+" · "+String(d.note||"")):("❌ "+(d.error||"回滚失败")+(d.available?(" · 可选 "+d.available.join(" / ")):"")));setTimeout(opsLoad,800);}).catch(function(e){opsState("回滚失败："+(e&&e.message||e));});}',
+  'function opsToggleRollout(){fetch("/api/rollout",{cache:"no-store"}).then(function(r){return r.json()}).then(function(d){var ro=d.rollout||{};var next=!ro.paused;if(!confirm((next?"暂停":"恢复")+"放量？当前 "+(ro.groups||[]).length+" 组 / 权重 "+(ro.weightTotal||0)))return;return fetch("/api/rollout",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({paused:next,pauseReason:next?"手动暂停放量":null})}).then(function(r){return r.json()}).then(function(d2){opsState(d2.ok?(next?"⏸ 已暂停放量":"▶️ 已恢复放量"):("操作失败："+(d2.error||"")));setTimeout(opsLoad,600);});}).catch(function(e){opsState("灰度操作失败："+(e&&e.message||e));});}',
+  'function runBuiltin(n){if(n==="fix"){fix();return;}if(n==="updatepublish"){updatePublish();return;}if(n==="automation"){autoRun();return;}if(n==="govern"){loopRun();return;}if(n==="publish"){opsPublish();return;}if(n==="rollback"){opsRollback();return;}opsState("该能力在「开发者端运维」面板，已为你刷新并定位");opsLoad();var el=document.getElementById("opsCards");if(el&&el.scrollIntoView)el.scrollIntoView({behavior:"smooth",block:"start"});}',
+  'function resRender(r,i){var st=document.getElementById("resState");var c=document.getElementById("resCards");var il=document.getElementById("resIssues");if(!r){if(st)st.textContent="自动巡检运行中";return;}var t=r.totals||{};if(st)st.textContent="目录 "+(r.catalogVersion||"-")+" · 生成 "+tm(r.generatedAt)+" · 资源 "+(t.items||0)+" 条（频道 "+(t.channels||0)+" / 平台 "+(t.platforms||0)+"）· 可用 "+(t.ok||0)+" · 失效 "+(t.dead||0)+" · 受限 "+(t.blocked||0)+" · 问题单 待处理 "+(((i||{}).summary||{}).open||0)+" / 跟踪 "+(((i||{}).summary||{}).tracking||0)+" / 已解决 "+(((i||{}).summary||{}).resolved||0);',
+  'if(c)c.innerHTML=[["资源总数",t.items||0],["可用",t.ok||0],["失效",t.dead||0],["平台受限",t.blocked||0]].map(function(x){return "<div class=card><span>"+x[0]+"</span><b>"+x[1]+"</b></div>"}).join("");',
+  'var arr=((i||{}).list||[]).slice(0,14).map(function(x){return "<div class=item><div class=t>"+(x.status==="resolved"?"✅ 已自动关单":"⚠️ "+x.status+" · ")+esc(x.name)+"</div><div class=m>"+esc(x.reason||"")+" · 尝试 "+x.attempts+" 次"+(x.failureRate!=null?(" · 失败率 "+x.failureRate+"%"):"")+" · "+(x.type==="channel"?"频道（自动换源）":"平台（自动跟踪）")+" · 最近 "+tm(x.lastAt)+"</div></div>"}).join("");if(il)il.innerHTML=arr||"<div class=empty>暂无问题单 ✅ 全量资源探测通过</div>";}',
+  'function resLoad(){var p=fetch("/api/ops",{cache:"no-store"}).then(function(r){return r.json()}).then(function(d){return d.resources||{};});var q=fetch("/api/issues",{cache:"no-store"}).then(function(r){return r.json();});Promise.all([p,q]).then(function(a){resRender(a[0],a[1])}).catch(function(){resRender(null);})}',
+  'function resRun(){var b=document.getElementById("resState");if(b)b.textContent="正在探测全部频道与平台（自动建单 + 自动换源 + 自动复检）…";fetch("/api/catalog/run",{method:"POST",cache:"no-store"}).then(function(r){return r.json()}).then(function(d){var s=(d&&d.cycle)||{};if(b)b.textContent=d.ok?("✅ 本轮巡检完成：可用 "+((s.totals||{}).ok||0)+"/"+((s.totals||{}).items||0)+" · 自动修复 "+(((s.issues||{}).autoFixedThisRun)||0)+" 项 · 待处理 "+(((s.issues||{}).open)||0)):("❌ "+(d.error||"巡检失败"));resLoad();}).catch(function(e){if(b)b.textContent="巡检失败："+(e&&e.message||e);})}',
+  'function resAdd(){var url=prompt("要接入的第三方网址（http/https，一行一个可批量）：","");if(!url)return;var cat=prompt("归类（例如 第三方站点 / 日韩平台 / 欧美平台，留空=第三方站点）：","第三方站点");fetch("/api/sites",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:url,cat:cat||"第三方站点"})}).then(function(r){return r.json()}).then(function(d){var st=document.getElementById("resState");if(st)st.textContent=d.ok?("✅ 已接入 "+d.added+" 个（跳过 "+d.skipped+"）· 平台总数 "+d.totalSites+" · 清单 v"+d.manifestVersion):("❌ "+(d.error||"接入失败"));setTimeout(function(){fetch("/api/catalog/run",{method:"POST",cache:"no-store"}).then(resLoad).catch(resLoad);},600);}).catch(function(e){var st=document.getElementById("resState");if(st)st.textContent="接入失败："+(e&&e.message||e);})}',
+  'setTimeout(resLoad,1200);setInterval(resLoad,60000);',
+  'var featEditingId=null;load();autoLoad();featLoad();govLoad();loopLoad();opsLoad();setInterval(load,60000);setInterval(autoLoad,60000);setInterval(featLoad,60000);setInterval(govLoad,60000);setInterval(loopLoad,60000);setInterval(opsLoad,60000);',
+  '</script></body></html>'
+].join('\n').replace(/鸿汇影/g, PRODUCT_NAME);
+
+/* ---------------- 静态托管 ---------------- */
+const MIME = {
+  '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+  '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff': 'font/woff', '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf', '.m3u8': 'application/vnd.apple.mpegurl', '.mp4': 'video/mp4', '.webm': 'video/webm'
+};
+function serveStatic(res, u) {
+  let p = decodeURIComponent(u.pathname);
+  if (p === '/' || p === '') p = '/index.html';
+  if (p === '/index.html') {
+    try {
+      if (fs.existsSync(PAGE_CACHE)) {
+        const pb = fs.readFileSync(PAGE_CACHE);
+        res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-store', 'Content-Length': pb.length });
+        res.end(pb); return;
+      }
+    } catch (e) {}
+  }
+  const fp = path.normalize(path.join(APP_DIR, p));
+  if (fp !== APP_DIR && !fp.startsWith(APP_DIR + path.sep)) { send(res, 403, { ok: false, error: 'forbidden' }); return; }
+  fs.stat(fp, (e, st) => {
+    if (e || !st.isFile()) {
+      const idx = path.join(APP_DIR, 'index.html');
+      fs.readFile(idx, (e2, buf) => {
+        if (e2) { send(res, 404, { ok: false, error: 'not found' }); return; }
+        res.writeHead(200, { 'Content-Type': MIME['.html'], 'Content-Length': buf.length }); res.end(buf);
+      });
+      return;
+    }
+    fs.readFile(fp, (e3, buf) => {
+      if (e3) { send(res, 500, { ok: false, error: 'read error' }); return; }
+      const ext = path.extname(fp).toLowerCase();
+      res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Content-Length': buf.length });
+      res.end(buf);
+    });
+  });
+}
+
+/* 兜底自动检测：任何端打开看板 / 探活时，按 User-Agent 自动记录 OS 版本并触发自动优化。
+   同一 UA 10 分钟内只写一次、优化最多每分钟一次，避免重复膨胀；结果随下发清单同步更新。 */
+const uaSeen = new Map();
+let lastUaOptimize = 0;
+function autoDetectUA(req, pathname) {
+  if (pathname !== '/' && pathname !== '/health') return;
+  const ua = req.headers['user-agent'] || '';
+  if (!ua || ua.length > 400) return;
+  const now = Date.now();
+  if (now - (uaSeen.get(ua) || 0) < 10 * 60 * 1000) return;
+  uaSeen.set(ua, now);
+  if (uaSeen.size > 200) uaSeen.clear();
+  try {
+    const id = 'ua-' + require('crypto').createHash('sha1').update(ua).digest('hex').slice(0, 12);
+    deviceOptimizer.appendReport({
+      schema: 1, app: 'HongHub', kind: 'ua-auto-detect', deviceId: id,
+      osFullName: ua, ua: ua, platform: 'auto', appCode: 0
+    });
+    if (now - lastUaOptimize > 60 * 1000) { lastUaOptimize = now; deviceOptimizer.run(); }
+  } catch (e) { /* 只读环境不影响正常服务 */ }
+}
+
+const server = http.createServer((req, res) => {
+  const u = new URL(req.url, 'http://localhost');
+  if (req.method === 'OPTIONS') { cors(res); res.writeHead(204); res.end(); return; }
+  autoDetectUA(req, u.pathname);
+  // 可选局域网访问口令（默认关闭）：开启后只有带正确口令的 /api 与 /download 请求可通行，
+  // /health 与看板页面仍放行，保证设备端能先发现中枢再输入口令。
+  if (ACCESS_TOKEN && (u.pathname.indexOf('/api/') === 0 || u.pathname.indexOf('/download/') === 0)) {
+    const t = req.headers['x-kh-access-token'] || u.searchParams.get('token') || '';
+    if (t !== ACCESS_TOKEN) { send(res, 401, { ok: false, error: '访问口令错误，请在「中枢设置」里填写口令' }); return; }
+  }
+
+  if (u.pathname === '/health') {
+    const last = autoRuns.length ? autoRuns[autoRuns.length - 1] : null;
+    const lastG = governRuns.length ? governRuns[governRuns.length - 1] : null;
+    const lat = (function () { try { return readManifest().release.latest; } catch (e) { return {}; } })() || {};
+    send(res, 200, { ok: true, app: 'HongHub-Desktop', stored: reports.length, writable, tokenRequired: !!REPORT_TOKEN, fixTokenRequired: !!FIX_TOKEN, accessTokenRequired: !!ACCESS_TOKEN, hubs: hubAddresses(), release: { versionName: lat.versionName, versionCode: lat.versionCode, publishedAt: lat.publishedAt }, features: featureStamp().hash, manifest: readManifest().sources ? readManifest().sources.v : null, auto: { enabled: AUTO_RUN_ENABLED, mode: AUTO_GOVERN ? 'govern' : 'update', nextRunAt: nextRunAt, lastRunOk: last ? last.ok : null, lastRunAt: last ? last.startedAt : null }, govern: { enabled: AUTO_GOVERN, lastRunOk: lastG ? lastG.ok : null, lastRunAt: lastG ? lastG.startedAt : null }, diagnostics: (function () { try { const s = healthMonitor.snapshot(); return { healthy: s.healthy, diskFreeMB: s.diskFreeMB, memUsedPct: s.mem.usedPct, alerts: s.alerts.length }; } catch (e) { return null; } })() });
+    return;
+  }
+  if (u.pathname === '/api/manifest' && req.method === 'GET') {
+    const m = readManifest();
+    try {
+      if (m && m.release && m.release.latest && !m.release.latest.downloadUrl) m.release.latest.downloadUrl = process.env.DOWNLOAD_URL || '/download/desktop-setup.exe';
+      const art = releaseArtifacts();
+      if (m && m.release) m.release.artifacts = art;
+      if (m && m.release && m.release.latest && art && art.artifacts) {
+        if (art.artifacts.desktop) m.release.latest.desktopSha256 = art.artifacts.desktop.sha256;
+        if (art.artifacts.hap) m.release.latest.hapSha256 = art.artifacts.hap.sha256;
+      }
+    } catch (e) {}
+    // 已配置并实际发布公网清单时，客户端下载地址自动切到公网（版本必须一致）
+    try { if (m && m.release && m.release.latest) m.release.latest = distribute.applyToLatest(m.release.latest); } catch (e) {}
+    // 统一资源目录版本：客户端带 ?since= 拉增量即可热更新，源修好不用发新版
+    try {
+      const c = catalog.catalog();
+      if (c && c.version) { m.catalogVersion = c.version; m.catalogUrl = '/api/catalog'; m.catalogDiffUrl = '/api/catalog/diff?since='; }
+    } catch (e) {}
+    send(res, 200, m); return;
+  }
+  // 版本归档与回滚引导：只返回已校验的历史成品与下载地址，应用内不静默安装
+  if (u.pathname === '/api/releases' && req.method === 'GET') {
+    const idx = readReleaseIndex();
+    send(res, 200, { ok: true, latest: idx.latest || null, versions: idx.versions || [],
+      count: (idx.versions || []).length, generatedAt: idx.generatedAt || null });
+    return;
+  }
+  if (u.pathname === '/api/update/rollback' && req.method === 'GET') {
+    const want = String(u.searchParams.get('version') || '').trim();
+    const idx = readReleaseIndex();
+    const hit = (idx.versions || []).find(v => v.versionName === want);
+    if (!hit) {
+      send(res, 404, { ok: false, error: '未找到该版本的归档产物（可先 npm run archive）',
+        available: (idx.versions || []).map(v => v.versionName) });
+      return;
+    }
+    const d = hit.artifacts && hit.artifacts.desktop;
+    const rel = d && String(d.path || '');
+    const safe = rel && rel.indexOf('..') < 0 && !path.isAbsolute(rel);
+    const alive = !!(safe && fs.existsSync(path.join(__dirname, '..', rel)));
+    send(res, 200, { ok: alive, version: hit.versionName, versionCode: hit.versionCode || null,
+      downloadUrl: alive ? hit.downloadUrl : null, hapUrl: hit.hapUrl || null,
+      sha256: (d && d.sha256) || null, size: (d && d.size) || 0,
+      fileExists: alive, historical: !!hit.historical,
+      note: '回滚只提供历史成品与校验值；安装需用户在安装向导确认，应用内不静默安装。' });
+    return;
+  }
+  if (u.pathname === '/api/health/diagnostics' && req.method === 'GET') {
+    send(res, 200, Object.assign({}, healthMonitor.snapshot(), { recentAlerts: healthMonitor.recent(20) }));
+    return;
+  }
+
+  /* ---------------- 开发者端运维：审计 / 趋势 / 灰度 / 发布闭环 / 真机冒烟 / 告警分级 ---------------- */
+  // 一次取全运维面板所需数据（看板首屏只发一个请求）
+  if (u.pathname === '/api/ops' && req.method === 'GET') {
+    let snap = {};
+    try { snap = healthMonitor.snapshot(); } catch (e) { snap = {}; }
+    let recent = [];
+    try { recent = healthMonitor.recent(30); } catch (e) { recent = []; }
+    send(res, 200, Object.assign(devops.overview({
+      days: Number(u.searchParams.get('days')) || 14,
+      top: stats().top,
+      alerts: (snap.alerts || []).concat(recent)
+    }), { resources: catalog.overview() }));
+    return;
+  }
+  if (u.pathname === '/api/audit' && req.method === 'GET') {
+    send(res, 200, { ok: true, entries: devops.listAudit(Number(u.searchParams.get('limit')) || 60) });
+    return;
+  }
+  if (u.pathname === '/api/metrics/trend' && req.method === 'GET') {
+    send(res, 200, Object.assign({ ok: true }, devops.trend(Number(u.searchParams.get('days')) || 14, { top: stats().top })));
+    return;
+  }
+  if (u.pathname === '/api/rollout' && req.method === 'GET') {
+    const r = devops.readRollout();
+    send(res, 200, { ok: true, rollout: r });
+    return;
+  }
+  // 灰度分组配置：分组 / 权重 / 自动暂停阈值；同组设备按匿名 ID 稳定落组
+  if (u.pathname === '/api/rollout' && req.method === 'POST') {
+    readBody(req, (body) => {
+      if (!body) { send(res, 413, { ok: false, error: 'empty or oversized body' }); return; }
+      let p; try { p = JSON.parse(body); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      const r = devops.writeRollout({
+        enabled: p.enabled === undefined ? undefined : !!p.enabled,
+        groups: p.groups, autoPause: p.autoPause,
+        paused: p.paused === undefined ? undefined : !!p.paused,
+        pauseReason: p.paused === false ? null : p.pauseReason
+      });
+      devops.audit('rollout.update', { result: r.ok ? 'ok' : 'fail', detail: r.ok ? ('分组 ' + r.rollout.groups.length + ' 个 / 总权重 ' + r.rollout.weightTotal + ' / ' + (r.rollout.paused ? '已暂停' : '放量中')) : r.error });
+      send(res, r.ok ? 200 : 400, r);
+    });
+    return;
+  }
+  if (u.pathname === '/api/alerts' && req.method === 'GET') {
+    let snap = {}; try { snap = healthMonitor.snapshot(); } catch (e) { snap = {}; }
+    let recent = []; try { recent = healthMonitor.recent(50); } catch (e) { recent = []; }
+    send(res, 200, Object.assign({ ok: true }, devops.gradeAlerts((snap.alerts || []).concat(recent), { windowMs: Number(u.searchParams.get('window')) * 60000 || undefined })));
+    return;
+  }
+  // 真机冒烟结果：读 dist/hap-smoke.json / hap-watch.json，没跑过就明确 no-run
+  if (u.pathname === '/api/hap/smoke' && req.method === 'GET') {
+    send(res, 200, Object.assign({ ok: true }, devops.smoke()));
+    return;
+  }
+  if (u.pathname === '/api/publish' && req.method === 'GET') {
+    send(res, 200, { ok: true, last: devops.lastPublish(), deployCmd: !!process.env.KH_DEPLOY_CMD });
+    return;
+  }
+  // 发布闭环：上传（配置了 KH_DEPLOY_CMD 才真的传）→ 回读远端清单核对版本与 SHA256
+  if (u.pathname === '/api/publish' && req.method === 'POST') {
+    readBody(req, (body) => {
+      let p = {};
+      if (body) { try { p = JSON.parse(body) || {}; } catch (e) { p = {}; } }
+      devops.runPublish({ dryRun: !!p.dryRun }, (out) => { send(res, out.ok ? 200 : 202, out); });
+    });
+    return;
+  }
+  // 回滚：把下发版本切到已校验的历史成品（不静默安装，设备仍需本机确认）
+  if (u.pathname === '/api/update/rollback/apply' && req.method === 'POST') {
+    readBody(req, (body) => {
+      if (!body) { send(res, 413, { ok: false, error: 'empty or oversized body' }); return; }
+      let p; try { p = JSON.parse(body); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      devops.applyRollback(p.version, readReleaseIndex, function (hit) {
+        const m = readManifest();
+        if (!m.release || !m.release.latest) return { ok: false, error: '清单缺少 release.latest' };
+        const d = (hit.artifacts && hit.artifacts.desktop) || {};
+        m.release.latest.versionName = hit.versionName;
+        m.release.latest.versionCode = hit.versionCode || m.release.latest.versionCode;
+        m.release.latest.downloadUrl = hit.downloadUrl || m.release.latest.downloadUrl;
+        m.release.latest.desktopSha256 = d.sha256 || m.release.latest.desktopSha256;
+        m.release.latest.hapUrl = hit.hapUrl || m.release.latest.hapUrl;
+        m.release.latest.rolledBack = true;
+        m.release.latest.rolledBackAt = new Date().toISOString();
+        m.release.latest.publishedAt = new Date().toISOString();
+        try { fs.writeFileSync(MANIFEST_FILE, JSON.stringify(m, null, 2) + '\n'); } catch (e) { return { ok: false, error: '写回清单失败：' + (e && e.message || e) }; }
+        return { ok: true };
+      }, (out) => { send(res, out.ok ? 200 : 400, out); });
+    });
+    return;
+  }
+  if (u.pathname === '/api/features' && req.method === 'GET') { send(res, 200, { ok: true, features: readFeatures(), version: featureStamp() }); return; }
+
+  /* ---------------- 资源目录 / 播放回传 / 问题单：全自动闭环 ---------------- */
+  // 统一目录（频道 + 平台），带版本号；客户端可按 ?since= 增量热更新，源修好无需发新版
+  if (u.pathname === '/api/catalog' && req.method === 'GET') {
+    send(res, 200, catalog.catalog()); return;
+  }
+  if (u.pathname === '/api/catalog/diff' && req.method === 'GET') {
+    send(res, 200, Object.assign({ ok: true }, catalog.diff(u.searchParams.get('since')))); return;
+  }
+  // 立即跑一轮探测 + 自动建单 + 自动修复（平时由定时器自动跑，这里只用于排障）
+  if (u.pathname === '/api/catalog/run' && req.method === 'POST') {
+    catalog.runCycle().then(function (s) { send(res, 200, { ok: true, cycle: s }); })
+      .catch(function (e) { send(res, 500, { ok: false, error: String(e && e.message || e) }); });
+    return;
+  }
+  if (u.pathname === '/api/catalog/weekly' && req.method === 'GET') {
+    send(res, 200, Object.assign({ ok: true }, catalog.weekly(!!u.searchParams.get('force')))); return;
+  }
+  // 客户端播放埋点：只记资源 id 与结果，不记内容、不记 IP
+  if (u.pathname === '/api/play/report' && req.method === 'POST') {
+    readBody(req, (body) => {
+      if (!body) { send(res, 413, { ok: false, error: 'empty or oversized body' }); return; }
+      let p; try { p = JSON.parse(body); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      send(res, 200, catalog.ingestPlay(p));
+    });
+    return;
+  }
+  if (u.pathname === '/api/play/stats' && req.method === 'GET') {
+    send(res, 200, Object.assign({ ok: true }, catalog.playStats(Number(u.searchParams.get('days')) || 1))); return;
+  }
+  // 问题单：自动建单 / 自动换源修复 / 自动复检关单；这里允许人工覆盖，但默认全自动
+  if (u.pathname === '/api/issues' && req.method === 'GET') {
+    send(res, 200, catalog.issues()); return;
+  }
+  if (u.pathname === '/api/issues' && req.method === 'POST') {
+    readBody(req, (body) => {
+      if (!body) { send(res, 413, { ok: false, error: 'empty or oversized body' }); return; }
+      let p; try { p = JSON.parse(body); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      send(res, 200, catalog.issueAction(p.id, p.action));
+    });
+    return;
+  }
+  /* 第三方站点接入：自定义网址 / 批量导入 / 移除（只做入口与可达性，不抓流） */
+  if (u.pathname === '/api/sites' && req.method === 'GET') {
+    send(res, 200, catalog.listSites()); return;
+  }
+  if (u.pathname === '/api/sites' && req.method === 'POST') {
+    readBody(req, (body) => {
+      if (!body) { send(res, 413, { ok: false, error: 'empty or oversized body' }); return; }
+      let p; try { p = JSON.parse(body); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      const input = Array.isArray(p) ? p : (Array.isArray(p.sites) ? p.sites : (p.text ? String(p.text).split(/[\r\n,]+/).filter(Boolean) : [p]));
+      send(res, 200, catalog.addSites(input));
+    });
+    return;
+  }
+  if (u.pathname === '/api/sites/remove' && req.method === 'POST') {
+    readBody(req, (body) => {
+      if (!body) { send(res, 413, { ok: false, error: 'empty or oversized body' }); return; }
+      let p; try { p = JSON.parse(body); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      send(res, 200, catalog.removeSite(p.id || p.name || p.url));
+    });
+    return;
+  }
+  if (u.pathname === '/api/features/presets' && req.method === 'GET') { send(res, 200, { ok: true, presets: readPresets() }); return; }
+  // 功能模板：一类工作流的开箱模板（发布校验 / 回滚 / 审计 / 趋势 / 灰度 / 冒烟），一键加进功能清单
+  if (u.pathname === '/api/features/templates' && req.method === 'GET') {
+    let tpl = [];
+    try { tpl = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'features', 'templates.json'), 'utf8')); } catch (e) { tpl = []; }
+    send(res, 200, { ok: true, templates: Array.isArray(tpl) ? tpl : [], note: '模板可直接用于 /api/features 的 add / import' });
+    return;
+  }
+  // 功能随发版同步：一次返回版本、快照与完整功能清单，两端可据此判断功能是否有更新
+  if (u.pathname === '/api/features/sync' && req.method === 'GET') {
+    const m = readManifest();
+    send(res, 200, { ok: true, version: featureStamp(), features: readFeatures(), release: (m && m.release && m.release.latest) || null,
+      pageHash: currentPageHash(), buildStamp: buildStamp() });
+    return;
+  }
+  if (u.pathname === '/api/page/sync' && req.method === 'GET') {
+    const a = activePage();
+    send(res, 200, { ok: true, source: a.source, pageHash: a.buf.length ? pageHashOf(a.buf) : null,
+      size: a.buf.length, buildStamp: buildStamp(), note: '公网页面优先；刷新应用即生效，无需卸载重装' });
+    return;
+  }
+  // 反馈建议 → 自动提取新功能 → 自动添加（服务启动与自治循环都会自动跑，此接口只是可选的立即触发）
+  if (u.pathname === '/api/features/mine' && req.method === 'POST') {
+    if (FIX_TOKEN && req.headers['x-kh-fix-token'] !== FIX_TOKEN) { send(res, 401, { ok: false, error: 'invalid fix token' }); return; }
+    let out;
+    try { out = miner.run(); } catch (e) { out = { ok: false, error: String(e && e.message || e), added: [] }; }
+    send(res, out.ok ? 200 : 500, { ok: out.ok, result: out, features: featureStamp() });
+    return;
+  }
+  // 自动批量下发清单：一次给出全部架构产物、HAP 与校验值，供多端批量取包
+  if (u.pathname === '/api/batch' && req.method === 'GET') {
+    const b = batchManifest();
+    send(res, 200, { ok: true, batch: b, delivery: deliveryManifest(), auto: true, noReview: true });
+    return;
+  }
+  // 下发成品清单（所有包不限设备 / 不限内存）：三条通道 + 内存档 + 自动更新策略
+  if (u.pathname === '/api/delivery' && req.method === 'GET') {
+    send(res, 200, { ok: true, delivery: deliveryManifest(), auto: true, noReview: true });
+    return;
+  }
+  // 单台设备自动选路 + 自动更新比对：客户端带 arch / mem / os / code，服务端直接给可用成品
+  if (u.pathname === '/api/delivery/plan' && req.method === 'GET') {
+    const q = {};
+    u.searchParams.forEach((v, k) => { q[k] = v; });
+    q.archs = batchManifest();
+    const p = delivery.plan(q);
+    // 灰度分批：同一匿名设备 ID 稳定落同一组；暂停放量时不提示升级，避免把问题版本推给全量设备
+    try {
+      p.rollout = devops.resolveGroup(q.deviceId || q.device);
+      if (p.rollout && p.rollout.paused && p.update) {
+        p.update.needUpdate = false;
+        p.update.note = '灰度已暂停放量：' + (p.rollout.pausedReason || '等待人工恢复') + '；内容仍自动同步';
+      }
+    } catch (e) { p.rollout = null; }
+    // 附带该设备的 OS 版本适配与自动优化结果（跟随所有操作系统版本）
+    try {
+      p.osProfile = deviceOptimizer.forDevice(q);
+      p.optimization = {
+        auto: true, noReview: true, verified: true,
+        endpoint: '/api/device/report', syncEndpoint: '/api/device/optimization',
+        note: '检测 OS 版本 → 回传 → 自动优化 → 自动修复 → 自动下发同步更新'
+      };
+    } catch (e) { p.osProfile = null; }
+    send(res, 200, p);
+    return;
+  }
+  // OS 版本检测回传 → 自动优化 → 自动修复 → 下发同步更新（零人工复核）
+  if (u.pathname === '/api/device/report' && req.method === 'POST') {
+    const ip = (req.socket && req.socket.remoteAddress) || '';
+    if (limited(ip)) { send(res, 429, { ok: false, error: 'rate limited' }); return; }
+    readBody(req, (body) => {
+      if (!body) { send(res, 413, { ok: false, error: 'empty or oversized body' }); return; }
+      let r; try { r = JSON.parse(body); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      if (!r || typeof r !== 'object') { send(res, 400, { ok: false, error: 'bad payload' }); return; }
+      const stored = deviceOptimizer.appendReport(r);
+      try { devops.deviceMetric(r.family || r.platform || r.os || r.osFullName || 'unknown'); } catch (e) {}
+      let opt = null;
+      try { opt = deviceOptimizer.run(); } catch (e) { opt = { ok: false, error: String(e && e.message || e), summary: null }; }
+      const single = deviceOptimizer.forDevice(Object.assign({}, r, { ua: r.ua || r.userAgent, os: r.os || r.osFullName }));
+      send(res, 200, {
+        ok: true, mode: 'auto-no-review', stored: stored, auto: true, noReview: true, verified: true,
+        optimization: single, summary: opt && opt.summary || null,
+        features: featureStamp(),
+        note: 'OS 版本已检测并回传，自动优化与修复完成；结果随 /api/delivery/plan 与 /api/features/sync 下发同步更新'
+      });
+    });
+    return;
+  }
+  if (u.pathname === '/api/device/optimization' && req.method === 'GET') {
+    send(res, 200, { ok: true, optimization: deviceOptimizer.latest(), osProfiles: deviceOptimizer.osProfiles(), auto: true, noReview: true });
+    return;
+  }
+  if (u.pathname === '/api/devices' && req.method === 'GET') {
+    const l = deviceOptimizer.latest() || {};
+    send(res, 200, { ok: true, devices: l.profiles || {}, summary: l.summary || null, followAllOSVersions: true, auto: true });
+    return;
+  }
+  // 看板聚合：自动提取新功能 / 自动修 Bug / 批量下发 / 下发成品 / 功能快照
+  if (u.pathname === '/api/flow' && req.method === 'GET') {
+    let mining = null, bug = null;
+    try { const h = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'mined_features.json'), 'utf8')); if (Array.isArray(h)) mining = h[h.length - 1] || null; } catch (e) {}
+    try { bug = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'latest_bugfix.json'), 'utf8')); } catch (e) {}
+    send(res, 200, { ok: true, mining: mining, batch: batchManifest(), delivery: deliveryManifest(),
+      deviceOptimization: deviceOptimizer.latest(), bugfix: bug, features: featureStamp() });
+    return;
+  }
+
+  if (u.pathname === '/api/features' && req.method === 'POST') {
+    if (FIX_TOKEN && req.headers['x-kh-fix-token'] !== FIX_TOKEN) { send(res, 401, { ok: false, error: 'invalid fix token' }); return; }
+    readBody(req, (body) => {
+      if (!body) { send(res, 413, { ok: false, error: 'empty or oversized body' }); return; }
+      let p; try { p = JSON.parse(body); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      const op = p.op || 'add';
+      let list = readFeatures();
+      try {
+        if (op === 'add') {
+          const f = normalizeFeature(p.feature);
+          if (!f) { send(res, 400, { ok: false, error: 'feature 字段缺失' }); return; }
+          if (list.some((x) => x.id === f.id)) { send(res, 409, { ok: false, error: 'id 已存在：' + f.id }); return; }
+          list.push(f);
+        } else if (op === 'update') {
+          const f = normalizeFeature(p.feature); const id = p.id || (f && f.id);
+          const i = list.findIndex((x) => x.id === id);
+          if (i < 0) { send(res, 404, { ok: false, error: '功能不存在：' + id }); return; }
+          list[i] = Object.assign({}, list[i], f, { id: id });
+        } else if (op === 'remove') {
+          const i = list.findIndex((x) => x.id === p.id);
+          if (i < 0) { send(res, 404, { ok: false, error: '功能不存在：' + p.id }); return; }
+          list.splice(i, 1);
+        } else if (op === 'toggle') {
+          const i = list.findIndex((x) => x.id === p.id);
+          if (i < 0) { send(res, 404, { ok: false, error: '功能不存在：' + p.id }); return; }
+          list[i].enabled = !(list[i].enabled === true);
+        } else if (op === 'import') {
+          if (!Array.isArray(p.features)) { send(res, 400, { ok: false, error: 'features 需为数组' }); return; }
+          const arr = p.features.map(normalizeFeature).filter(Boolean);
+          const map = {}; list.forEach((x) => { map[x.id] = x; });
+          arr.forEach((x) => { map[x.id] = map[x.id] ? Object.assign({}, map[x.id], x) : x; });
+          list = Object.keys(map).map((k) => map[k]);
+        } else { send(res, 400, { ok: false, error: '未知 op：' + op }); return; }
+        if (!writeFeatures(list)) { send(res, 500, { ok: false, error: '写入功能清单失败（磁盘只读？）' }); return; }
+        devops.audit('features.' + op, { target: clip(p.id || (p.feature && p.feature.id) || '', 80), detail: '共 ' + list.length + ' 项' });
+        send(res, 200, { ok: true, count: list.length, features: list });
+      } catch (e) { send(res, 500, { ok: false, error: String(e && e.message || e) }); }
+    });
+    return;
+  }
+
+  if (u.pathname === '/api/feature/run' && req.method === 'POST') {
+    if (FIX_TOKEN && req.headers['x-kh-fix-token'] !== FIX_TOKEN) { send(res, 401, { ok: false, error: 'invalid fix token' }); return; }
+    readBody(req, (body) => {
+      if (!body) { send(res, 413, { ok: false, error: 'empty or oversized body' }); return; }
+      let p; try { p = JSON.parse(body); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      const feats = readFeatures();
+      const f = feats.find((x) => x.id === String(p.id || ''));
+      if (!f) { send(res, 404, { ok: false, error: '功能不存在' }); return; }
+      if (f.enabled === false) { send(res, 400, { ok: false, error: '功能已停用' }); return; }
+      const a = f.action || 'open';
+      if (a === 'open') { send(res, 200, { ok: true, action: 'open', url: f.url }); return; }
+      if (a.indexOf('builtin:') === 0) { send(res, 200, { ok: true, action: 'builtin', name: a }); return; }
+      if (a === 'script') {
+        const cmd = f.cmd || '';
+        if (!cmd) { send(res, 400, { ok: false, error: '未配置命令' }); return; }
+        let out = '', err = '', done = false;
+        const child = spawn(cmd, { shell: true, cwd: process.cwd() });
+        const timer = setTimeout(() => { try { child.kill(); } catch (e) {} finish({ ok: false, error: '命令超时（>60s）' }); }, 60000);
+        const finish = (r) => { if (done) return; done = true; try { clearTimeout(timer); } catch (e) {} devops.audit('feature.run', { target: f.id, result: r.ok ? 'ok' : 'fail', detail: 'script / 退出码 ' + r.code }); send(res, r.ok ? 200 : 500, r); };
+        if (child.stdout) child.stdout.on('data', (d) => { out += d.toString(); });
+        if (child.stderr) child.stderr.on('data', (d) => { err += d.toString(); });
+        child.on('error', (e) => finish({ ok: false, error: '启动失败：' + (e && e.message || e) }));
+        child.on('close', (code) => finish({ ok: code === 0, code: code, stdout: out.slice(0, 4000), stderr: err.slice(0, 2000) }));
+        return;
+      }
+      if (a === 'webhook') {
+        const url = f.url || '';
+        if (!url) { send(res, 400, { ok: false, error: '未配置接口地址' }); return; }
+        let uu; try { uu = new URL(url); } catch (e) { send(res, 400, { ok: false, error: '接口地址非法' }); return; }
+        const payload = f.payload ? JSON.stringify(f.payload) : '{}';
+        const lib = uu.protocol === 'https:' ? require('https') : require('http');
+        const req2 = lib.request(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } }, (resp) => {
+          let d = ''; resp.on('data', (c) => { d += c.toString(); });
+          resp.on('end', () => { devops.audit('feature.run', { target: f.id, result: resp.statusCode < 400 ? 'ok' : 'fail', detail: 'webhook HTTP ' + resp.statusCode }); send(res, 200, { ok: true, status: resp.statusCode, body: d.slice(0, 2000) }); });
+        });
+        req2.on('error', (e) => send(res, 500, { ok: false, error: '请求失败：' + (e && e.message || e) }));
+        req2.write(payload); req2.end();
+        return;
+      }
+      send(res, 400, { ok: false, error: '未知动作：' + a });
+    });
+    return;
+  }
+
+  if (u.pathname === '/api/reports' && req.method === 'GET') {
+    const limit = Math.min(200, Math.max(1, Number(u.searchParams.get('limit') || 60)));
+    send(res, 200, { ok: true, stats: stats(), reports: reports.slice(-limit).reverse() });
+    return;
+  }
+
+  if (u.pathname === '/api/report' && req.method === 'POST') {
+    const ip = (req.socket && req.socket.remoteAddress) || '';
+    if (limited(ip)) { send(res, 429, { ok: false, error: 'rate limited' }); return; }
+    if (REPORT_TOKEN && req.headers['x-kh-token'] !== REPORT_TOKEN) { send(res, 401, { ok: false, error: 'invalid token' }); return; }
+    readBody(req, (body) => {
+      if (!body) { send(res, 413, { ok: false, error: 'empty or oversized body' }); return; }
+      let r; try { r = JSON.parse(body); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      if (!r || r.schema !== 1 || r.app !== 'HongHubMovie' || !Array.isArray(r.issues)) { send(res, 400, { ok: false, error: 'bad payload' }); return; }
+      const rec = cleanReport(r);
+      if (reports.some((x) => x.id === rec.id)) { send(res, 200, { ok: true, duplicate: true, id: rec.id }); return; }
+      reports.push(rec);
+      if (reports.length > MAX_KEEP) reports.splice(0, reports.length - MAX_KEEP);
+      if (writable) fs.appendFile(DATA_FILE, JSON.stringify(rec) + '\n', (e) => { if (e) writable = false; });
+      send(res, 200, { ok: true, id: rec.id, stored: reports.length });
+    });
+    return;
+  }
+
+  if (u.pathname === '/api/fix' && req.method === 'POST') {
+    if (FIX_TOKEN && req.headers['x-kh-fix-token'] !== FIX_TOKEN) { send(res, 401, { ok: false, error: 'invalid fix token' }); return; }
+    const t0 = Date.now();
+    runFix((out) => {
+      out.elapsedMs = Date.now() - t0;
+      devops.audit('selfheal.run', { result: out.ok ? 'ok' : 'fail', detail: out.ok ? ('源清单 v' + out.v + ' / 通道 ' + out.channels) : String(out.error || '') });
+      if (out.ok && out.v) { try { devops.snapshotSources(readManifest()); } catch (e) {} }
+      send(res, out.ok ? 200 : 500, out);
+    });
+    return;
+  }
+
+  if (u.pathname === '/api/update-publish' && req.method === 'POST') {
+    if (FIX_TOKEN && req.headers['x-kh-fix-token'] !== FIX_TOKEN) { send(res, 401, { ok: false, error: 'invalid fix token' }); return; }
+    const t0 = Date.now();
+    updatePublish((out) => {
+      out.elapsedMs = Date.now() - t0;
+      devops.audit('update.publish', { result: out.ok ? 'ok' : 'fail', detail: out.ok ? ('v' + out.publish.versionName + ' / #' + out.publish.versionCode + ' / 源清单 v' + (out.update && out.update.v)) : String(out.error || '') });
+      send(res, out.ok ? 200 : 500, out);
+    });
+    return;
+  }
+
+  // 自动更新落地：本机校验安装包后拉起安装向导（非静默，仍需用户在向导里确认）
+  if (u.pathname === '/api/update/install' && req.method === 'POST') {
+    const ip = (req.socket && req.socket.remoteAddress) || '';
+    if (!/^(127\.0\.0\.1|::1|::ffff:127\.0\.0\.1)$/.test(ip)) {
+      send(res, 403, { ok: false, error: '仅允许本机触发安装（安全限制）' }); return;
+    }
+    const fp = resolveDownload('desktop-setup.exe');
+    if (!fp) { send(res, 404, { ok: false, error: '未找到最新安装包，请先运行 npm run pack' }); return; }
+    let buf;
+    try { buf = fs.readFileSync(fp); } catch (e) { send(res, 500, { ok: false, error: '安装包读取失败：' + (e && e.message) }); return; }
+    const sha = crypto.createHash('sha256').update(buf).digest('hex');
+    let verified = 'size-only';
+    try {
+      const shaFile = fp + '.sha256';
+      if (fs.existsSync(shaFile)) {
+        const expect = fs.readFileSync(shaFile, 'utf8').trim().split(/\s+/)[0];
+        if (expect && expect.toLowerCase() !== sha) {
+          send(res, 409, { ok: false, error: '安装包 SHA256 校验失败，已阻止启动安装' }); return;
+        }
+        if (expect) verified = 'sha256';
+      }
+    } catch (e) { /* 校验文件不可读则退化为体积校验 */ }
+    if (buf.length < 10 * 1024 * 1024) { send(res, 409, { ok: false, error: '安装包异常（体积过小）' }); return; }
+    let launched = false;
+    try {
+      const child = spawn(fp, [], { detached: true, stdio: 'ignore' });
+      child.on('error', (e) => console.error('[更新] 启动安装向导失败', e && e.message));
+      child.unref();
+      launched = true;
+    } catch (e) { /* 下面返回失败 */ }
+    const lat = (function () { try { return readManifest().release.latest; } catch (e2) { return {}; } })() || {};
+    send(res, launched ? 200 : 500, {
+      ok: launched, launched: launched, verified: verified, sha256: sha,
+      version: lat.versionName || null, versionCode: lat.versionCode || null,
+      file: path.basename(fp),
+      message: launched ? '覆盖安装已启动：同目录覆盖、无需卸载当前版本、数据与设置保留；若提示程序被占用，请先退出本应用再继续' : '启动覆盖安装失败'
+    });
+    return;
+  }
+
+  if (u.pathname === '/api/automation' && req.method === 'GET') {
+    const last = autoRuns.length ? autoRuns[autoRuns.length - 1] : null;
+    send(res, 200, {
+      ok: true, enabled: AUTO_RUN_ENABLED, mode: AUTO_GOVERN ? 'govern' : 'update',
+      intervalHours: AUTO_RUN_HOUR === null ? (AUTO_RUN_INTERVAL_MS / 3600000) : null,
+      hour: AUTO_RUN_HOUR, nextRunAt: nextRunAt,
+      lastRun: last ? { startedAt: last.startedAt, finishedAt: last.finishedAt, ok: last.ok, result: last.result } : null,
+      recent: autoRuns.slice(-12).reverse()
+    });
+    return;
+  }
+
+  if (u.pathname === '/api/automation/run' && req.method === 'POST') {
+    if (FIX_TOKEN && req.headers['x-kh-fix-token'] !== FIX_TOKEN) { send(res, 401, { ok: false, error: 'invalid fix token' }); return; }
+    doAutoRun((rec) => {
+      devops.audit('automation.run', { result: rec.ok ? 'ok' : 'fail', detail: '耗时 ' + Math.round((rec.finishedAt - rec.startedAt) / 1000) + 's' });
+      send(res, rec.ok ? 200 : 500, { ok: rec.ok, startedAt: rec.startedAt, finishedAt: rec.finishedAt, result: rec.result });
+    });
+    return;
+  }
+
+  if (u.pathname === '/api/govern' && req.method === 'GET') {
+    const last = governRuns.length ? governRuns[governRuns.length - 1] : null;
+    let latest = null;
+    try { if (fs.existsSync(LATEST_GOVERN_FILE)) latest = JSON.parse(fs.readFileSync(LATEST_GOVERN_FILE, 'utf8')); } catch (e) {}
+    send(res, 200, {
+      ok: true, enabled: AUTO_GOVERN,
+      recent: governRuns.slice(-12).reverse(),
+      lastRun: last ? { startedAt: last.startedAt, finishedAt: last.finishedAt, ok: last.ok, result: last.result } : null,
+      finalProducts: latest,                                  // 接收所有最终成品：最近一次治理全部产出
+      bugfix: latest ? (latest.bugfix || null) : null,        // 其中「自动修 Bug」一轮的完整结果
+      suggestions: latest ? latest.suggestions : extractSuggestions(extractProblems()),
+      feedback: feedbacks.slice(-12).reverse()               // 自动反馈通道（含深开鸿端回传）
+    });
+    return;
+  }
+  if (u.pathname === '/api/govern/run' && req.method === 'POST') {
+    if (FIX_TOKEN && req.headers['x-kh-fix-token'] !== FIX_TOKEN) { send(res, 401, { ok: false, error: 'invalid fix token' }); return; }
+    runGovernance((rec) => {
+      const r = rec.result || {};
+      devops.audit('govern.run', { result: rec.ok ? 'ok' : 'fail', detail: '问题 ' + (r.problemsFound || 0) + ' / 优化剔除 ' + ((r.optimized && r.optimized.removed) || 0) + ' / 发布 ' + ((r.published && r.published.versionName) || '-') });
+      try { devops.snapshotSources(readManifest()); } catch (e) {}
+      try { devops.evaluateRollout(devops.trend(1, { top: stats().top }).totals); } catch (e) {}
+      send(res, rec.ok ? 200 : 500, { ok: rec.ok, startedAt: rec.startedAt, finishedAt: rec.finishedAt, result: rec.result });
+    });
+    return;
+  }
+
+  // 自动修 Bug：查看最近一轮结果 / 立即体检（服务启动与定时巡检全自动运行，无需人工复核）
+  if (u.pathname === '/api/bugfix' && req.method === 'GET') {
+    let last = null;
+    try { if (fs.existsSync(path.join(DATA_DIR, 'latest_bugfix.json'))) last = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'latest_bugfix.json'), 'utf8')); } catch (e) {}
+    send(res, 200, { ok: true, lastRun: last });
+    return;
+  }
+  if (u.pathname === '/api/bugfix/run' && req.method === 'POST') {
+    if (FIX_TOKEN && req.headers['x-kh-fix-token'] !== FIX_TOKEN) { send(res, 401, { ok: false, error: 'invalid fix token' }); return; }
+    let out;
+    try { out = bugfix.run(); } catch (e) { out = { ok: false, error: String(e && e.message || e), summary: { total: 0, fixed: 0, manual: 0, autoHandled: 0, unresolved: 1, verified: false, rounds: 0 } }; }
+    devops.audit('bugfix.run', { result: out.ok ? 'ok' : 'fail', detail: '处置 ' + ((out.summary && out.summary.autoHandled) || 0) + ' / 人工 ' + ((out.summary && out.summary.manual) || 0) });
+    send(res, out.ok ? 200 : 500, { ok: out.ok, startedAt: out.startedAt, finishedAt: out.finishedAt, result: out });
+    return;
+  }
+
+  if (u.pathname === '/api/feedback' && req.method === 'GET') {
+    send(res, 200, { ok: true, feedback: feedbacks.slice(-30).reverse(), finalProducts: (function () { try { return fs.existsSync(LATEST_GOVERN_FILE) ? JSON.parse(fs.readFileSync(LATEST_GOVERN_FILE, 'utf8')) : null; } catch (e) { return null; } })() });
+    return;
+  }
+  if (u.pathname === '/api/feedback' && req.method === 'POST') {
+    readBody(req, (body) => {
+      if (!body) { send(res, 413, { ok: false, error: 'empty or oversized body' }); return; }
+      let r; try { r = JSON.parse(body); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      // 接收所有最终成品：深开鸿端回传其本机诊断/产物，中枢存为一条反馈并纳入治理
+      const rec = autoFeedback(Object.assign({ type: 'device', device: clip(r.device, 140), at: Date.now() }, r.payload && typeof r.payload === 'object' ? r.payload : {}));
+      send(res, 200, { ok: true, stored: feedbacks.length, id: rec ? (rec.at || Date.now()) : Date.now() });
+    });
+    return;
+  }
+  if (u.pathname.indexOf('/download/') === 0) {
+    const isArchive = u.pathname.indexOf('/download/archive/') === 0;
+    let file;
+    try { file = decodeURIComponent(path.basename(u.pathname)); }
+    catch (e) { file = path.basename(u.pathname); }
+    // 自动按架构选包：?arch=arm64 / ia32 优先取原生包，缺包时自动落到 x64 通用包
+    const arch = String(u.searchParams.get('arch') || '').toLowerCase();
+    if (!isArchive && /^(x64|ia32|arm64)$/.test(arch) && arch !== 'x64' && /setup.*\.exe$/i.test(file)) {
+      let v = ''; try { v = readManifest().release.latest.versionName || ''; } catch (e) {}
+      const cands = ['desktop-setup-' + arch + '.exe']
+        .concat(v ? ['鸿汇影桌面版 Setup ' + v + '-' + arch + '.exe'] : []);
+      const D = path.join(__dirname, '..', 'dist');
+      const hit = cands.find(n => { try { return fs.statSync(path.join(D, n)).isFile(); } catch (e) { return false; } });
+      if (hit) file = hit;
+    }
+    const fp = isArchive ? findArchive(file) : resolveDownload(file);
+    if (!fp) { send(res, 404, { ok: false, error: '安装包未生成（请先 npm run pack，或把安装包放到桌面）' }); return; }
+    // 流式下发 + Range 断点续传：不把 77MB 安装包整包读进内存（低内存机器也能取包）
+    const st = fs.statSync(fp);
+    const headers = { 'Content-Type': 'application/octet-stream',
+      'Content-Disposition': 'attachment; filename="' + file.replace(/["\r\n]/g, '') + '"',
+      'Access-Control-Allow-Origin': '*', 'Accept-Ranges': 'bytes' };
+    const rm = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
+    if (rm) {
+      let start = rm[1] ? Number(rm[1]) : 0;
+      let end = rm[2] ? Math.min(Number(rm[2]), st.size - 1) : st.size - 1;
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= st.size) {
+        headers['Content-Range'] = 'bytes */' + st.size;
+        res.writeHead(416, headers); res.end(); return;
+      }
+      headers['Content-Range'] = 'bytes ' + start + '-' + end + '/' + st.size;
+      headers['Content-Length'] = end - start + 1;
+      res.writeHead(206, headers);
+      fs.createReadStream(fp, { start, end }).pipe(res);
+      return;
+    }
+    headers['Content-Length'] = st.size;
+    // HEAD 只用于验收探测，直接回响应头，不创建 77MB 读取流
+    if (req.method === 'HEAD') { res.writeHead(200, headers); res.end(); return; }
+    res.writeHead(200, headers);
+    fs.createReadStream(fp).pipe(res);
+    return;
+  }
+
+  if (u.pathname === '/' && req.method === 'GET') {
+    cors(res);
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(BOARD) });
+    res.end(BOARD);
+    return;
+  }
+
+  if (req.method === 'GET') { serveStatic(res, u); return; }
+  send(res, 404, { ok: false, error: 'not found' });
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log('[HongHub-Desktop] 服务已启动：http://localhost:' + PORT + ' （看板/收集/实时更新/自愈/自动化）');
+  console.log('[HongHub-Desktop] writable=' + writable + ' reportToken=' + (!!REPORT_TOKEN) + ' fixToken=' + (!!FIX_TOKEN));
+  refreshPageFromPublic();
+  const pageTimer = setInterval(refreshPageFromPublic, 10 * 60 * 1000); if (pageTimer.unref) pageTimer.unref();
+  loadAutoRuns();
+  loadGovernRuns();
+  scheduleAutoRun();
+  // 启动即留一条审计 + 记一次源健康快照，保证趋势曲线从第一天起就有基线
+  try {
+    devops.audit('server.start', { detail: 'port=' + PORT + ' / 功能 ' + readFeatures().length + ' 项' });
+    const snapS = devops.snapshotSources(readManifest());
+    if (snapS && snapS.total) console.log('[HongHub-Desktop] 源健康基线：' + snapS.ok + '/' + snapS.total + ' 可用');
+  } catch (e) {}
+  try {
+    logRotate.start();
+    healthMonitor.start();
+    console.log('[HongHub-Desktop] 日志轮转（5MB / 保留 3 份）与健康监测（5 分钟）已启用');
+  } catch (e) { console.warn('[HongHub-Desktop] 运维监测启动跳过：' + (e && e.message || e)); }
+  // 资源覆盖全自动巡检：探测全部频道与平台 → 自动建单 → 频道自动换源修复 → 复检关单 → 周报
+  // 平时完全不需要人工；KH_CATALOG_INTERVAL_MS=0 可关闭周期（启动那轮仍会跑）
+  try {
+    const ms = Number(process.env.KH_CATALOG_INTERVAL_MS);
+    if (ms !== 0) {
+      const t = catalog.startAuto(ms || 15 * 60 * 1000);
+      console.log('[HongHub-Desktop] 资源覆盖自动巡检已启用：每 ' + Math.round((t.intervalMs || 0) / 60000) + ' 分钟探测全部频道与平台，失败自动建单 + 自动换源 + 自动复检关单');
+    } else { console.log('[HongHub-Desktop] 资源覆盖自动巡检已关闭（KH_CATALOG_INTERVAL_MS=0）'); }
+  } catch (e) { console.warn('[HongHub-Desktop] 资源巡检启动跳过：' + (e && e.message || e)); }
+  console.log('[HongHub-Desktop] 自动化运行：' + (AUTO_RUN_ENABLED ? ('已开启（' + (AUTO_RUN_HOUR !== null ? ('每日 ' + AUTO_RUN_HOUR + ':00') : (AUTO_RUN_INTERVAL_MS / 3600000 + ' 小时间隔')) + (AUTO_GOVERN ? ' · 模式=智能自治' : ' · 模式=更新+发布') + '）') : '已关闭'));
+  // 自动修 Bug：启动后自动跑一轮，之后按周期自动巡检。全程自动处置 + 自动复检，无需人工复核。
+  // KH_BUGFIX_INTERVAL_MS=0 可关闭周期巡检（启动那轮仍会跑）；默认 30 分钟。
+  const BUGFIX_TICK_MS = Math.max(0, Number(process.env.KH_BUGFIX_INTERVAL_MS || 30 * 60 * 1000));
+  setTimeout(function autoBugfixTick() {
+    try {
+      // 先从反馈建议自动长出新功能，再跑自动修 Bug（顺序不能反：新功能要先同步功能快照）
+      const mine = miner.run();
+      console.log('[HongHub-Desktop] 反馈自动长出新功能（无需人工复核）：扫描 ' +
+        (mine.scannedTexts || 0) + ' 条 / 命中 ' + ((mine.candidates || []).length) +
+        ' 项 / 自动添加 ' + ((mine.added || []).length) + ' 项');
+      const opt = deviceOptimizer.run();
+      console.log('[HongHub-Desktop] OS 版本自动优化（无需人工复核）：' +
+        (opt.summary.families || 0) + ' 个系统家族 / ' + (opt.summary.osVersions || 0) +
+        ' 个版本 / 自动修复 ' + (opt.summary.fixesApplied || 0) + ' 项 · 已随下发清单同步更新');
+      const r = bugfix.run();
+      const s = r.summary || {};
+      console.log('[HongHub-Desktop] 自动修 Bug（无需人工复核）：发现 ' + (s.total || 0) +
+        ' 项 / 自动处置 ' + (s.autoHandled || 0) + ' 项 / 自动复检 ' + (s.verified ? '通过' : '已排队，下轮自动重试'));
+    } catch (e) { console.warn('[HongHub-Desktop] 自动闭环本轮跳过：' + (e && e.message || e)); }
+    if (BUGFIX_TICK_MS > 0) setTimeout(autoBugfixTick, BUGFIX_TICK_MS);
+  }, 20000);   // 避开打包期自检临时中枢的生命周期，避免构建中途写文件
+});

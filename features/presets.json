@@ -1,0 +1,61 @@
+[
+  {
+    "id": "preset-open-dashboard",
+    "name": "打开在线看板",
+    "icon": "📊",
+    "desc": "一键打开远程问题看板（收集 / 自愈 / 自动化 / 功能管理），免记地址",
+    "action": "open",
+    "url": "/",
+    "autoEnabled": false
+  },
+  {
+    "id": "preset-dingtalk",
+    "name": "钉钉通知",
+    "icon": "📨",
+    "desc": "向钉钉群机器人推送「自治完成 / 问题告警」消息。点「编辑」把机器人地址里的“在此粘贴”换成你的 Webhook 即可用。",
+    "action": "webhook",
+    "url": "https://oapi.dingtalk.com/robot/send?access_token=在此粘贴",
+    "payload": { "msgtype": "text", "text": { "content": "HongHub 自治已完成，源清单已刷新" } },
+    "autoEnabled": false
+  },
+  {
+    "id": "preset-wecom",
+    "name": "企业微信通知",
+    "icon": "💬",
+    "desc": "向企业微信群机器人推送通知。编辑时把地址里的“在此粘贴”换成你的 key。",
+    "action": "webhook",
+    "url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=在此粘贴",
+    "payload": { "msgtype": "text", "content": { "content": "HongHub 自治已完成，源清单已刷新" } },
+    "autoEnabled": false
+  },
+  {
+    "id": "preset-feishu",
+    "name": "飞书通知",
+    "icon": "📲",
+    "desc": "向飞书群机器人推送通知。编辑时把地址里的“在此粘贴”换成你的 Webhook。",
+    "action": "webhook",
+    "url": "https://open.feishu.cn/open-apis/bot/v2/hook/在此粘贴",
+    "payload": { "msg_type": "text", "content": { "text": "HongHub 自治已完成，源清单已刷新" } },
+    "autoEnabled": false
+  },
+  {
+    "id": "preset-backup",
+    "name": "每日自动备份清单",
+    "icon": "💾",
+    "desc": "运行一条命令把当前 manifest 源清单备份到 server/backup/（建议配合「自动化运行」一起用）。",
+    "action": "script",
+    "cmd": "node -e \"const fs=require('fs');fs.mkdirSync('server/backup',{recursive:true});fs.copyFileSync('server/manifest.json','server/backup/manifest.'+Date.now()+'.json');console.log('已备份清单到 server/backup')\"",
+    "confirm": true,
+    "autoEnabled": false
+  },
+  {
+    "id": "preset-broadcast",
+    "name": "定时播报可看内容",
+    "icon": "📣",
+    "desc": "运行命令生成本次可播放频道数摘要（可接自动化，或改成推到你自己的通知渠道）。",
+    "action": "script",
+    "cmd": "node -e \"const m=require('./server/manifest.json');const c=m.sources.channels.length;const s=m.sources.channels.reduce((a,b)=>a+(b.sources?b.sources.length:0),0);console.log('可播放：'+c+' 频道 / '+s+' 条线路')\"",
+    "confirm": true,
+    "autoEnabled": false
+  }
+]

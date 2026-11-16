@@ -1,0 +1,62 @@
+node_modules/
+dist/
+.env
+*.log
+.server-pid
+
+# ---------- 签名与密钥：绝不允许进版本库 ----------
+# 密钥库、证书链、profile、私钥与复用脚本的运行产物全部排除
+harmony/signing/keys/
+harmony/signing/sign-keys/
+harmony/signing/sign/
+harmony/signing/entry/build/
+*.p12
+*.p7b
+*.pem
+*.cer
+*.jks
+*.keystore
+.env.*
+!.env.example
+
+# ---------- 构建产物与二进制成品 ----------
+*.hap
+*.exe
+*.zip
+*.blockmap
+*.dmg
+*.AppImage
+releases/*/*.exe
+releases/*/*.zip
+releases/*/*.hap
+发布包_*/
+_旧产物_*/
+_v178_rebuild_backup/
+_cert_restore/
+_devupdate_bak_*/
+
+# ---------- 运行期数据 ----------
+# 设备上报 / 反馈 / 治理结果 / 良好页面快照，均随运行生成
+server/data/*.jsonl
+server/data/*.json
+server/data/snapshots/
+server/data/app.page.html
+server/data/app.page.json
+
+# ---------- 本地调试与临时脚本 ----------
+__pycache__/
+*.pyc
+_signtmp/
+certs/
+_check.js
+_*.js
+_*.bat
+_signtmp/
+*.tmp
+
+# ---------- 系统与编辑器 ----------
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/

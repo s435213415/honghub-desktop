@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "enabled": true,
+  "baseUrl": "https://wbapp-j8tm07cirj5x0krfyivhfz.app.workbuddy.host",
+  "shareQuery": "?sharecode=E4RJGYDYNW",
+  "distribution": "workbuddy-sites",
+  "note": "公网分发端点（非敏感）：仅含公开下载域名与分享码，不含任何密钥/口令；客户端据此从公网拉更新清单与成品。可在 .env 用 KH_PUBLIC_BASE_URL / KH_PUBLIC_SHARE_QUERY 覆盖，或换成自有域名/对象存储。",
+  "versionName": "1.7.8",
+  "versionCode": 1000122,
+  "desktopUrl": "https://wbapp-j8tm07cirj5x0krfyivhfz.app.workbuddy.host/honghub/v1.7.8/desktop-setup.exe?sharecode=E4RJGYDYNW",
+  "hapUrl": "https://wbapp-j8tm07cirj5x0krfyivhfz.app.workbuddy.host/honghub/v1.7.8/HongHubMovie.hap?sharecode=E4RJGYDYNW",
+  "hapSha256": "7a3497480599a00357be291b346ebd14b82d9e77ebed47de0ef6a4403bf1ae57",
+  "hapSize": 841006,
+  "desktopSha256Source": "remote-manifest.json",
+  "desktopSha256Note": "安装包自身 SHA256 / 体积刻意不写入随包配置：该配置是 exe 的一部分，写死会导致重打包后哈希再次变化而永远对不上。真实值由 server/distribute.js 运行时从公网 remote-manifest.json 拉取。",
+  "publishedAt": "2026-11-15T16:07:49.339891Z"
+}

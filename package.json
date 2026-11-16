@@ -1,0 +1,90 @@
+{
+  "name": "honghub-desktop",
+  "version": "1.7.8",
+  "description": "鸿汇影 · 免费桌面版：远程问题自动收集 + 实时更新 + 可扩展功能 + 一键自愈",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "desktop": "node server/server.js",
+    "build:app": "python build_desktop.py",
+    "pack": "node scripts/build-exe.js",
+    "verify": "node scripts/verify-release.js",
+    "test:bugfix": "node scripts/selftest-bugfix.js",
+    "test:feature": "node scripts/selftest-feature-flow.js",
+    "batch": "node scripts/build-archs.js",
+    "check": "node scripts/check-static.js",
+    "doctor": "node scripts/doctor.js",
+    "signing:setup": "node scripts/setup-signing.js",
+    "hap:sign": "node scripts/hap-sign.js",
+    "smoke:hap": "node scripts/smoke-hap.js",
+    "hap:watch": "node scripts/hap-watch.js",
+    "smoke:ui": "node scripts/smoke-ui.js",
+    "archive": "node scripts/archive-release.js",
+    "sign:win": "node scripts/sign-windows.js",
+    "sign:test": "node scripts/sign-windows.js --selftest",
+    "publish:remote": "node scripts/publish-remote.js",
+    "ship": "node scripts/ship.js",
+    "ship:patch": "node scripts/ship.js --patch",
+    "ship:verify": "node scripts/ship.js --verify",
+    "ship:deliver": "node scripts/ship.js --deliver",
+    "ship:client": "node scripts/ship-client.js",
+    "version": "node scripts/version.js",
+    "version:check": "node scripts/version.js --check",
+    "version:sync": "node scripts/version.js --sync",
+    "version:bump": "node scripts/version.js --bump",
+    "verify:dev-auto": "node scripts/verify-dev-auto.js",
+    "sbom": "node scripts/sbom.js",
+    "audit": "node scripts/sbom.js",
+    "hooks:install": "node scripts/install-hooks.js"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3",
+    "playwright-core": "^1.65.1"
+  },
+  "build": {
+    "appId": "com.honghub.desktop",
+    "productName": "鸿汇影桌面版",
+    "asar": false,
+    "compression": "maximum",
+    "icon": "assets/icon.ico",
+    "files": [
+      "app/**/*",
+      "server/**/*",
+      "features/**/*",
+      "assets/**/*",
+      "electron-main.js",
+      "build_desktop.py",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "language": "2052",
+      "installerLanguages": [
+        "zh_CN"
+      ],
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "鸿汇影桌面版"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.png"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    }
+  },
+  "license": "MIT",
+  "author": "HongHub"
+}

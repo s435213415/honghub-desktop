@@ -1,0 +1,20 @@
+# 统一行尾：Windows 检出时 shell hook / Python / JS 必须保持 LF，
+# 否则 .githooks/pre-commit 会因 \r 报错导致提交门禁静默失效。
+* text=auto eol=lf
+
+# Windows 批处理保留 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制一律不参与换行转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.hap binary
+*.exe binary
+*.zip binary
+*.p12 binary
+*.cer binary
+*.pyd binary
+*.dll binary

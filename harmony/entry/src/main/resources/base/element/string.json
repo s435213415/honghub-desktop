@@ -1,0 +1,7 @@
+{
+  "string": [
+    { "name": "module_desc", "value": "鸿汇影 深开鸿端入口模块" },
+    { "name": "EntryAbility_desc", "value": "鸿汇影 主能力" },
+    { "name": "EntryAbility_label", "value": "鸿汇影" }
+  ]
+}
