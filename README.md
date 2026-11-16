@@ -511,3 +511,33 @@ curl -X POST http://localhost:8787/api/update-publish
 2. **回归顺序**：`verify-release.js` 会断言「桌面 exe/HAP 与 `dist/` 一致」，所以必须先同步桌面成品再跑回归，否则补丁重出包后会撞上尚未刷新的旧桌面包而误报失败。
 
 验收口径以「从公网全量回下 exe 与 HAP、与本地逐字节 `SAME`」为准，而不是只看 HTTP 200。发新版时记得同步更新 `server/public-endpoint.json` 里含版本号的 `desktopUrl` / `hapUrl` 并重新出包。
+
+---
+
+## 仓库说明（源码归档）
+
+本仓库只放**源码与工具链**，用于版本管理与协作；客户交付物与敏感材料一律不进仓库。
+
+**包含**
+
+| 目录 / 文件 | 说明 |
+| --- | --- |
+| `app/` | Electron 桌面端渲染层（`index.html`：看板、下载、覆盖安装入口） |
+| `server/` | 本地中枢服务：`/api/manifest`、`/api/features/sync`、`/api/page/sync`、自动修复 / 设备优化 / 分发 |
+| `features/` | 功能清单与预设包（新增一条即免重装长出新工具） |
+| `scripts/` | 出包、发布、版本、验收脚本（`ship-client.js`、`version.js`、`verify-dev-auto.js` 等） |
+| `harmony/` | 深开鸿 / HarmonyOS 端 ArkWeb 页面与热更新逻辑（签名密钥已排除） |
+| `releases/*.json` | 各版本发布元数据（`index.json` 为版本索引） |
+
+**不包含（`.gitignore` 强制排除）**
+
+- 成品二进制：`*.exe` / `*.zip` / `*.hap` / `*.blockmap`、`dist/`、`发布包_*/`
+- **签名材料**：`harmony/signing/keys/`、`sign-keys/`、`*.p12` / `*.pem` / `*.p7b` / `*.cer`
+- 运行期数据：`server/data/*.json(l)`、页面热更新缓存（`app.page.html`）
+- 依赖与临时脚本：`node_modules/`、`_*.js`、`__pycache__/`、`*.log`
+
+> ⚠️ 签名密钥与 `.env` 口令**绝不提交**。重签 HAP 时用环境变量 `OH_KEY_PWD` 传入口令，密钥包只留本地（`签名密钥_v1.7.8/`）。
+
+**当前基线**：`v1.7.8` / `versionCode 1000122`。版本号以 `server/manifest.json` 的 `release.latest` 为单一真相源，改动后跑 `npm run version:check` 校验全仓 9 处字段是否一致。
+
+**源码与线上成品的关系**：线上只发布 6 个客户可用文件（下载页、`remote-manifest.json`、`app-page.html`、exe、HAP、免安装 zip 的 `.bin` 别名）。页面类修改可通过公网 `app-page.html` 热更新生效，无需重新出包；本体类修改才需要重打包并覆盖安装（不卸载、不删数据）。
