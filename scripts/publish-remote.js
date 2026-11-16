@@ -53,8 +53,8 @@ const manifest = {
   hapUrl: asset(prefix + '/HongHubMovie.hap'),
   desktopSha256: desktop.sha256, hapSha256: hap.sha256,
   desktopSize: desktop.size, hapSize: hap.size,
-  features: rel.features || null,
-  rollbackUrl: asset('releases/index.json')
+  features: rel.features || null
+  // 回滚索引 releases/index.json 属开发端内部资料，不对外发布，故不下发 rollbackUrl
 };
 fs.writeFileSync(OUT, JSON.stringify(manifest, null, 2) + '\n');
 
@@ -64,11 +64,8 @@ fs.mkdirSync(path.join(pub, prefix), { recursive: true });
 const files = [
   [path.join(DIST, 'desktop-setup.exe'), path.join(pub, prefix, 'desktop-setup.exe')],
   [path.join(DIST, 'honghub-harmony.hap'), path.join(pub, prefix, 'HongHubMovie.hap')],
-  [path.join(ROOT, 'releases', 'index.json'), path.join(pub, 'releases', 'index.json')],
-  [OUT, path.join(pub, 'remote-manifest.json')],
-  [path.join(DIST, 'delivery.json'), path.join(pub, 'delivery.json')],
-  [path.join(DIST, 'os-profiles.json'), path.join(pub, 'os-profiles.json')],
-  [path.join(DIST, 'archs.json'), path.join(pub, 'archs.json')]
+  // 内部资料（回滚索引 / 下发通道清单 / OS 适配矩阵 / 架构清单）一律不上公网
+  [OUT, path.join(pub, 'remote-manifest.json')]
 ];
 for (const [s, d] of files) {
   if (!fs.existsSync(s)) continue;

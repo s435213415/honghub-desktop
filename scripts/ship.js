@@ -420,7 +420,9 @@ function syncDeliveryFolder() {
     '发布清单      ' + c.baseUrl + '/remote-manifest.json' + Q,
     'Windows 安装包 ' + c.baseUrl + '/honghub/v' + V + '/desktop-setup.exe' + Q,
     '深开鸿 HAP    ' + c.baseUrl + '/honghub/v' + V + '/HongHubMovie.hap' + Q,
-    '回滚版本索引  ' + c.baseUrl + '/releases/index.json' + Q, '',
+    '免安装 zip    ' + c.baseUrl + '/honghub/v' + V + '/honghub-desktop-' + V + '-win.bin' + Q
+      + '  （下载后改后缀为 .zip 再解压）',
+    '回滚版本索引  仅存开发端：releases/index.json（不对外发布，公网无此路径）', '',
     '【版本与校验】', 'v' + V + ' / #' + REL.versionCode,
     'desktop sha256 ' + dsha, 'hap     sha256 ' + hsha,
     'exe / HAP 已从公网全量回下，与桌面成品逐字节一致。', '',
