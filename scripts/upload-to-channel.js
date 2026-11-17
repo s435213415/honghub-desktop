@@ -59,8 +59,9 @@ function loadToken(role) {
 }
 
 function endpoint() {
-  // 本机面板/CLI 默认直连本地回环，绕开公网代理与临时隧道域名（隧道只用于对外下载）。
-  // 远程调用（豆包/AI）用 --endpoint 或 KH_UPLOAD_ENDPOINT 显式指定公网上传地址。
+  /* 上传网关地址（≠客户下载域名）：默认连本机 127.0.0.1:8099 的上传网关，
+     经鉴权 + SHA256 校验后由网关发布。远程调用可显式指定公网上传网关。
+     注意：这里只是"上传通道"，不改写 client 的下载域名（那由 public-endpoint.json 决定）。 */
   if (arg('endpoint')) return arg('endpoint').replace(/\/+$/, '');
   if (process.env.KH_UPLOAD_ENDPOINT) return process.env.KH_UPLOAD_ENDPOINT.replace(/\/+$/, '');
   if (process.env.KH_UPLOAD_LOCAL === '0') {
@@ -69,7 +70,7 @@ function endpoint() {
       if (u.startsWith('https://')) return u;
     } catch (e) {}
   }
-  return 'http://127.0.0.1:8099';
+  return process.env.KH_UPLOAD_GATEWAY || 'http://127.0.0.1:8099';
 }
 
 function sha256File(p) {

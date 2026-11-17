@@ -110,9 +110,23 @@ function findCustomerNote() {
       vm && vm[1] === String(pkg.version) && String(vm[2]) === String(latest.versionCode),
       vm ? 'v' + vm[1] + ' / #' + vm[2] : '说明里没写版本行');
     const hashes = {};
-    for (const line of note.split(/\r?\n/)) {
+    const lines = note.split(/\r?\n/);
+    // 旧格式：行首 exe/hap/zip + 哈希
+    for (const line of lines) {
       const m = line.match(/^(exe|hap|zip)\s+([0-9a-f]{64})/i);
       if (m) hashes[m[1].toLowerCase()] = m[2].toLowerCase();
+    }
+    // 新格式（v1.7.30 起）：文件名行 + 字节数 + 哈希行，从文件名往后 5 行内找哈希
+    for (let i = 0; i < lines.length; i++) {
+      let kind = null;
+      if (/\.exe\b/i.test(lines[i])) kind = 'exe';
+      else if (/\.hap\b/i.test(lines[i])) kind = 'hap';
+      else if (/\.zip\b/i.test(lines[i])) kind = 'zip';
+      if (!kind || hashes[kind]) continue;
+      for (let j = i; j < Math.min(i + 5, lines.length); j++) {
+        const hm = lines[j].match(/\b([0-9a-f]{64})\b/i);
+        if (hm) { hashes[kind] = hm[1].toLowerCase(); break; }
+      }
     }
     for (const [kind, p] of art) {
       const sha = sha256File(p);

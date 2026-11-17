@@ -74,12 +74,24 @@ const bytes = {
   exe: size(SRC.exe), hap: size(SRC.hap), bin: size(SRC.bin),
   exeSha: sha256(SRC.exe), hapSha: sha256(SRC.hap), binSha: sha256(SRC.bin)
 };
-/* 1.1 把清单的下发地址改成本机可达的镜像站（默认 http://127.0.0.1:8099）。
-   原清单写的是公网隧道域名，隧道不通时客户端拉到的是 HTTP 0，自动更新等于没有。 */
-const BASE = (process.env.KH_BASE_URL || 'http://127.0.0.1:8099').replace(/\/+$/, '');
+/* 1.1 下发地址以随包正式端点 public-endpoint.json 为准（默认公网正式站点）。
+   仅当显式设置 KH_BASE_URL=127.0.0.1:8099 时才切本机镜像做联调。
+   历史坑：过去这里默认写死 127.0.0.1:8099，跑一次 pack 就把公网清单覆盖成本机地址，
+   客户下载链接全失效——正式发布绝不能默认用回环地址。 */
+const ENDPOINT = path.join(ROOT, 'server', 'public-endpoint.json');
+let ep = {};
+try { ep = JSON.parse(fs.readFileSync(ENDPOINT, 'utf8')); } catch (e) {}
+const FORMAL_BASE = String(ep.baseUrl || '').replace(/\/+$/, '');
+const FORMAL_SHARE = String(ep.shareQuery || '');
+const LOCAL_MIRROR = process.env.KH_BASE_URL;   // 显式设置才启用本机镜像
+const LOCAL_MODE = !!LOCAL_MIRROR;
+const BASE = (LOCAL_MIRROR || FORMAL_BASE).replace(/\/+$/, '');
+const Q = LOCAL_MODE ? '' : FORMAL_SHARE;       // 本机镜像不需要 sharecode
+if (!BASE) { log('  [中止] 无可用下发地址：public-endpoint.json 缺 baseUrl，且未设 KH_BASE_URL'); process.exit(1); }
 M.baseUrl = BASE;
-M.desktopUrl = BASE + '/honghub/v' + VER + '/desktop-setup.exe';
-M.hapUrl = BASE + '/honghub/v' + VER + '/HongHubMovie.hap';
+M.shareQuery = LOCAL_MODE ? null : (FORMAL_SHARE || null);
+M.desktopUrl = BASE + '/honghub/v' + VER + '/desktop-setup.exe' + Q;
+M.hapUrl = BASE + '/honghub/v' + VER + '/HongHubMovie.hap' + Q;
 M.desktopSha256 = bytes.exeSha;
 M.hapSha256 = bytes.hapSha;
 M.desktopSize = bytes.exe;
@@ -87,28 +99,23 @@ M.hapSize = bytes.hap;
 M.mirrorUrl = BASE;
 if (!DRY) {
   fs.writeFileSync(manifestPath, JSON.stringify(M, null, 2) + '\n', 'utf8');
-  log('  清单已改写下发地址：' + BASE + ' · v' + VER);
+  log('  清单下发地址：' + BASE + (LOCAL_MODE ? '（本机镜像，仅联调）' : '（正式站点）') + ' · v' + VER);
 }
 for (const n of ['remote-manifest.json', 'latest.yml']) {
   copyKeep(path.join(DIST, n), path.join(PUB, n));
 }
 copyKeep(path.join(ROOT, 'app', 'index.html'), path.join(PUB, 'app-page.html'));
 
-/* 1.2 随包的下发端点（server/public-endpoint.json，会被打进 exe）也要跟着版本走，
-   否则客户端更新检查一直去撞已经失效的旧域名和旧版本号。 */
-const ENDPOINT = path.join(ROOT, 'server', 'public-endpoint.json');
+/* 1.2 随包的下发端点（server/public-endpoint.json，会被打进 exe）只更新版本与校验值，
+   绝不改写 baseUrl / shareQuery / distribution / mirrors——那是正式分发配置，由人工维护。 */
 if (fs.existsSync(ENDPOINT)) {
   try {
-    const ep = JSON.parse(fs.readFileSync(ENDPOINT, 'utf8'));
-    ep.baseUrl = BASE;
     ep.versionName = VER;
     ep.versionCode = M.versionCode;
-    ep.desktopUrl = BASE + '/honghub/v' + VER + '/desktop-setup.exe';
-    ep.hapUrl = BASE + '/honghub/v' + VER + '/HongHubMovie.hap';
-    ep.mirrors = [];
-    ep.distribution = 'local-mirror';
+    ep.desktopUrl = String(ep.baseUrl || BASE).replace(/\/+$/, '') + '/honghub/v' + VER + '/desktop-setup.exe' + Q;
+    ep.hapUrl = String(ep.baseUrl || BASE).replace(/\/+$/, '') + '/honghub/v' + VER + '/HongHubMovie.hap' + Q;
     if (!DRY) fs.writeFileSync(ENDPOINT, JSON.stringify(ep, null, 2) + '\n', 'utf8');
-    log('  随包端点已对齐：' + BASE + ' · v' + VER);
+    log('  随包端点版本已对齐：' + ep.baseUrl + (Q || '') + ' · v' + VER + (LOCAL_MODE ? '（本机镜像）' : ''));
   } catch (e) { log('  随包端点更新失败：' + e.message); }
 }
 

@@ -52,7 +52,8 @@
     "audit": "node scripts/sbom.js",
     "hooks:install": "node scripts/install-hooks.js",
     "dev:auto": "node scripts/dev-auto.mjs",
-    "dev:auto:check": "node scripts/dev-auto.mjs --check"
+    "dev:auto:check": "node scripts/dev-auto.mjs --check",
+    "build:dev-scripts": "node scripts/build-dev-package.js"
   },
   "devDependencies": {
     "electron": "^30.0.0",
