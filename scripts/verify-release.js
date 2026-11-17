@@ -74,16 +74,20 @@ else {
   }
 }
 
-// 3) 桌面交付物与 dist 产物逐字节一致
+// 3) 桌面交付物与 dist 产物逐字节一致（桌面已按「客户成品夹/开发端夹」归拢，兼容旧平铺位置）
 const setupName = '鸿汇影桌面版 Setup ' + V + '.exe';
+const deliverDirs = (fs.existsSync(DESKTOP) ? fs.readdirSync(DESKTOP, { withFileTypes: true }) : [])
+  .filter(d => d.isDirectory() && /^鸿汇影·客户成品_v/i.test(d.name))
+  .map(d => path.join(DESKTOP, d.name));
+function firstExisting(list) { for (const p of list) if (fs.existsSync(p)) return p; return list[0]; }
 for (const [src, dst] of [
-  [path.join(DIST, 'desktop-setup.exe'), path.join(DESKTOP, setupName)],
-  [path.join(DIST, 'honghub-harmony.hap'), path.join(DESKTOP, 'HongHubMovie.hap')]
+  [path.join(DIST, 'desktop-setup.exe'), firstExisting([path.join(DESKTOP, setupName)].concat(deliverDirs.map(d => path.join(d, setupName))))],
+  [path.join(DIST, 'honghub-harmony.hap'), firstExisting([path.join(DESKTOP, 'HongHubMovie.hap')].concat(deliverDirs.map(d => path.join(d, 'HongHubMovie.hap')))  )]
 ]) {
   if (!fs.existsSync(dst)) { bad('桌面交付物缺失：' + dst); continue; }
   if (!fs.existsSync(src)) { bad('dist 产物缺失：' + src); continue; }
   if (sha(src) !== sha(dst)) bad('桌面与 dist 哈希不一致：' + path.basename(dst));
-  else ok('桌面交付 ' + path.basename(dst) + ' (' + size(dst) + ' B) 与分发产物一致');
+  else ok('桌面交付 ' + path.basename(dst) + ' (' + size(dst) + ' B) 与分发产物一致（' + path.basename(path.dirname(dst)) + '）');
 }
 // 旧版本安装包只提示，绝不自动删除个人目录里的文件
 for (const n of fs.existsSync(DESKTOP) ? fs.readdirSync(DESKTOP) : []) {
@@ -95,9 +99,13 @@ const zipRead = require('./lib/zip-read');
 const SIGN_DIR = at('harmony', 'signing');
 const hapStamp = j(path.join(DIST, '.hap-build.json'), null);
 let signOk = true;
-for (const f of ['_inject_honghub.py', 'sign-hap.py', 'entry-default-unsigned.hap',
-  'sign-keys/app-key.p12', 'sign-keys/ca.p12', 'sign-keys/profile-key.p12']) {
+for (const f of ['_inject_honghub.py', 'sign-hap.py', 'entry-default-unsigned.hap']) {
   if (!fs.existsSync(path.join(SIGN_DIR, f))) { bad('项目内签名工作台缺 ' + f); signOk = false; }
+}
+// p12 三件套在 harmony/signing 下可能平铺或多套一层 keys/sign-keys，都认
+const p12Dirs = [SIGN_DIR, path.join(SIGN_DIR, 'keys'), path.join(SIGN_DIR, 'keys', 'sign-keys')];
+for (const f of ['app-key.p12', 'ca.p12', 'profile-key.p12']) {
+  if (!p12Dirs.some(d => fs.existsSync(path.join(d, f)))) { bad('项目内签名工作台缺 ' + f); signOk = false; }
 }
 if (signOk) ok('签名链已自包含（不再依赖桌面临时工作台）');
 if (!hapStamp || Number(hapStamp.versionCode) !== C) bad('dist/.hap-build.json 缺失或版本不符');
@@ -106,7 +114,11 @@ else {
   if (!fs.existsSync(hp) || sha(hp) !== hapStamp.sha256) bad('HAP 与本次构建指纹不一致（疑似旧包混入）');
   else {
     try {
-      const html = zipRead.readText(hp, 'resources/rawfile/movie-site/index.html');
+      let html = null;
+      for (const entry of ['resources/rawfile/www/index.html', 'resources/rawfile/movie-site/index.html']) {
+        try { html = zipRead.readText(hp, entry); break; } catch (e) {}
+      }
+      if (!html) throw new Error('包内缺少前端入口（www/index.html 与 movie-site/index.html 都不存在）');
       const m = html.match(/var KH_APP_CODE\s*=\s*(\d+)/);
       if (!m || Number(m[1]) !== C) bad('HAP 包内前端版本与发版不一致');
       else ok('HAP 新鲜度通过：包内前端 #' + C + ' 与本次构建指纹一致');

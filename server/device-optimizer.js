@@ -142,6 +142,11 @@ function optimize(rec) {
     deviceId: rec.deviceId || rec.id || (family + '-' + version + '-' + tier),
     family, familyLabel: (FAMILIES.find(f => f.key === family) || {}).label || family,
     osVersion: version, apiVersion: rec.apiVersion || null,
+    /* 设备端原样上报的画像字段：开发端要能看到系统名 / 形态 / 窗口能力表 */
+    osName: rec.osName || rec.osFullName || null,
+    deviceType: rec.deviceType || null,
+    caps: (rec.caps && typeof rec.caps === 'object') ? rec.caps : null,
+    at: rec.at || null,
     arch: delivery.archKey(rec.arch), memTier: tier,
     channel: plan.channel, playback: plan.playback, compat,
     fixes, auto: true, noReview: true,
@@ -156,6 +161,8 @@ function normalizeQuery(q) {
     os: q.os || null, osName: q.osName || null, osFullName: q.osFullName || null,
     osVersion: q.osVersion || q.version || null, apiVersion: q.apiVersion || null,
     ua: q.ua || q.userAgent || null, platform: q.platform || null,
+    deviceType: q.deviceType || null, osName: q.osName || null,
+    caps: (q.caps && typeof q.caps === 'object') ? q.caps : null,
     arch: q.arch || null, mem: q.mem, memory: q.memory,
     appCode: q.code || q.appCode || 0
   };

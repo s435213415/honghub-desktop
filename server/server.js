@@ -948,7 +948,8 @@ const BOARD = [
   '<div class="row" id="resIssues"></div>',
   '</div><script>',
   '(function(){var _f=window.fetch?window.fetch.bind(window):null;if(!_f)return;window.fetch=function(u,o){o=o||{};var t="";try{t=localStorage.getItem("khAccessToken")||""}catch(e){}if(t){var h=o.headers;if(!h||typeof h!=="object"||typeof h.append!=="function"){o.headers=Object.assign({},(h&&typeof h==="object")?h:{},{"X-KH-Access-Token":t})}}return _f(u,o)}})();',
-  'function setAccessToken(){var cur="";try{cur=localStorage.getItem("khAccessToken")||""}catch(e){}var v=prompt("填写中枢访问口令（未开启口令时留空即可）：",cur);if(v===null)return;try{localStorage.setItem("khAccessToken",v)}catch(e){}location.reload();}',
+  '(function(){try{var q=new URLSearchParams(location.search).get("token");if(q){localStorage.setItem("khAccessToken",q);}}catch(e){}})();',
+  'function setAccessToken(){var cur="";try{cur=localStorage.getItem("khAccessToken")||""}catch(e){}fetch("/api/dev/access-token",{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(d){var tok=(d&&d.token)||"";if(tok){try{if(navigator.clipboard)navigator.clipboard.writeText(tok)}catch(e){}}var v=prompt("中枢访问口令（本机已自动填入并复制；局域网/深开鸿设备填这一串）：\\n"+tok+"\\n\\n留空=清空口令。如需换新口令，点「确定」后到 /api/dev/access-token 重置或联系开发端。",cur||tok);if(v===null)return;try{localStorage.setItem("khAccessToken",v)}catch(e){}location.reload();}).catch(function(){var v=prompt("填写中枢访问口令（未开启口令时留空即可）：",cur);if(v===null)return;try{localStorage.setItem("khAccessToken",v)}catch(e){}location.reload();});}',
   'function featVerLoad(){fetch("/api/features",{cache:"no-store"}).then(function(r){return r.json()}).then(function(d){var e=document.getElementById("featVer");if(e&&d.version)e.textContent="功能 v"+(d.version.versionName||"-")+" · "+d.version.count+" 项 · "+(d.version.inSync?"已随发版同步":"清单有改动，待发版");}).catch(function(){})}',
   'setTimeout(featVerLoad,400);',
   'function bugRender(x){var st=document.getElementById("bugState");var el=document.getElementById("bugList");if(!x){if(st)st.textContent="全自动体检运行中";if(el)el.innerHTML="<div class=empty>服务启动后自动运行，无需人工操作</div>";return;}var s=x.summary||{};if(st)st.textContent="最近 "+tm(x.finishedAt)+" · 发现 "+(s.total||0)+" 项 · 自动处置 "+(s.autoHandled||s.fixed||0)+" 项 · "+(s.verified?"✅ 自动复检通过（第 "+(s.rounds||1)+" 轮）":"♻️ 已自动排队，下一轮继续（无需人工复核）");var arr=(x.bugs||[]).slice(0,12).map(function(b){return "<div class=item><div class=t>✅ 已自动处置 "+esc(b.title)+"</div><div class=m>"+esc(b.detail||"")+(b.fixMsg?(" · "+esc(b.fixMsg)):"")+"</div></div>";}).join("");if(el)el.innerHTML=arr||"<div class=empty>本轮未发现问题 ✅ 自动复检通过</div>";}',
@@ -1145,6 +1146,21 @@ function handleRequest(req, res) {
   const u = new URL(req.url, 'http://localhost');
   if (req.method === 'OPTIONS') { cors(res); res.writeHead(204); res.end(); return; }
   autoDetectUA(req, u.pathname);
+  /* 开发端口令自助：只对本机回环开口（本机本来免口令），用于在面板上一键查看/复制/重置，
+     局域网设备仍然必须自己带口令，避免把口令摊给整网。 */
+  if (u.pathname === '/api/dev/access-token' && DEV_MODE) {
+    const ra = String(req.socket && req.socket.remoteAddress || '');
+    const loop = ra === '127.0.0.1' || ra === '::1' || ra === '::ffff:127.0.0.1';
+    if (!loop) { send(res, 403, { ok: false, error: '仅本机可查看口令' }); return; }
+    if (req.method === 'GET') { send(res, 200, { ok: true, token: ACCESS_TOKEN || '', lanMode: !!(ACCESS_TOKEN && HOST !== '127.0.0.1') }); return; }
+    if (req.method === 'POST') {
+      ACCESS_TOKEN = genAccessToken();
+      try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(path.join(DATA_DIR, 'access-token.txt'), ACCESS_TOKEN + '\n'); } catch (e) {}
+      send(res, 200, { ok: true, token: ACCESS_TOKEN, regenerated: true });
+      console.log('[HongHub-Desktop] 访问口令已重置：' + ACCESS_TOKEN);
+      return;
+    }
+  }
   // 可选局域网访问口令（默认关闭）：开启后只有带正确口令的 /api 与 /download 请求可通行，
   // /health 与看板页面仍放行，保证设备端能先发现中枢再输入口令。
   if (ACCESS_TOKEN && (u.pathname.indexOf('/api/') === 0 || u.pathname.indexOf('/download/') === 0)) {
@@ -1412,6 +1428,19 @@ function handleRequest(req, res) {
     if (!DEV_MODE) { send(res, 404, { ok: false, error: 'not found' }); return; }
     try { send(res, 200, featureTrack.status()); }
     catch (e) { send(res, 500, { ok: false, error: '功能追踪失败：' + (e && e.message) }); }
+    return;
+  }
+  /* 设备能力表：把 /api/devices 的 OS 版本 / 形态 / caps 六键从接口搬到界面，
+     这样「开发端界面始终能追踪客户端新功能」不再只靠 API 查看。 */
+  if (u.pathname === '/admin/devices' && req.method === 'GET') {
+    if (!DEV_MODE) { send(res, 404, { ok: false, error: 'not found' }); return; }
+    let html = '';
+    try { html = fs.readFileSync(path.join(__dirname, 'devices-admin.html'), 'utf8'); }
+    catch (e) { send(res, 500, { ok: false, error: 'devices-admin.html 缺失' }); return; }
+    html = withAdminBack(html);
+    cors(res);
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(html) });
+    res.end(html);
     return;
   }
   if (u.pathname === '/admin/features' && req.method === 'GET') {
@@ -1981,7 +2010,10 @@ function handleRequest(req, res) {
           'border:1px solid #2A4E77">🧩 功能追踪</a>' +
           '<a href="/admin/extras" style="display:inline-block;padding:7px 14px;border-radius:18px;' +
           'background:#1B3A5B;color:#CFE3FF;text-decoration:none;font:13px/1.4 sans-serif;' +
-          'border:1px solid #2A4E77">🧩 开关台</a></div></body>')
+          'border:1px solid #2A4E77">🧩 开关台</a>' +
+          '<a href="/admin/devices" style="display:inline-block;padding:7px 14px;border-radius:18px;' +
+          'background:#1B3A5B;color:#CFE3FF;text-decoration:none;font:13px/1.4 sans-serif;' +
+          'border:1px solid #2A4E77">📱 设备能力表</a></div></body>')
       : BOARD;
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(boardHtml) });
     res.end(boardHtml);
@@ -1993,15 +2025,23 @@ function handleRequest(req, res) {
 }
 
 /* 绑定非回环地址时必须带口令：首次启动生成一份并落盘，避免整个局域网无口令访问中枢 */
+function genAccessToken() {
+  // 12 位 Base32（去掉 0/O/1/I 这类易混字符），四四分组，设备上照着敲不会错
+  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  const b = crypto.randomBytes(12);
+  for (let i = 0; i < 12; i++) s += A[b[i] % A.length];
+  return s.slice(0, 4) + '-' + s.slice(4, 8) + '-' + s.slice(8, 12);
+}
 function ensureAccessToken() {
   if (ACCESS_TOKEN || HOST === '127.0.0.1' || HOST === '::1' || HOST === 'localhost') return;
   const f = path.join(DATA_DIR, 'access-token.txt');
   try { if (fs.existsSync(f)) ACCESS_TOKEN = fs.readFileSync(f, 'utf8').trim(); } catch (e) {}
   if (!ACCESS_TOKEN) {
-    ACCESS_TOKEN = crypto.randomBytes(8).toString('hex');
+    ACCESS_TOKEN = genAccessToken();
     try { fs.writeFileSync(f, ACCESS_TOKEN + '\n'); } catch (e) {}
   }
-  console.log('[HongHub-Desktop] 局域网模式：访问口令 ' + ACCESS_TOKEN + '（可用 KH_ACCESS_TOKEN 覆盖）');
+  console.log('[HongHub-Desktop] 局域网模式：访问口令 ' + ACCESS_TOKEN + '（文件 ' + f + '，可用 KH_ACCESS_TOKEN 覆盖）');
 }
 ensureAccessToken();
 

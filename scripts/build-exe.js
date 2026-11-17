@@ -195,6 +195,7 @@ function signHapPackage() {
    （发布脚本只认「鸿汇影桌面版 Setup *.zip」），差点漏发。这里并入流水线自动生成。 */
 function buildPortableZip() {
   console.log('\n=== 5.2/6 生成免安装包 ===');
+  if (process.argv.includes('--skip-zip')) { console.log('  --skip-zip：跳过免安装包（由一键流水线统一补打）'); return; }
   const ver = pkgVersion();
   const unpacked = path.join(DIST, 'win-unpacked');
   const zip = path.join(DIST, '鸿汇影桌面版 Setup ' + ver + '.zip');
@@ -208,7 +209,7 @@ function buildPortableZip() {
     path.join(ROOT, 'node_modules', '7zip-bin', 'win', 'ia32', '7za.exe')
   ].find((p) => fs.existsSync(p));
   if (seven) {
-    const r = spawnSync(seven, ['a', '-tzip', '-mx=9', '-bso0', '-bsp0', zip, unpacked], { stdio: 'ignore' });
+    const r = spawnSync(seven, ['a', '-tzip', '-mx=5', '-bso0', '-bsp0', zip, unpacked], { stdio: 'ignore' });
     ok = r.status === 0;
   }
   if (!ok) {   // 兜底：用系统自带 Windows PowerShell 绝对路径 + .NET ZipFile
@@ -231,15 +232,24 @@ function deliver() {
   console.log('\n=== 6/6 交付到桌面 ===');
   const desktop = path.join(os.homedir(), 'Desktop');
   if (!fs.existsSync(desktop)) { console.warn('  桌面目录不存在，跳过'); return; }
+  /* 桌面根只交付「开发端安装版」，客户硬锁版只进「客户成品」夹：
+     同名两份 Setup 摆在桌面，最容易把硬锁版误发给客户 / 把开发端当成客户版。 */
+  const DEV_SETUP = path.join(DIST, '鸿汇影桌面版 开发端 ' + pkgVersion() + '.exe');
   const SETUP = path.join(DIST, '鸿汇影桌面版 Setup ' + pkgVersion() + '.exe');
-  if (fs.existsSync(SETUP)) {
-    const target = path.join(desktop, path.basename(SETUP));
-    fs.copyFileSync(SETUP, target);
-    console.log('  ' + target + ' (' + fs.statSync(target).size + ' B)');
+  const source = fs.existsSync(DEV_SETUP) ? DEV_SETUP : SETUP;
+  if (fs.existsSync(source)) {
+    // 桌面已按「开发端夹 / 客户成品夹」归拢时，安装包直接进开发端夹，桌面根不再堆平铺文件
+    const devDir = path.join(desktop, '鸿汇影·开发端_v' + pkgVersion());
+    fs.mkdirSync(devDir, { recursive: true }); // 新版本首次交付自动建夹，避免平铺到桌面根
+    const target = path.join(devDir, path.basename(source));
+    fs.copyFileSync(source, target);
+    console.log('  ' + target + ' (' + fs.statSync(target).size + ' B)' + (source === DEV_SETUP ? ' · 开发端版' : ' · 客户版（未找到开发端安装版）'));
   } else console.warn('  安装包不存在，跳过');
   const hap = path.join(DIST, 'honghub-harmony.hap');
   if (fs.existsSync(hap)) {
-    const target = path.join(desktop, 'HongHubMovie.hap');
+    const cliDir = path.join(desktop, '鸿汇影·客户成品_v' + pkgVersion());
+    fs.mkdirSync(cliDir, { recursive: true });
+    const target = path.join(cliDir, 'HongHubMovie.hap');
     fs.copyFileSync(hap, target);
     console.log('  ' + target + ' (' + fs.statSync(target).size + ' B)');
   }

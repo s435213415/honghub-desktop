@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "size": 959160,
+  "sha256": "d78714bd9c7bb55af87425bc4375037643656124fc5aadaf6845c7eefa79ed02",
+  "versionName": "1.7.40",
+  "versionCode": 1000154,
+  "builtAt": "2026-11-17T21:13:54.913170+08:00",
+  "source": "harmony/signing（壳包注入 + 复用证书重签）"
+}

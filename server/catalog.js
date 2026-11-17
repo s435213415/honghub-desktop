@@ -93,14 +93,19 @@ function normalize(manifest) {
 function catalogVersion(items) { return 'c' + crypto.createHash('sha256').update(JSON.stringify(items)).digest('hex').slice(0, 10); }
 
 /* ---------------- 可达性探测 ---------------- */
-function probe(url, timeout) {
+function probe(url, timeout, opts) {
+  const html = !!(opts && opts.html);
   return new Promise(function (resolve) {
     let done = false, started = now();
     const finish = function (r) { if (done) return; done = true; resolve(r); };
     let req;
     try {
       const mod = String(url).indexOf('https:') === 0 ? https : http;
-      req = mod.get(url, { timeout: timeout || 4000, headers: { 'User-Agent': 'HongHub-Probe/1.0', Range: 'bytes=0-0', Accept: '*/*' } }, function (res) {
+      // 网页入口用浏览器 UA、不要 Range（Range 会被不少站点判成 416/403，误报成"坏源"）
+      const headers = html
+        ? { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36', 'Accept': 'text/html,application/xhtml+xml,*/*' }
+        : { 'User-Agent': 'HongHub-Probe/1.0', 'Range': 'bytes=0-0', 'Accept': '*/*' };
+      req = mod.get(url, { timeout: timeout || 4000, headers: headers }, function (res) {
         const code = res.statusCode || 0;
         res.destroy();
         finish({ code: code, ms: now() - started, err: null });
@@ -143,7 +148,7 @@ async function probeAll(items, timeout) {
     }
   });
   const res = await mapLimit(jobs, 10, async function (j) {
-    const r = await probe(j.s.url, timeout);
+    const r = await probe(j.s.url, timeout, { html: j.it.type !== 'channel' });
     return { j: j, r: r };
   });
   items.forEach(function (it) { if (it.type === 'channel') { it.sources.forEach(function (s) { s.status = 'never'; s.ms = 0; }); } });
@@ -157,7 +162,11 @@ async function probeAll(items, timeout) {
       s.error = x.r.err;
       s.checkedAt = iso();
     } else {
-      it.status = statusOf(x.r);
+      let st = statusOf(x.r);
+      // 平台是「官方入口」而非直播流：403/404/DNS 不通只说明本机网络或站点防抓，
+      // 浏览器里点开仍可能正常，因此单列为 limited（受限入口），不算坏源。
+      if (st === 'dead' || st === 'blocked' || st === 'degraded') st = 'limited';
+      it.status = st;
       it.ms = x.r.ms;
       it.code = x.r.code;
       it.error = x.r.err;
@@ -294,11 +303,25 @@ async function runCycle(opts) {
   const timeout = Number(opts.timeout) || 4000;
   const doProbe = opts.probe !== false;
   const started = now();
+  // 0) 全网抓源：先把"坏频道"的替源抓回来写进清单，再做本轮探测
+  let huntResult = null;
+  if (opts.hunt !== false) {
+    try {
+      huntResult = await require('./source-hunter').hunt({ max: Number(opts.huntMax) || 8, probeMs: timeout + 1000 });
+      if (huntResult && huntResult.added && huntResult.added.length) {
+        auditOk('hunt +' + huntResult.added.length + ' source(s)');
+        metric('hunt', { added: huntResult.added.length, pool: huntResult.pool.total });
+      }
+    } catch (e) {
+      huntResult = { error: clip(e && e.message, 80) };
+      auditOk('hunt-error ' + clip(e && e.message, 60));
+    }
+  }
   const manifest = readManifest();
   const items = normalize(manifest);
   if (doProbe) await probeAll(items, timeout);
   const version = catalogVersion(items);
-  const totals = { items: items.length, channels: 0, platforms: 0, ok: 0, slow: 0, dead: 0, blocked: 0, degraded: 0 };
+  const totals = { items: items.length, channels: 0, platforms: 0, ok: 0, slow: 0, dead: 0, blocked: 0, degraded: 0, limited: 0 };
   const groups = {};
   items.forEach(function (it) {
     totals[it.type === 'channel' ? 'channels' : 'platforms'] += 1;
@@ -359,7 +382,14 @@ async function runCycle(opts) {
       resolved: d.list.filter(function (i) { return i.status === 'resolved'; }).length,
       autoFixedThisRun: fixActions.filter(function (f) { return f.verified; }).length
     },
-    fixes: fixActions, auto: true, manual: 0
+    fixes: fixActions, auto: true, manual: 0,
+    hunt: huntResult ? {
+      added: (huntResult.added || []).length,
+      checked: huntResult.checkedChannels || 0,
+      pool: huntResult.pool ? huntResult.pool.total : 0,
+      cached: huntResult.pool ? !!huntResult.pool.cached : null,
+      error: huntResult.error || null
+    } : null
   };
   const catalog = {
     schema: 2, version: version, generatedAt: iso(), sourceManifestVersion: manifest.sources ? manifest.sources.v : null,

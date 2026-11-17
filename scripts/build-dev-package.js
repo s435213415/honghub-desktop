@@ -94,8 +94,7 @@ const FILES = {
 };
 
 if (!fs.existsSync(OUT)) {
-  console.error('目标目录不存在：' + OUT);
-  process.exit(1);
+  fs.mkdirSync(OUT, { recursive: true }); // 新版本首次出包时目录还不存在，自动创建
 }
 let n = 0;
 for (const [name, content] of Object.entries(FILES)) {
@@ -106,3 +105,82 @@ for (const [name, content] of Object.entries(FILES)) {
   n++;
 }
 console.log('开发端脚本生成完成：' + n + ' 个 → ' + OUT);
+
+/* 签名密钥自动同步：每次出包都把工程里的签名链复制进开发端交付夹，
+   工程里轮换密钥后，桌面开发端夹自动跟着更新，不用手工拷贝。
+   只进开发端夹，绝不进客户成品与下发通道。 */
+function copyTree(from, to) {
+  fs.mkdirSync(to, { recursive: true });
+  for (const e of fs.readdirSync(from, { withFileTypes: true })) {
+    const a = path.join(from, e.name);
+    const b = path.join(to, e.name);
+    if (e.isDirectory()) copyTree(a, b);
+    else fs.copyFileSync(a, b);
+  }
+}
+
+function syncSigningKeys() {
+  const src = path.join(ROOT, 'harmony', 'signing');
+  const dst = path.join(OUT, '签名密钥');
+  if (!fs.existsSync(path.join(src, 'keys'))) { console.log('  签名材料缺失，跳过同步'); return; }
+  fs.mkdirSync(dst, { recursive: true });
+  copyTree(path.join(src, 'keys'), path.join(dst, 'keys'));
+  for (const f of ['app-chain.pem', 'app.p7b', 'outCertChain.cer', 'outprofile.p7b', 'profile-chain.pem', 'README.txt', 'resign_hap.py']) {
+    const p = path.join(src, f);
+    if (fs.existsSync(p)) fs.copyFileSync(p, path.join(dst, f));
+  }
+  let pwd = 'OpenHarmony123';
+  try {
+    const env = fs.readFileSync(path.join(ROOT, '.env'), 'utf8');
+    const m = env.match(/OH_KEY_PWD\s*=\s*(\S+)/);
+    if (m) pwd = m[1];
+  } catch (e) { /* 用默认口令 */ }
+  let token = '';
+  for (const p of [path.join(ROOT, 'server', 'data', 'access-token.txt'),
+                   'C:\\Users\\admin\\HongHub-Dev\\resources\\app\\server\\data\\access-token.txt']) {
+    try { token = fs.readFileSync(p, 'utf8').trim(); if (token) break; } catch (e) {}
+  }
+  fs.writeFileSync(path.join(dst, '签名口令.txt'), 'OH_KEY_PWD=' + pwd + '\r\nkeyAlias=app-key / profile-key\r\n');
+  fs.writeFileSync(path.join(dst, '说明.txt'), [
+    '鸿汇影 · 深开鸿签名材料（仅开发端，绝不外发）',
+    '==================================================',
+    '用途：重签 HAP，保证升级后签名链不变、可覆盖安装。',
+    '  app-key.p12        应用私钥（keyAlias: app-key）',
+    '  profile-key.p12    profile 私钥（keyAlias: profile-key）',
+    '  app-chain.pem      应用证书链',
+    '  app.p7b            应用 profile（备用 outprofile.p7b）',
+    '口令：见同目录「签名口令.txt」或工程根 .env 的 OH_KEY_PWD。',
+    '命令行工具：C:\\Users\\admin\\Desktop\\软件开发工具\\command-line-tools',
+    '  sdk\\26.0.1\\toolchains\\lib\\hap-sign-tool.jar',
+    '  tool\\jre\\bin\\java.exe',
+    '重签：工程根执行 python harmony\\signing\\resign_hap.py',
+    '注意：p12/pem/p7b 只放开发端夹，绝不进客户成品与下发通道。',
+    ''
+  ].join('\r\n'));
+  fs.writeFileSync(path.join(OUT, '密钥与口令清单_v' + VER + '.txt'), [
+    '鸿汇影 · 密钥与口令清单（v' + VER + '）',
+    '==================================================',
+    '一、开发端运维面板',
+    '  本机：http://127.0.0.1:8787/admin',
+    '  局域网：http://<本机IPv4>:8787/admin（ipconfig 查）',
+    '  访问口令：' + (token || '见 server/data/access-token.txt'),
+    '  口令文件：C:\\Users\\admin\\HongHub-Dev\\resources\\app\\server\\data\\access-token.txt',
+    '  面板支持 ?token= 自动登录；本机回环可用 /api/dev/access-token 自助读取。',
+    '',
+    '二、深开鸿 HAP 签名（仅开发端，绝不外发）',
+    '  口令：OH_KEY_PWD=' + pwd,
+    '  应用私钥：签名密钥\\keys\\sign-keys\\app-key.p12（keyAlias app-key）',
+    '  profile 私钥：签名密钥\\keys\\sign-keys\\profile-key.p12（keyAlias profile-key）',
+    '  证书链：签名密钥\\keys\\app-chain.pem · 证书：app-end.cer',
+    '  profile：签名密钥\\keys\\app.p7b（备用 outprofile.p7b）',
+    '  命令行工具：C:\\Users\\admin\\Desktop\\软件开发工具\\command-line-tools',
+    '  一键重签：工程根执行 python harmony\\signing\\resign_hap.py',
+    '',
+    '三、客户下发（只发客户成品）',
+    '  客户不接触口令、签名私钥、开发端安装包。',
+    '  下发文件：鸿汇影桌面版 Setup <版本>.exe / 鸿汇影免安装 <版本>.zip / HongHubMovie.hap',
+    ''
+  ].join('\r\n'));
+  console.log('  签名密钥已同步：' + dst);
+}
+syncSigningKeys();

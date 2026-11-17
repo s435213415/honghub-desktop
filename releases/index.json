@@ -1,18 +1,18 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-16T15:28:00.402Z",
+  "generatedAt": "2026-11-17T13:17:41.762Z",
   "latest": {
-    "versionName": "1.7.30",
-    "versionCode": 1000144
+    "versionName": "1.7.42",
+    "versionCode": 1000156
   },
   "versions": [
     {
-      "versionName": "1.7.30",
-      "versionCode": 1000144,
-      "publishedAt": "2026-11-16T15:25:55.062Z",
+      "versionName": "1.7.42",
+      "versionCode": 1000156,
+      "publishedAt": "2026-11-17T13:17:06.347Z",
       "features": {
-        "versionName": "1.7.30",
-        "versionCode": 1000144,
+        "versionName": "1.7.42",
+        "versionCode": 1000156,
         "count": 38,
         "hash": "78c545d7ffe9ce9c",
         "ids": [
@@ -56,294 +56,102 @@
           "upgrade-telemetry"
         ]
       },
-      "dir": "releases/v1.7.30",
+      "dir": "releases/v1.7.42",
       "artifacts": {
         "desktop": {
-          "path": "releases/v1.7.30/鸿汇影桌面版 Setup 1.7.30.exe",
-          "size": 78352959,
-          "sha256": "65ee1704f937bab7e02f51d034fd43dbf53de591a9d72276df52ec5cb9f4f9b5"
+          "path": "releases/v1.7.42/鸿汇影桌面版 Setup 1.7.42.exe",
+          "size": 79604737,
+          "sha256": "a6108d309a116c68bd1801db9ea516177587d9dfbe2184183f051fbd34a7d6a9"
         },
         "hap": {
-          "path": "releases/v1.7.30/HongHubMovie.hap",
-          "size": 947492,
-          "sha256": "75860b04fa3326ee0f1a8bab9bf5a07b5707df87b2bd28b43c80711073e966e1"
+          "path": "releases/v1.7.42/HongHubMovie.hap",
+          "size": 959159,
+          "sha256": "078b50eeeccc17844616f8866b03e07931e04c81d1be6ffad5b3bb762b1deb8e"
         }
       },
-      "downloadUrl": "/download/archive/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.30.exe",
+      "downloadUrl": "/download/archive/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.42.exe",
       "hapUrl": "/download/archive/HongHubMovie.hap",
-      "rollbackUrl": "/api/update/rollback?version=1.7.30"
+      "rollbackUrl": "/api/update/rollback?version=1.7.42"
     },
     {
-      "versionName": "1.7.29",
+      "versionName": "1.7.41",
       "versionCode": null,
       "dir": "dist",
       "historical": true,
       "artifacts": {
         "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.29.exe",
-          "size": 78276113,
-          "sha256": "1a359b1ff7e5e985bfa86729097600dfd4b0d691c0d4c307b9916090c986fb28"
+          "path": "dist/鸿汇影桌面版 Setup 1.7.41.exe",
+          "size": 79604740,
+          "sha256": "44e00cc4a7140e08933d43a4f118b701bddebbcc75fa5f340fa7455ea4e854d2"
         },
         "hap": null
       },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.29.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.29"
+      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.41.exe",
+      "rollbackUrl": "/api/update/rollback?version=1.7.41"
     },
     {
-      "versionName": "1.7.28",
+      "versionName": "1.7.40",
       "versionCode": null,
       "dir": "dist",
       "historical": true,
       "artifacts": {
         "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.28.exe",
-          "size": 78275818,
-          "sha256": "9a6c8c0d994dd61dbbca27a5c4f59c2bab585a4aa40ed6e767e00674db1227c6"
+          "path": "dist/鸿汇影桌面版 Setup 1.7.40.exe",
+          "size": 79603077,
+          "sha256": "e56e903d36b7f78131320dfeccea9d70d71a035307d596b431800250fb57d989"
         },
         "hap": null
       },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.28.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.28"
+      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.40.exe",
+      "rollbackUrl": "/api/update/rollback?version=1.7.40"
     },
     {
-      "versionName": "1.7.27",
+      "versionName": "1.7.39",
       "versionCode": null,
       "dir": "dist",
       "historical": true,
       "artifacts": {
         "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.27.exe",
-          "size": 78274716,
-          "sha256": "ec8299d0c0f754e9d452d99d7c50a67ac7d8b04a942cdd8845c21447dce2cbda"
+          "path": "dist/鸿汇影桌面版 Setup 1.7.39.exe",
+          "size": 79603290,
+          "sha256": "76a440bc05606c697727e8e9dfa8b96ad0594fa552f5af7efffc0ca711d5902f"
         },
         "hap": null
       },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.27.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.27"
+      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.39.exe",
+      "rollbackUrl": "/api/update/rollback?version=1.7.39"
     },
     {
-      "versionName": "1.7.26",
+      "versionName": "1.7.37",
       "versionCode": null,
       "dir": "dist",
       "historical": true,
       "artifacts": {
         "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.26.exe",
-          "size": 78274627,
-          "sha256": "db4935d37930e265d9bc0556d1cee94f887014724879bae795e64919f2c4dbba"
+          "path": "dist/鸿汇影桌面版 Setup 1.7.37.exe",
+          "size": 79603065,
+          "sha256": "93c7b97bc470829718e575e6a666a059f887aec41ca24b95faa7c87dea574cc4"
         },
         "hap": null
       },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.26.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.26"
+      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.37.exe",
+      "rollbackUrl": "/api/update/rollback?version=1.7.37"
     },
     {
-      "versionName": "1.7.25",
+      "versionName": "1.7.36",
       "versionCode": null,
       "dir": "dist",
       "historical": true,
       "artifacts": {
         "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.25.exe",
-          "size": 78274499,
-          "sha256": "f89bc2e61faf239aa4ae98d34479daca41c6e9ecc5635fcc816528bc680a0511"
+          "path": "dist/鸿汇影桌面版 Setup 1.7.36.exe",
+          "size": 79603290,
+          "sha256": "76a440bc05606c697727e8e9dfa8b96ad0594fa552f5af7efffc0ca711d5902f"
         },
         "hap": null
       },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.25.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.25"
-    },
-    {
-      "versionName": "1.7.24",
-      "versionCode": null,
-      "dir": "dist",
-      "historical": true,
-      "artifacts": {
-        "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.24.exe",
-          "size": 78120903,
-          "sha256": "c4b7fdda0f20fb7b03705b0e66abf2605b993c459470853e4e8d30368ef361a2"
-        },
-        "hap": null
-      },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.24.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.24"
-    },
-    {
-      "versionName": "1.7.22",
-      "versionCode": null,
-      "dir": "dist",
-      "historical": true,
-      "artifacts": {
-        "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.22.exe",
-          "size": 78120678,
-          "sha256": "326f77f4635698c2dedba88a12b851a5f78da1d15525873f03b32685c667d4fa"
-        },
-        "hap": null
-      },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.22.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.22"
-    },
-    {
-      "versionName": "1.7.21",
-      "versionCode": null,
-      "dir": "dist",
-      "historical": true,
-      "artifacts": {
-        "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.21.exe",
-          "size": 78043855,
-          "sha256": "e29e7542e84cefcd502746e73ba6620b3c89f5d04cd2dbd0cf559f10dc4d0868"
-        },
-        "hap": null
-      },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.21.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.21"
-    },
-    {
-      "versionName": "1.7.19",
-      "versionCode": null,
-      "dir": "dist",
-      "historical": true,
-      "artifacts": {
-        "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.19.exe",
-          "size": 77931000,
-          "sha256": "4816baf0bc3c946b323d84e1288f058172272e969d8053168e8bfe6efff9ac05"
-        },
-        "hap": null
-      },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.19.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.19"
-    },
-    {
-      "versionName": "1.7.17",
-      "versionCode": null,
-      "dir": "dist",
-      "historical": true,
-      "artifacts": {
-        "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.17.exe",
-          "size": 77930452,
-          "sha256": "dff6f85b1ee8a7a359961bd4da7210187cd1eacf826df99a7aba268e54014d5c"
-        },
-        "hap": null
-      },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.17.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.17"
-    },
-    {
-      "versionName": "1.7.15",
-      "versionCode": null,
-      "dir": "dist",
-      "historical": true,
-      "artifacts": {
-        "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.15.exe",
-          "size": 77493807,
-          "sha256": "4f20aa9fd5798e4d6bbf9156f5d576a1b5db3717e43961b7d686eb94c496f013"
-        },
-        "hap": null
-      },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.15.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.15"
-    },
-    {
-      "versionName": "1.7.14",
-      "versionCode": null,
-      "dir": "dist",
-      "historical": true,
-      "artifacts": {
-        "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.14.exe",
-          "size": 77486432,
-          "sha256": "0b721b07e3d38e6d9fa4802ab3e02131e9c63d421bfceeb6e5f69ed0068c9ec0"
-        },
-        "hap": null
-      },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.14.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.14"
-    },
-    {
-      "versionName": "1.7.13",
-      "versionCode": null,
-      "dir": "dist",
-      "historical": true,
-      "artifacts": {
-        "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.13.exe",
-          "size": 77474097,
-          "sha256": "db135fe26b161721235eb46d5147ac4e51878a3de50118bc5fab586397258734"
-        },
-        "hap": null
-      },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.13.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.13"
-    },
-    {
-      "versionName": "1.7.12",
-      "versionCode": null,
-      "dir": "dist",
-      "historical": true,
-      "artifacts": {
-        "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.12.exe",
-          "size": 77472816,
-          "sha256": "92c2199ed7266fe723e6066a0836c52c1717c830a5db43ca1cd31f352ff9028c"
-        },
-        "hap": null
-      },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.12.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.12"
-    },
-    {
-      "versionName": "1.7.10",
-      "versionCode": null,
-      "dir": "dist",
-      "historical": true,
-      "artifacts": {
-        "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.10.exe",
-          "size": 77543650,
-          "sha256": "6e62e17466defb425b4ed82c72fe579365baa1a6a8f33c5237b046ae0314edcc"
-        },
-        "hap": null
-      },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.10.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.10"
-    },
-    {
-      "versionName": "1.7.9",
-      "versionCode": null,
-      "dir": "dist",
-      "historical": true,
-      "artifacts": {
-        "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.9.exe",
-          "size": 77520773,
-          "sha256": "5554e6d3bb8183cb8c84550e4a92a0d98a21ede5fcc2bf74cbee036d9cd196d8"
-        },
-        "hap": null
-      },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.9.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.9"
-    },
-    {
-      "versionName": "1.7.8",
-      "versionCode": null,
-      "dir": "dist",
-      "historical": true,
-      "artifacts": {
-        "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.8.exe",
-          "size": 77600255,
-          "sha256": "9df8894209166fbf8df9d6e29a2eae59aefb2dfaddaed8e65d6686cfa2efceb4"
-        },
-        "hap": null
-      },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.8.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.8"
+      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.36.exe",
+      "rollbackUrl": "/api/update/rollback?version=1.7.36"
     }
   ]
 }

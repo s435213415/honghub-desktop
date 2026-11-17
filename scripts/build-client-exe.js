@@ -14,6 +14,7 @@
    用法：node scripts/build-client-exe.js
 */
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
@@ -28,8 +29,20 @@ const VER = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'))
 const log = (...a) => console.log(...a);
 
 function sha(p) { return crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'); }
-function backup(p) { const b = p + '.dev-backup'; if (!fs.existsSync(b)) fs.copyFileSync(p, b); return b; }
-function restore(p) { const b = p + '.dev-backup'; if (fs.existsSync(b)) { fs.copyFileSync(b, p); fs.unlinkSync(b); } }
+/* 备份绝不能放在 win-unpacked 里：免安装 zip 是整目录打包，放同目录会把开发端页面一起塞进客户包
+   （实测 1.7.36 客户 zip 里就漏过 index.html.dev-backup / electron-main.js.dev-backup）。 */
+const BAK_ROOT = path.join(os.tmpdir(), 'kh-client-backup-' + process.pid);
+function bakPath(p) { return path.join(BAK_ROOT, path.relative(UNPACKED, p)); }
+function backup(p) {
+  const b = bakPath(p);
+  fs.mkdirSync(path.dirname(b), { recursive: true });
+  fs.copyFileSync(p, b);
+  return b;
+}
+function restore(p) {
+  const b = bakPath(p);
+  if (fs.existsSync(b)) { fs.copyFileSync(b, p); fs.unlinkSync(b); }
+}
 function assertBundledEndpoint(epPath) {
   let d;
   try { d = JSON.parse(fs.readFileSync(epPath, 'utf8')); }
@@ -64,6 +77,10 @@ const emPath = dstEm;
 const pagePath = path.join(UNPACKED, 'resources', 'app', 'app', 'index.html');
 const emBak = backup(emPath);
 const pageBak = fs.existsSync(pagePath) ? backup(pagePath) : null;
+// 开发端自更新模块不进客户包：客户版既不该检查更新，也不该看到任何开发态文件
+const updPath = path.join(UNPACKED, 'resources', 'app', 'dev-auto-update.js');
+const updBak = fs.existsSync(updPath) ? backup(updPath) : null;
+if (updBak) fs.unlinkSync(updPath);
 
 try {
   // 1) 净化入口
@@ -75,13 +92,16 @@ try {
 
   if (pageBak) {
     let t = fs.readFileSync(pagePath, 'utf8');
+    // 开发端专属 UI（运维看板入口等）整段剥离：标记内所有 /admin 入口、提示文字一并去掉
+    t = t.replace(/\/\* KH_DEVUI_START \*\/[\s\S]*?\/\* KH_DEVUI_END \*\//g, '');
     t = t.replace("else mgr.onclick = function () { window.open('/admin', '_blank'); };",
                   "else mgr.onclick = function () { /* client: no admin */ };");
     t = t.replace("try { window.open('/admin', '_blank'); } catch (e) {}", "/* client: no admin */");
     t = t.replace("toast('运维项在「运维面板 /admin」里：审计 · 趋势 · 灰度 · 冒烟 · 告警');",
                   "toast('该项仅在开发端可用');");
+    if (t.includes('/admin')) throw new Error('客户页面仍残留 /admin 入口，已中止打包');
     fs.writeFileSync(pagePath, t);
-    log('[2/4] 页面 /admin 死链已清除');
+    log('[2/4] 页面 /admin 运维入口已整段剥离');
   }
 
   // 2) 先打免安装 zip（直接从净化的 win-unpacked 打，最快）
@@ -89,7 +109,7 @@ try {
   const zipPath = path.join(OUT, zipName);
   if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
   if (!fs.existsSync(SEVEN)) throw new Error('7za 不存在');
-  const rz = spawnSync(SEVEN, ['a', '-tzip', '-mx=9', '-bso0', '-bsp0', zipPath, UNPACKED], { stdio: 'ignore' });
+  const rz = spawnSync(SEVEN, ['a', '-tzip', '-mx=5', '-bso0', '-bsp0', zipPath, UNPACKED], { stdio: 'ignore' });
   if (rz.status !== 0 || !fs.existsSync(zipPath)) throw new Error('免安装 zip 打包失败');
   // 断言随包端点是正式站点，不再残留 127.0.0.1 / 隧道域名
   assertBundledEndpoint(dstEp);
@@ -115,7 +135,10 @@ try {
   fs.copyFileSync(built, dest);                    // 先存客户版
   if (devSetupBak && fs.existsSync(devSetupBak)) { // 再还原开发端
     fs.copyFileSync(devSetupBak, built);
+    // 开发端安装版固定命名留存：客户版会覆盖同名 Setup，不留存就会丢开发端入口
+    fs.copyFileSync(devSetupBak, path.join(DIST, '鸿汇影桌面版 开发端 ' + VER + '.exe'));
     fs.unlinkSync(devSetupBak);
+    log('[4/4+] 开发端安装版已留存：鸿汇影桌面版 开发端 ' + VER + '.exe');
   }
   log('[4/4] 安装版: ' + setupName + ' · ' + fs.statSync(dest).size + ' B · ' + sha(dest).slice(0, 12));
 
@@ -131,5 +154,6 @@ try {
   // 4) 无论成败都恢复开发端入口
   restore(emPath);
   if (pageBak) restore(pagePath);
+  if (updBak) restore(updPath);
   log('[恢复] win-unpacked 入口已还原为开发端版本');
 }

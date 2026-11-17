@@ -34,6 +34,7 @@ def find_hvigorw():
         cands += glob.glob(os.path.join(PROJ, name))
     # DevEco 常见安装目录
     for pat in [
+        r"C:\Users\admin\Desktop\软件开发工具\command-line-tools\bin\hvigorw.bat",
         r"C:\Program Files\Huawei\DevEco Studio\*\hvigorw.bat",
         r"C:\Program Files\Huawei\DevEco Studio\*\hvigor\bin\hvigorw.bat",
         os.path.expanduser("~/DevEco Studio/*/hvigorw.bat"),

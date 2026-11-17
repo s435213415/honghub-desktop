@@ -21,7 +21,7 @@ HongHub HAP（深开鸿 KaihongOS / OpenHarmony）构建脚本
     harmony/entry/src/main/resources/rawfile/www/index.html
 然后用 DevEco Studio 打开 harmony/ 工程 → 自动签名 → 运行到 KaihongOS 设备。
 """
-import os, json, shutil, sys, socket
+import os, json, shutil, sys, socket, re
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SRC_APP = os.path.normpath(os.path.join(ROOT, '..', 'app'))            # 桌面版已构建前端
@@ -97,10 +97,238 @@ def hub_candidates():
     return json.dumps(out[:16], ensure_ascii=False)
 
 
+BRIDGE_BLOCK = r'''
+/* ===================== 窗口管理桥（网页侧，对接原生 KHNative） =====================
+   原生 EntryAbility 负责：全屏布局、隐藏系统栏、监听安全区、方向、返回键。
+   这里负责：接收安全区写进 CSS 变量、把"还能不能退一层"回报原生、处理原生转来的返回键。 */
+(function () {
+  if (!window.KH_HARMONY) return;
+  var root = document.documentElement;
+  function px(v) {
+    if (typeof v === 'string') return v;            /* 允许直接传 env(...) 这类 CSS 值 */
+    return (Number(v) || 0) + 'px';
+  }
+
+  /* 安全区：原生推过来 top/bottom/left/right（vp），写进 CSS 变量，页面按需避让 */
+  window.applySafeArea = function (a) {
+    try {
+      a = a || {};
+      root.style.setProperty('--kh-safe-top', px(a.top));
+      root.style.setProperty('--kh-safe-bottom', px(a.bottom));
+      root.style.setProperty('--kh-safe-left', px(a.left));
+      root.style.setProperty('--kh-safe-right', px(a.right));
+      root.style.setProperty('--kh-safe-h', px((Number(a.top) || 0) + (Number(a.bottom) || 0)));
+      if (window.__KH_OS) { document.body && document.body.classList.add('kh-harmony'); }
+      if (typeof applyOsAdapt === 'function') applyOsAdapt();
+    } catch (e) {}
+  };
+  /* 默认值：还没收到原生推送时，先按系统 env() 安全区兜底（旧系统无桥也能避让） */
+  window.applySafeArea({
+    top: 'env(safe-area-inset-top, 0px)',
+    bottom: 'env(safe-area-inset-bottom, 0px)',
+    left: 'env(safe-area-inset-left, 0px)',
+    right: 'env(safe-area-inset-right, 0px)'
+  });
+
+  /* 返回键：网页判断当前是否"还能退一层"（播放器打开 / 有页面历史） */
+  function khCanGoBack() {
+    try {
+      var pl = document.getElementById('playerLayer');
+      if (pl && pl.classList && pl.classList.contains('show')) return true;
+      if (location.hash && location.hash !== '#' && location.hash !== '') return true;
+    } catch (e) {}
+    return false;
+  }
+  window.__KH_BACK = function () {
+    try {
+      var pl = document.getElementById('playerLayer');
+      if (pl && pl.classList && pl.classList.contains('show') && typeof closePlayer === 'function') {
+        closePlayer(); return;
+      }
+      if (location.hash && location.hash !== '#' && location.hash !== '') { history.back(); return; }
+    } catch (e) {}
+  };
+  /* 把可返回状态同步给原生：只有 true 时原生才拦返回键，否则按系统默认退出 */
+  var khLastBack = null;
+  function khSyncBack() {
+    try {
+      var can = khCanGoBack();
+      if (can === khLastBack) return;
+      khLastBack = can;
+      if (window.KHNative && typeof KHNative.setBackHandle === 'function') KHNative.setBackHandle(can);
+    } catch (e) {}
+  }
+  setInterval(khSyncBack, 1200);
+  try { window.addEventListener('hashchange', khSyncBack); } catch (e) {}
+  try { document.addEventListener('click', function () { setTimeout(khSyncBack, 60); }, true); } catch (e) {}
+
+  /* 方向：观影时锁横屏，列表页跟随系统；原生侧据此设置窗口方向 */
+  window.khSetOrientation = function (mode) {
+    try {
+      if (window.KHNative && typeof KHNative.setOrientation === 'function') KHNative.setOrientation(String(mode || 'auto'));
+    } catch (e) {}
+  };
+
+  /* 能力表：原生探测结果。旧系统缺哪个能力就跳过哪个，不靠版本号硬猜。 */
+  window.khApplyCaps = function (caps) {
+    try {
+      if (caps && typeof caps === 'object') window.__KH_CAPS = caps;
+      if (typeof applyOsAdapt === 'function') applyOsAdapt(window.__KH_CAPS || {});
+    } catch (e) {}
+  };
+  function khCaps() {
+    return (window.__KH_CAPS && typeof window.__KH_CAPS === 'object') ? window.__KH_CAPS : {};
+  }
+
+  /* 设备画像上报：让开发端能看到设备端 OS 版本、能力表、桥接是否生效。
+     口径与问题上报一致——只有用户自己填过中枢地址才报，6 小时一次，不带内容数据。 */
+  function khReportDevice() {
+    try {
+      var hub = '';
+      try { hub = localStorage.getItem('khHub') || ''; } catch (e) {}
+      if (!hub) return;
+      var last = 0;
+      try { last = Number(localStorage.getItem('khDeviceReportAt') || 0); } catch (e) { last = 0; }
+      if (Date.now() - last < 6 * 3600 * 1000) return;
+      var os = window.__KH_OS || {};
+      var d = {
+        schema: 1, app: 'HongHub', kind: 'device-profile', platform: 'kaihongos',
+        deviceId: 'harmony-' + (os.deviceType || 'dev'),
+        osVersion: os.distributionOSVersion || '',
+        osName: os.distributionOSName || os.osFullName || '',
+        apiVersion: String(os.sdkApiVersion || ''),
+        deviceType: os.deviceType || '',
+        caps: window.__KH_CAPS || {},
+        version: String(window.__KH_APP_CODE || window.KH_APP_CODE || ''),
+        ua: (navigator.userAgent || '').slice(0, 160)
+      };
+      fetch('/api/device/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(d)
+      }).then(function () {
+        try { localStorage.setItem('khDeviceReportAt', String(Date.now())); } catch (e) {}
+      }).catch(function () {});
+    } catch (e) {}
+  }
+  setTimeout(khReportDevice, 3000);
+
+  /* KH_DIAG_START */
+  /* ===== 调试面板（备用机排查用）=====
+     连点屏幕右上角 5 次（3 秒内）开关；普通用户看不到入口。
+     正式包构建时（KH_DIAG 未置 1）整块被 python 直接剔除，包里不含任何诊断代码；只有调试包才带。 */
+  if (window.__KH_DIAG_ALLOW) {
+  var khDiagTaps = [];
+  function khSafe(name) {
+    try {
+      return getComputedStyle(document.documentElement).getPropertyValue('--kh-safe-' + name).trim() || '0px';
+    } catch (e) { return '-'; }
+  }
+  function khDiagHtml() {
+    var os = window.__KH_OS || {};
+    var caps = window.__KH_CAPS || {};
+    var nat = window.KHNative || {};
+    var hub = '-';
+    try { hub = localStorage.getItem('khHub') || '未设置'; } catch (e) { hub = '-'; }
+    var rep = '-';
+    try {
+      var t = Number(localStorage.getItem('khDeviceReportAt') || 0);
+      rep = t ? new Date(t).toLocaleString() : '未上报';
+    } catch (e) { rep = '-'; }
+    var rows = [
+      ['版本', String(window.KH_APP_VERSION || '') + ' / #' + String(window.__KH_APP_CODE || window.KH_APP_CODE || '-')],
+      ['系统', String(os.distributionOSName || os.osFullName || '-') + ' · ' + String(os.distributionOSVersion || '-')],
+      ['设备形态', String(os.deviceType || '-')],
+      ['SDK API', String(os.sdkApiVersion || '-')],
+      ['JS↔原生', (typeof nat.setBackHandle === 'function' ? 'KHNative 可用' : 'KHNative 未注册')],
+      ['全屏 / 系统栏', (String(caps.fullscreen) === '1' ? '全屏 OK' : '全屏未生效') + ' / ' + (String(caps.hideBars) === '1' ? '已隐藏' : '未隐藏')],
+      ['安全区实测', '上 ' + khSafe('top') + ' · 下 ' + khSafe('bottom') + ' · 左 ' + khSafe('left') + ' · 右 ' + khSafe('right')],
+      ['方向控制', (String(caps.orientation) === '1' ? '可锁横竖屏' : '跟随系统')],
+      ['返回键', (String(caps.backKey) === '1' ? '已接管（播放器内可返回）' : '系统默认')],
+      ['中枢地址', hub],
+      ['上次上报', rep]
+    ];
+    return '<div style="font:13px/1.7 ui-monospace,monospace;color:#e8ecf6">' +
+      rows.map(function (r) {
+        return '<div style="display:flex;gap:10px;border-bottom:1px solid rgba(255,255,255,.08);padding:4px 0">' +
+          '<span style="min-width:96px;color:#8fa3c8">' + r[0] + '</span><span style="flex:1;word-break:break-all">' + String(r[1]) + '</span></div>';
+      }).join('') +
+      '<div style="margin-top:8px;color:#8fa3c8">能力表原文</div>' +
+      '<pre style="white-space:pre-wrap;word-break:break-all;color:#cfe0ff;margin:4px 0 0">' + JSON.stringify(caps, null, 1) + '</pre>' +
+      '</div>';
+  }
+  window.khDiag = function (on) {
+    try {
+      var old = document.getElementById('kh-diag');
+      if (old) old.parentNode.removeChild(old);
+      if (on === false) return;
+      var box = document.createElement('div');
+      box.id = 'kh-diag';
+      box.style.cssText = 'position:fixed;left:0;right:0;top:0;bottom:0;z-index:99999;background:rgba(8,12,22,.94);' +
+        'padding:calc(12px + var(--kh-safe-top)) calc(14px + var(--kh-safe-right)) calc(14px + var(--kh-safe-bottom)) calc(14px + var(--kh-safe-left));' +
+        'overflow:auto;-webkit-overflow-scrolling:touch';
+      box.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
+        '<b style="font:600 15px/1 system-ui;color:#fff">开发者诊断</b>' +
+        '<span id="kh-diag-x" style="padding:6px 12px;border:1px solid rgba(255,255,255,.25);border-radius:8px;color:#dbe6ff;font:13px system-ui">关闭</span></div>' +
+        khDiagHtml();
+      box.querySelector('#kh-diag-x').onclick = function () { window.khDiag(false); };
+      document.body.appendChild(box);
+    } catch (e) {}
+  };
+  document.addEventListener('click', function (e) {
+    try {
+      if (e.clientX < (window.innerWidth || 800) * 0.78 || e.clientY > (window.innerHeight || 600) * 0.16) return;
+      var now = Date.now();
+      khDiagTaps = khDiagTaps.filter(function (t) { return now - t < 3000; });
+      khDiagTaps.push(now);
+      if (khDiagTaps.length >= 5) {
+        khDiagTaps = [];
+        var open = !!document.getElementById('kh-diag');
+        window.khDiag(!open);
+      }
+    } catch (err) {}
+  }, true);
+  }
+  /* KH_DIAG_END */
+
+  /* 观影自动横屏：播放器打开锁横屏，关闭回跟随系统；只在原生支持方向设置时才包 */
+  (function khWrapPlayerOrientation() {
+    function ready() {
+      var c = khCaps();
+      if (String(c.orientation) !== '1') return;
+      try {
+        if (typeof window.openPlayer === 'function' && !window.openPlayer.__khWrapped) {
+          var o = window.openPlayer;
+          window.openPlayer = function () {
+            var r = o.apply(this, arguments);
+            window.khSetOrientation('landscape');
+            return r;
+          };
+          window.openPlayer.__khWrapped = true;
+        }
+        if (typeof window.closePlayer === 'function' && !window.closePlayer.__khWrapped) {
+          var cl = window.closePlayer;
+          window.closePlayer = function () {
+            var r = cl.apply(this, arguments);
+            window.khSetOrientation('auto');
+            return r;
+          };
+          window.closePlayer.__khWrapped = true;
+        }
+      } catch (e) {}
+    }
+    ready();
+    setTimeout(ready, 1500);
+    setTimeout(ready, 4000);
+  })();
+})();
+'''
+
 HAP_BLOCK = r'''
 /* ===================== 深开鸿 KaihongOS / OpenHarmony 端适配 ===================== */
 (function () {
   if (!window.KH_HARMONY) return;
+  window.__KH_DIAG_ALLOW = __KH_DIAG_ALLOW__;   /* 正式包 false / 调试包（KH_DIAG=1）true */
   var KH_HUB_DEFAULT = '__KH_HUB_DEFAULT__';
   var KH_HUB_CANDIDATES = __KH_HUB_CANDIDATES__;   // 构建时写入的本机所有可达地址
   var KH_HUB = (function () {
@@ -493,6 +721,80 @@ HAP_BLOCK = r'''
       if (chk) chk.onchange = function () { try { localStorage.setItem('khAutoOptimize', chk.checked ? '1' : '0'); } catch (e) {} khShowToast(chk.checked ? '✅ 已开启自动优化' : '⏸️ 已关闭自动优化'); };
     } catch (e) {}
   }
+
+  /* ===== TV / 遥控器空间焦点导航（无触摸屏设备可用方向键选条目，Enter 打开）===== */
+  (function khTvSpatialNav() {
+    var CLS = 'kh-focus-ring';
+    try {
+      var st = document.createElement('style');
+      st.textContent = '.' + CLS + '{outline:3px solid #ffd84d !important;outline-offset:2px !important;' +
+        'box-shadow:0 0 0 4px rgba(255,216,77,.22) !important;border-radius:8px}' +
+        '.' + CLS + ':focus{outline:3px solid #ffd84d !important}';
+      document.head.appendChild(st);
+    } catch (e) {}
+
+    function focusables() {
+      var all = document.querySelectorAll('a[href],button,input,select,textarea,[tabindex]:not([tabindex="-1"])');
+      return Array.prototype.filter.call(all, function (el) {
+        if (el.disabled) return false;
+        if (el.offsetParent === null) return false;
+        var r = el.getBoundingClientRect();
+        if (r.width < 8 || r.height < 8) return false;
+        if (r.bottom < 0 || r.top > (window.innerHeight + 8)) return false;
+        return true;
+      });
+    }
+    function middle(el) {
+      var r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }
+    function move(dir) {
+      var list = focusables();
+      if (!list.length) return false;
+      var cur = document.activeElement;
+      if (!cur || list.indexOf(cur) < 0) { list[0].focus(); cur = list[0]; if (document.activeElement !== cur) return false; }
+      var c = middle(cur), best = null, score = Infinity;
+      list.forEach(function (el) {
+        if (el === cur) return;
+        var p = middle(el), dx = p.x - c.x, dy = p.y - c.y, ok = false, d = 0;
+        if (dir === 'left') { ok = dx < -6; d = Math.abs(dx) + Math.abs(dy) * 2.2; }
+        else if (dir === 'right') { ok = dx > 6; d = Math.abs(dx) + Math.abs(dy) * 2.2; }
+        else if (dir === 'up') { ok = dy < -6; d = Math.abs(dy) + Math.abs(dx) * 2.2; }
+        else if (dir === 'down') { ok = dy > 6; d = Math.abs(dy) + Math.abs(dx) * 2.2; }
+        if (ok && d < score) { score = d; best = el; }
+      });
+      if (!best) {
+        /* 同方向找不到：跳到行列边缘（类似遥控"一直按到底"的重回环） */
+        if (dir === 'down' || dir === 'right') best = list[0];
+        else best = list[list.length - 1];
+        if (best === cur) return false;
+      }
+      try { best.classList.add(CLS); best.focus(); } catch (e) { return false; }
+      try {
+        var t = best.getBoundingClientRect();
+        if (t.top < 60 || t.bottom > window.innerHeight - 40) best.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      } catch (e) {}
+      return true;
+    }
+    function playerVisible() {
+      var v = document.querySelector('video');
+      if (!v) return false;
+      return v.offsetParent !== null;
+    }
+    document.addEventListener('keydown', function (e) {
+      var k = e.key;
+      if (k !== 'ArrowLeft' && k !== 'ArrowRight' && k !== 'ArrowUp' && k !== 'ArrowDown' && k !== 'Enter') return;
+      if (playerVisible() && k !== 'Enter') return;               /* 播放器里方向键交给原有快进/切台逻辑 */
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      if (k === 'Enter') {
+        var a = document.activeElement;
+        if (!a || a === document.body) { if (move('down')) e.preventDefault(); }
+        return;                                                    /* Enter 交给浏览器原生点击 */
+      }
+      if (move(k)) { e.preventDefault(); e.stopPropagation(); }
+    }, true);
+    window.khTvNavMove = move;
+  })();
 })();
 '''
 
@@ -505,6 +807,9 @@ def feature_snapshot():
             feats = []
     except Exception:
         feats = []
+    # 客户端（正式 HAP）不下发开发端运维功能项：/admin 入口的功能整条剔除，包里不出现运维地址
+    if os.environ.get('KH_DEVUI') != '1':
+        feats = [f for f in feats if not str((f or {}).get('url') or '').startswith('/admin')]
     try:
         st = json.load(open(STAMP_FILE, encoding='utf-8'))
         ver = {'versionName': st.get('versionName'), 'versionCode': st.get('versionCode'),
@@ -548,7 +853,20 @@ def inject(html, hub):
     block = (HAP_BLOCK
              .replace('__KH_HUB_DEFAULT__', hub)
              .replace('__KH_HUB_CANDIDATES__', hub_candidates()))
+    # 正式包：整块剔除调试面板代码（不留 if(false) 壳，包里搜不到「开发者诊断」）
+    if os.environ.get('KH_DIAG') != '1':
+        block = re.sub(r'/\* KH_DIAG_START \*/.*?/\* KH_DIAG_END \*/', '', block, flags=re.S)
+        block = re.sub(r'[ \t]*window\.__KH_DIAG_ALLOW = __KH_DIAG_ALLOW__;[^\n]*\n', '', block)
     html = html.replace(anchor, anchor + "\n" + block, 1)
+    # 5) 窗口管理桥的网页侧（原生 EntryAbility 推安全区 / 返回键，网页回报"还能不能退一层"）
+    #    诊断面板在 BRIDGE_BLOCK 里，正式包同样整块剔除
+    bridge = BRIDGE_BLOCK.replace('__KH_DIAG_ALLOW__', 'true' if os.environ.get('KH_DIAG') == '1' else 'false')
+    if os.environ.get('KH_DIAG') != '1':
+        bridge = re.sub(r'/\* KH_DIAG_START \*/.*?/\* KH_DIAG_END \*/', '', bridge, flags=re.S)
+    # 正式包（客户端）同样剥离开发端专属 UI：运维看板 /admin 入口、运维项提示等
+    if os.environ.get('KH_DEVUI') != '1':
+        html = re.sub(r'/\* KH_DEVUI_START \*/.*?/\* KH_DEVUI_END \*/', '', html, flags=re.S)
+    html = html.replace(anchor, anchor + "\n" + bridge, 1)
     return html
 
 

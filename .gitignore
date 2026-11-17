@@ -57,6 +57,12 @@ _*.json
 *.tmp
 archive/oneoff-*/
 
+# ---------- 鸿蒙本地/构建产物 ----------
+harmony/.hvigor/
+harmony/entry/build/
+harmony/local.properties
+*.bak-*
+
 # ---------- 系统与编辑器 ----------
 Thumbs.db
 desktop.ini

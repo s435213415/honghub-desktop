@@ -106,6 +106,24 @@ for (const n of ['remote-manifest.json', 'latest.yml']) {
 }
 copyKeep(path.join(ROOT, 'app', 'index.html'), path.join(PUB, 'app-page.html'));
 
+/* 1.3) 页面热更新端点：客户端只认 remote-manifest.json 里的 pageUrl/pageHash/pageSize，
+   以前这三项没人写，页面热更新等于永远不触发（公网换了页面客户端也收不到）。
+   pageUrl 用相对路径，带分发 shareQuery 时客户端会自动补上。 */
+if (!DRY) {
+  try {
+    const pagePath = path.join(PUB, 'app-page.html');
+    const pageHash = sha256(pagePath);
+    const pageSize = size(pagePath);
+    const pubMan = path.join(PUB, 'remote-manifest.json');
+    const pm = JSON.parse(fs.readFileSync(pubMan, 'utf8'));
+    pm.pageUrl = '/app-page.html';
+    pm.pageHash = pageHash;
+    pm.pageSize = pageSize;
+    fs.writeFileSync(pubMan, JSON.stringify(pm, null, 2) + '\n', 'utf8');
+    log('  页面热更新端点已写入：app-page.html · ' + nf(pageSize) + ' B · ' + pageHash.slice(0, 12) + '…');
+  } catch (e) { log('  页面热更新端点写入失败：' + e.message); }
+}
+
 /* 1.2 随包的下发端点（server/public-endpoint.json，会被打进 exe）只更新版本与校验值，
    绝不改写 baseUrl / shareQuery / distribution / mirrors——那是正式分发配置，由人工维护。 */
 if (fs.existsSync(ENDPOINT)) {
@@ -117,6 +135,30 @@ if (fs.existsSync(ENDPOINT)) {
     if (!DRY) fs.writeFileSync(ENDPOINT, JSON.stringify(ep, null, 2) + '\n', 'utf8');
     log('  随包端点版本已对齐：' + ep.baseUrl + (Q || '') + ' · v' + VER + (LOCAL_MODE ? '（本机镜像）' : ''));
   } catch (e) { log('  随包端点更新失败：' + e.message); }
+}
+
+/* 下载中心首页对齐：版本 / 链接 / 体积 / 哈希 / 文件名全部按当次真实产物改写。
+   历史坑：早期这里写成「原地换原地」的无操作替换，页面一直挂着旧版数字。 */
+function syncDownloadPage(idx, tag) {
+  if (!fs.existsSync(idx) || DRY) return false;
+  let h = fs.readFileSync(idx, 'utf8');
+  const before = h;
+  h = h.replace(/<span class="badge">v[\d.]+<\/span>/, '<span class="badge">v' + VER + '</span>');
+  h = h.replace(/版本号 [\d.]+ \/ #\d+/, '版本号 ' + VER + ' / #' + M.versionCode);
+  const pubDate = String(M.publishedAt || '').slice(0, 10);
+  if (pubDate) h = h.replace(/\d{4}-\d{2}-\d{2} 发布/, pubDate + ' 发布');
+  h = h.replace(/\/honghub\/v[\d.]+\//g, '/honghub/v' + VER + '/');
+  const sizes = [nf(bytes.exe), nf(bytes.bin), nf(bytes.hap)];
+  let si = 0;
+  h = h.replace(/<p>体积 [\d,]+\s*B/g, () => '<p>体积 ' + (sizes[si++] || '0') + ' B');
+  const shas = [bytes.exeSha, bytes.binSha, bytes.hapSha];
+  let hi = 0;
+  h = h.replace(/(sha256 )([a-f0-9]{64})/g, (m0, p1) => p1 + (shas[hi++] || ''));
+  h = h.replace(/下载 Setup [\d.]+\.exe/g, '下载 Setup ' + VER + '.exe');
+  h = h.replace(/honghub-desktop-[\d.]+-win\.bin/g, 'honghub-desktop-' + VER + '-win.bin');
+  if (h !== before) { fs.writeFileSync(idx, h, 'utf8'); log('  ' + tag + ' 版本/体积/哈希已更新'); return true; }
+  log('  ' + tag + ' 已是当前版本');
+  return false;
 }
 
 /* 2) 镜像站 */
@@ -131,23 +173,12 @@ if (!NO_MIRROR) {
     copyKeep(SRC.hap, path.join(md, 'HongHubMovie.hap'));
     copyKeep(path.join(PUB, 'remote-manifest.json'), path.join(MIRROR, 'remote-manifest.json'));
     copyKeep(path.join(PUB, 'app-page.html'), path.join(MIRROR, 'app-page.html'));
-    // 下载中心首页版本与链接
-    const idx = path.join(MIRROR, 'index.html');
-    if (fs.existsSync(idx) && !DRY) {
-      let h = fs.readFileSync(idx, 'utf8');
-      const before = h;
-      h = h.replace(/<span class="badge">v[\d.]+<\/span>/, '<span class="badge">v' + VER + '</span>');
-      h = h.replace(/版本号 [\d.]+ \/ #\d+/, '版本号 ' + VER + ' / #' + M.versionCode);
-      h = h.replace(/\/honghub\/v[\d.]+\//g, '/honghub/v' + VER + '/');
-      h = h.replace(/<p>体积 [\d,]+\s*B<\/p>/g, (m2) => m2);
-      h = h.replace(new RegExp('体积 ' + nf(bytes.exe) + ' B', 'g'), '体积 ' + nf(bytes.exe) + ' B');
-      h = h.replace(/下载 Setup [\d.]+\.exe/g, '下载 Setup ' + VER + '.exe');
-      h = h.replace(/honghub-desktop-[\d.]+-win\.bin/g, 'honghub-desktop-' + VER + '-win.bin');
-      if (h !== before) { fs.writeFileSync(idx, h); log('  首页版本号/链接已更新'); }
-      else log('  首页已是当前版本');
-    }
+    // 下载中心首页版本/链接/体积/哈希
+    syncDownloadPage(path.join(MIRROR, 'index.html'), '镜像站首页');
   }
 }
+/* 2.1) 待发布目录的首页同样对齐，避免发布出去还是旧数字 */
+syncDownloadPage(path.join(PUB, 'index.html'), 'dist/public 首页');
 
 /* 3) 桌面文件夹 */
 if (!NO_DESKTOP) {
@@ -161,9 +192,24 @@ if (!NO_DESKTOP) {
     fs.mkdirSync(archDir, { recursive: true });
   }
   copyKeep(SRC.exe, path.join(clientDir, '鸿汇影桌面版 Setup ' + VER + '.exe'));
-  copyKeep(SRC.bin, path.join(clientDir, '鸿汇影桌面版 Setup ' + VER + '.zip'));
+  copyKeep(SRC.bin, path.join(clientDir, '鸿汇影免安装 ' + VER + '.zip'));
   copyKeep(SRC.hap, path.join(clientDir, 'HongHubMovie.hap'));
-  copyKeep(SRC.exe, path.join(devDir, '鸿汇影桌面版 Setup ' + VER + '.exe'));
+  /* 开发端夹必须放「开发端安装版」（CLIENT_ONLY=false），不能放客户硬锁版：
+     硬锁版会忽略 dev-mode.flag，装了也进不去运维面板。 */
+  const devExe = path.join(DIST, '鸿汇影桌面版 开发端 ' + VER + '.exe');
+  if (fs.existsSync(devExe)) {
+    copyKeep(devExe, path.join(devDir, '鸿汇影桌面版 开发端 ' + VER + '.exe'));
+  } else {
+    log('  ⚠ 开发端安装版缺失：' + path.basename(devExe) + '（该夹只放免安装包，不放客户硬锁版）');
+  }
+  // 开发端夹里若残留客户硬锁同名包，自动挪进历史归档，避免误装
+  const staleClient = path.join(devDir, '鸿汇影桌面版 Setup ' + VER + '.exe');
+  if (!DRY && fs.existsSync(staleClient) && sha256(staleClient) === sha256(SRC.exe)) {
+    const staleTo = path.join(archDir, '开发端夹_客户硬锁_' + sha256(staleClient).slice(0, 8));
+    fs.mkdirSync(staleTo, { recursive: true });
+    fs.renameSync(staleClient, path.join(staleTo, path.basename(staleClient)));
+    log('  移出开发端夹的客户硬锁包 → ' + path.basename(staleTo));
+  }
   copyKeep(SRC.hap, path.join(devDir, 'HongHubMovie.hap'));
   // 旧版本的客户成品 / 开发端夹自动归档
   if (!DRY) {
@@ -184,14 +230,14 @@ if (!NO_DESKTOP) {
     '本文件夹只放客户直接能用的成品，不含开发端 / 运维界面。',
     '',
     '一、装哪一个',
-    '  Windows：「鸿汇影桌面版 Setup ' + VER + '.exe」双击安装；或解压「鸿汇影桌面版 Setup ' + VER + '.zip」用免安装版。',
+    '  Windows：「鸿汇影桌面版 Setup ' + VER + '.exe」双击安装；或解压「鸿汇影免安装 ' + VER + '.zip」用免安装版。',
     '  深开鸿 / OpenHarmony：装「HongHubMovie.hap」（应用市场直装，或 hdc install）。',
     '',
     '二、文件与校验值（SHA-256）',
     '  鸿汇影桌面版 Setup ' + VER + '.exe',
     '    ' + nf(bytes.exe) + ' 字节',
     '    ' + bytes.exeSha,
-    '  鸿汇影桌面版 Setup ' + VER + '.zip',
+    '  鸿汇影免安装 ' + VER + '.zip',
     '    ' + nf(bytes.bin) + ' 字节',
     '    ' + bytes.binSha,
     '  HongHubMovie.hap',

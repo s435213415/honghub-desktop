@@ -67,7 +67,8 @@ def find_java():
         cand = os.path.join(env, "bin", "java.exe") if os.path.isdir(env) else env
         if os.path.isfile(cand):
             return cand
-    pats = [r"C:/Users/admin/Desktop/command-line-tools/tool/jre/bin/java.exe",
+    pats = [r"C:/Users/admin/Desktop/软件开发工具/command-line-tools/tool/jre/bin/java.exe",
+            r"C:/Users/admin/Desktop/command-line-tools/tool/jre/bin/java.exe",
             r"C:/Program Files/Java/jdk*/bin/java.exe",
             os.path.expanduser("~") + "/toolchain/jdk*/bin/java.exe"]
     for pat in pats:
@@ -79,6 +80,7 @@ def find_java():
 
 def find_jar():
     pats = [os.environ.get("OH_SDK_HOME", "") + "/sdk/*/toolchains/lib/hap-sign-tool.jar",
+            r"C:/Users/admin/Desktop/软件开发工具/command-line-tools/sdk/*/toolchains/lib/hap-sign-tool.jar",
             r"C:/Users/admin/Desktop/command-line-tools/sdk/*/toolchains/lib/hap-sign-tool.jar"]
     for pat in pats:
         hits = sorted(glob.glob(pat))

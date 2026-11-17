@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>鸿汇影 · 设备能力表</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 22px; background: #0B1622; color: #E8F1FF;
+         font: 14px/1.65 "Microsoft YaHei", -apple-system, sans-serif; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  .sub { color: #8CA0BE; font-size: 12px; margin-bottom: 16px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(200px,1fr)); gap: 12px; margin-bottom: 18px; }
+  .card { background: #12233B; border: 1px solid #1E3450; border-radius: 10px; padding: 14px 16px; }
+  .card .k { color: #8CA0BE; font-size: 12px; margin-bottom: 6px; }
+  .card .v { font-size: 22px; font-weight: 700; }
+  .card .d { color: #7E93B4; font-size: 12px; margin-top: 6px; word-break: break-all; }
+  h2 { font-size: 15px; margin: 20px 0 10px; padding-top: 12px; border-top: 1px solid #1E3450; }
+  .dev { background: #12233B; border: 1px solid #1E3450; border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+  .dev .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+  .dev .id { font: 600 14px/1.4 ui-monospace, monospace; color: #CFE0FF; }
+  .dev .meta { color: #8CA0BE; font-size: 12px; }
+  .chips { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { padding: 2px 8px; border-radius: 6px; font-size: 12px; }
+  .on { background: #14472F; color: #6BE3A0; }
+  .off { background: #4A1620; color: #FF9B9B; }
+  .na { background: #1C2B3F; color: #8CA0BE; }
+  .empty { color: #7E93B4; font-size: 13px; }
+  .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  button { background: #1E3450; color: #DCE9FF; border: 0; border-radius: 8px; padding: 7px 14px; cursor: pointer; font: 13px system-ui; }
+  button:hover { background: #27456A; }
+  input { background: #0F1E30; color: #DCE9FF; border: 1px solid #1E3450; border-radius: 8px; padding: 7px 10px; font: 13px ui-monospace, monospace; width: 210px; }
+  .warn { color: #FFD48A; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>鸿汇影 · 设备能力表</h1>
+<div class="sub">深开鸿 / OpenHarmony 设备启动时会 POST /api/device/report，带上 OS 版本、设备形态与 caps 六键。这里把这些从接口搬进界面，用来确认客户端新能力在真机上到底有没有生效。</div>
+
+<div class="bar">
+  <button onclick="load()">⟳ 刷新</button>
+  <span id="state" class="empty">加载中…</span>
+  <input id="tok" placeholder="访问口令（本机可留空）">
+  <button onclick="saveTok()">保存口令</button>
+</div>
+
+<div class="cards">
+  <div class="card"><div class="k">设备条目</div><div class="v" id="cCount">-</div><div class="d" id="dCount">—</div></div>
+  <div class="card"><div class="k">深开鸿设备</div><div class="v" id="cKai">-</div><div class="d" id="dKai">—</div></div>
+  <div class="card"><div class="k">跟随全部系统版本</div><div class="v" id="cFollow">-</div><div class="d" id="dFollow">—</div></div>
+  <div class="card"><div class="k">最近上报</div><div class="v" id="cLast">-</div><div class="d" id="dLast">—</div></div>
+</div>
+
+<h2>设备列表</h2>
+<div id="list" class="empty">加载中…</div>
+
+<h2>能力表说明</h2>
+<div class="sub" style="margin:0">
+  caps 六键：<b>sdk</b>（系统 API 版本，不是 0/1）· <b>fullscreen</b>（全屏是否生效）· <b>hideBars</b>（系统栏是否隐藏）·
+  <b>avoidArea</b>（安全区是否实时注入）· <b>orientation</b>（能否锁横竖屏）· <b>backKey</b>（返回键是否被接管）。
+  值为 1 表示可用，0 表示该能力降级（网页侧会自动走兜底逻辑）。
+</div>
+
+<script>
+var KEY = 'khAdminToken';
+function el(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; }); }
+function fmt(iso){ if(!iso) return '—'; var d = new Date(iso); if (isNaN(d.getTime())) return String(iso); return d.toLocaleString('zh-CN', { hour12: false }); }
+function tok(){ try { return localStorage.getItem(KEY) || ''; } catch (e) { return ''; } }
+function saveTok(){
+  try { localStorage.setItem(KEY, el('tok').value.trim()); } catch (e) {}
+  load();
+}
+function chip(name, val){
+  var isFlag = (val === '0' || val === '1');
+  var cls = isFlag ? (val === '1' ? 'on' : 'off') : 'na';
+  var txt = isFlag ? (val === '1' ? '可用' : '降级') : String(val);
+  return '<span class="chip ' + cls + '">' + esc(name) + ' · ' + esc(txt) + '</span>';
+}
+function load(){
+  var h = {};
+  if (tok()) h['X-KH-Access-Token'] = tok();
+  el('state').textContent = '读取中…';
+  fetch('/api/devices', { cache: 'no-store', headers: h }).then(function(r){ return r.json(); }).then(function(d){
+    var ds = d.devices || {};
+    var ids = Object.keys(ds).sort();
+    var kai = ids.filter(function(x){ return /kaihong|harmony|openharmony/i.test(x); });
+    el('cCount').textContent = ids.length;
+    el('dCount').textContent = ids.length ? ('含深开鸿 ' + kai.length + ' 条') : '还没有设备上报';
+    el('cKai').textContent = kai.length;
+    el('dKai').textContent = kai.length ? kai.slice(0, 2).join(' · ') : '等真机启动上报';
+    el('cFollow').textContent = d.followAllOSVersions ? '是' : '否';
+    el('dFollow').textContent = d.followAllOSVersions ? '新系统版本自动纳入画像' : '只按已知版本归档';
+    var lastAt = null;
+    ids.forEach(function(id){ var a = ds[id] && (ds[id].at || ds[id].lastSeen); if (a && (!lastAt || String(a) > String(lastAt))) lastAt = a; });
+    el('cLast').textContent = lastAt ? fmt(lastAt) : '—';
+    el('dLast').textContent = lastAt ? '最新一次设备上报时间' : '暂无上报记录';
+    el('state').textContent = '共 ' + ids.length + ' 条（跟随 OS 版本：' + (d.followAllOSVersions ? '是' : '否') + '）';
+    if (!ids.length) { el('list').className = 'empty'; el('list').innerHTML = '还没有设备上报。先在深开鸿设备上装并启动客户端，或在 /admin 用模拟上报试一条。'; return; }
+    el('list').className = '';
+    el('list').innerHTML = ids.map(function(id){
+      var e = ds[id] || {};
+      var caps = e.caps || null;
+      var chips = '';
+      if (caps) {
+        var order = ['sdk', 'fullscreen', 'hideBars', 'avoidArea', 'orientation', 'backKey'];
+        chips = order.map(function(k){ return chip(k, caps[k] == null ? '—' : String(caps[k])); }).join('');
+        Object.keys(caps).forEach(function(k){ if (order.indexOf(k) < 0) chips += chip(k, caps[k]); });
+      } else {
+        chips = '<span class="chip na">该条目是历史数据，没有 caps（升级到带上报的版本后才有）</span>';
+      }
+      return '<div class="dev"><div class="top"><span class="id">' + esc(id) + '</span>' +
+        '<span class="meta">OS ' + esc(e.osVersion || '—') + ' · API ' + esc(e.apiVersion || '—') +
+        ' · 形态 ' + esc(e.deviceType || '—') + ' · 平台 ' + esc(e.platform || '—') +
+        ' · 最后上报 ' + esc(fmt(e.at || e.lastSeen)) + '</span></div>' +
+        '<div class="chips">' + chips + '</div></div>';
+    }).join('');
+  }).catch(function(err){
+    el('state').textContent = '读取失败：' + (err && err.message ? err.message : err) + '（若中枢开了口令，先在上面填访问口令再刷新）';
+  });
+}
+try { el('tok').value = tok(); } catch (e) {}
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>

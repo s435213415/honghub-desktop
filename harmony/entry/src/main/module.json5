@@ -4,7 +4,7 @@
     "type": "entry",
     "description": "$string:module_desc",
     "mainElement": "EntryAbility",
-    "deviceTypes": ["tablet", "phone"],
+    "deviceTypes": ["tablet", "2in1", "tv"],
     "deliveryWithInstall": true,
     "installationFree": false,
     "pages": "$profile:main_pages",

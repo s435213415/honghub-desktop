@@ -1,7 +1,7 @@
 {
   "sources": {
-    "v": 24,
-    "updatedAt": "2026-11-16T09:58:24.508Z",
+    "v": 26,
+    "updatedAt": "2026-11-17T11:05:57.217Z",
     "count": 94,
     "channels": [
       {
@@ -1517,26 +1517,30 @@
         "mode": "project"
       },
       {
-        "name": "U-NEXT",
-        "url": "https://video.unext.jp",
-        "color": "#3B456B",
-        "cat": "日韩平台",
+        "name": "央视频",
+        "url": "https://www.yangshipin.cn/",
+        "color": "#E23A2E",
+        "cat": "综合视频",
         "region": "jpkr",
-        "mode": "oversea",
+        "mode": "pc",
         "entryOnly": true,
         "official": true,
-        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制",
+        "tag": "央媒",
+        "prov": ""
       },
       {
-        "name": "ABEMA",
-        "url": "https://abema.tv",
-        "color": "#3B456B",
-        "cat": "日韩平台",
+        "name": "央视网",
+        "url": "https://www.cctv.com/",
+        "color": "#0B5FFF",
+        "cat": "公共广播官方",
         "region": "jpkr",
-        "mode": "oversea",
+        "mode": "pc",
         "entryOnly": true,
         "official": true,
-        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制",
+        "tag": "央媒",
+        "prov": ""
       },
       {
         "name": "TVer",
@@ -1715,15 +1719,17 @@
         "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
       },
       {
-        "name": "Netflix",
-        "url": "https://www.netflix.com",
-        "color": "#3B456B",
-        "cat": "欧美平台",
+        "name": "CGTN",
+        "url": "https://www.cgtn.com/",
+        "color": "#111827",
+        "cat": "海外官方",
         "region": "euus",
-        "mode": "oversea",
+        "mode": "pc",
         "entryOnly": true,
         "official": true,
-        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制",
+        "tag": "央媒",
+        "prov": ""
       },
       {
         "name": "Disney+",
@@ -1770,37 +1776,43 @@
         "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
       },
       {
-        "name": "Paramount+",
-        "url": "https://www.paramountplus.com",
-        "color": "#3B456B",
-        "cat": "欧美平台",
+        "name": "人民网视频",
+        "url": "http://v.people.cn/",
+        "color": "#C8102E",
+        "cat": "公共广播官方",
         "region": "euus",
-        "mode": "oversea",
+        "mode": "pc",
         "entryOnly": true,
         "official": true,
-        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制",
+        "tag": "央媒",
+        "prov": ""
       },
       {
-        "name": "Apple TV+",
-        "url": "https://tv.apple.com",
-        "color": "#3B456B",
-        "cat": "欧美平台",
+        "name": "新华网",
+        "url": "http://www.xinhuanet.com/",
+        "color": "#1D4ED8",
+        "cat": "公共广播官方",
         "region": "euus",
-        "mode": "oversea",
+        "mode": "pc",
         "entryOnly": true,
         "official": true,
-        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制",
+        "tag": "央媒",
+        "prov": ""
       },
       {
-        "name": "Peacock",
-        "url": "https://www.peacocktv.com",
-        "color": "#3B456B",
-        "cat": "欧美平台",
+        "name": "中国网",
+        "url": "http://www.china.com.cn/",
+        "color": "#0F766E",
+        "cat": "公共广播官方",
         "region": "euus",
-        "mode": "oversea",
+        "mode": "pc",
         "entryOnly": true,
         "official": true,
-        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制",
+        "tag": "央媒",
+        "prov": ""
       },
       {
         "name": "The Roku Channel",
@@ -1825,15 +1837,17 @@
         "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
       },
       {
-        "name": "Crackle",
-        "url": "https://www.crackle.com",
-        "color": "#3B456B",
-        "cat": "欧美平台",
+        "name": "央广网",
+        "url": "https://www.cnr.cn/",
+        "color": "#B45309",
+        "cat": "公共广播官方",
         "region": "euus",
-        "mode": "oversea",
+        "mode": "pc",
         "entryOnly": true,
         "official": true,
-        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制",
+        "tag": "央媒",
+        "prov": ""
       },
       {
         "name": "Plex",
@@ -1990,15 +2004,17 @@
         "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
       },
       {
-        "name": "TF1",
-        "url": "https://www.tf1.fr",
-        "color": "#3B456B",
-        "cat": "欧美平台",
+        "name": "国际在线",
+        "url": "https://www.cri.cn/",
+        "color": "#7C3AED",
+        "cat": "公共广播官方",
         "region": "euus",
-        "mode": "oversea",
+        "mode": "pc",
         "entryOnly": true,
         "official": true,
-        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制",
+        "tag": "央媒",
+        "prov": ""
       },
       {
         "name": "M6",
@@ -2012,15 +2028,17 @@
         "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
       },
       {
-        "name": "Viaplay",
-        "url": "https://viaplay.com",
-        "color": "#3B456B",
-        "cat": "欧美平台",
+        "name": "中国纪录片网",
+        "url": "http://www.docuchina.cn/",
+        "color": "#0E7490",
+        "cat": "影视资讯/数据库",
         "region": "euus",
-        "mode": "oversea",
+        "mode": "pc",
         "entryOnly": true,
         "official": true,
-        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制",
+        "tag": "纪录片",
+        "prov": ""
       },
       {
         "name": "SVT Play",
@@ -2354,7 +2372,7 @@
       },
       {
         "name": "GMA Network",
-        "url": "https://www.gmanetwork.com",
+        "url": "https://www.gmanetwork.com/",
         "color": "#3B456B",
         "cat": "东南亚平台",
         "region": "asean",
@@ -2386,15 +2404,17 @@
         "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
       },
       {
-        "name": "OSN",
-        "url": "https://www.osn.com",
-        "color": "#3B456B",
-        "cat": "中东平台",
+        "name": "澎湃新闻",
+        "url": "https://www.thepaper.cn/",
+        "color": "#DC2626",
+        "cat": "综合视频",
         "region": "mea",
-        "mode": "oversea",
+        "mode": "wap",
         "entryOnly": true,
         "official": true,
-        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制",
+        "tag": "资讯",
+        "prov": "上海"
       },
       {
         "name": "STARZPLAY Arabia",
@@ -2430,15 +2450,17 @@
         "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
       },
       {
-        "name": "Globoplay",
-        "url": "https://globoplay.globo.com",
-        "color": "#3B456B",
-        "cat": "拉美平台",
+        "name": "新京报",
+        "url": "https://www.bjnews.com.cn/",
+        "color": "#2563EB",
+        "cat": "综合视频",
         "region": "latam",
-        "mode": "oversea",
+        "mode": "wap",
         "entryOnly": true,
         "official": true,
-        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制",
+        "tag": "资讯",
+        "prov": "北京"
       },
       {
         "name": "ViX",
@@ -2540,15 +2562,17 @@
         "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
       },
       {
-        "name": "Zee5",
-        "url": "https://www.zee5.com",
-        "color": "#3B456B",
-        "cat": "印巴平台",
+        "name": "中国青年网",
+        "url": "http://www.youth.cn/",
+        "color": "#16A34A",
+        "cat": "综合视频",
         "region": "in",
-        "mode": "oversea",
+        "mode": "pc",
         "entryOnly": true,
         "official": true,
-        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制",
+        "tag": "资讯",
+        "prov": ""
       },
       {
         "name": "JioCinema",
@@ -2584,15 +2608,17 @@
         "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
       },
       {
-        "name": "ARY Digital",
-        "url": "https://arydigital.tv",
-        "color": "#3B456B",
-        "cat": "印巴平台",
+        "name": "光明网",
+        "url": "https://www.gmw.cn/",
+        "color": "#0891B2",
+        "cat": "公共广播官方",
         "region": "in",
-        "mode": "oversea",
+        "mode": "pc",
         "entryOnly": true,
         "official": true,
-        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制",
+        "tag": "央媒",
+        "prov": ""
       },
       {
         "name": "Stan",
@@ -2727,15 +2753,17 @@
         "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
       },
       {
-        "name": "KKTV",
-        "url": "https://www.kktv.me",
-        "color": "#3B456B",
-        "cat": "港澳台平台",
+        "name": "中国日报网",
+        "url": "https://cn.chinadaily.com.cn/",
+        "color": "#B91C1C",
+        "cat": "公共广播官方",
         "region": "cn-hmt",
-        "mode": "oversea",
+        "mode": "pc",
         "entryOnly": true,
         "official": true,
-        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制",
+        "tag": "央媒",
+        "prov": ""
       },
       {
         "name": "LiTV",
@@ -2771,15 +2799,17 @@
         "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
       },
       {
-        "name": "LINE TV",
-        "url": "https://www.linetv.tw",
-        "color": "#3B456B",
-        "cat": "港澳台平台",
+        "name": "海外网",
+        "url": "http://www.haiwainet.cn/",
+        "color": "#1E40AF",
+        "cat": "公共广播官方",
         "region": "cn-hmt",
-        "mode": "oversea",
+        "mode": "pc",
         "entryOnly": true,
         "official": true,
-        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制",
+        "tag": "央媒",
+        "prov": ""
       },
       {
         "name": "北京时间",
@@ -3320,6 +3350,41 @@
         "cat": "各地广电",
         "mode": "wap",
         "prov": "拉萨"
+      },
+      {
+        "name": "TVB 无线",
+        "url": "https://www.tvb.com/",
+        "color": "#E4002B",
+        "tag": "TVB",
+        "cat": "港澳台平台",
+        "prov": "香港",
+        "mode": "pc",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "台湾公视",
+        "url": "https://www.pts.org.tw/",
+        "color": "#1B7A4B",
+        "tag": "公视",
+        "cat": "港澳台平台",
+        "prov": "台湾",
+        "mode": "pc",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
+      },
+      {
+        "name": "Netflix",
+        "url": "https://www.netflix.com/",
+        "color": "#E50914",
+        "tag": "N",
+        "cat": "欧美平台",
+        "mode": "pc",
+        "entryOnly": true,
+        "official": true,
+        "note": "官方入口：仅跳转官方页面播放，不抓流、不绕过订阅与地区限制"
       }
     ],
     "searchTpl": {
@@ -3379,11 +3444,11 @@
   },
   "release": {
     "schema": 1,
-    "generatedAt": "2026-11-16T15:25:55.062Z",
+    "generatedAt": "2026-11-17T13:17:06.347Z",
     "latest": {
-      "versionName": "1.7.30",
-      "versionCode": 1000144,
-      "publishedAt": "2026-11-16T15:25:55.062Z",
+      "versionName": "1.7.42",
+      "versionCode": 1000156,
+      "publishedAt": "2026-11-17T13:17:06.347Z",
       "minApi": 12,
       "targetApi": 26,
       "compatibleSdk": "5.0.0(12)",
@@ -3438,7 +3503,7 @@
       "hapAutoInstall": false,
       "hapUrl": "/download/honghub-harmony.hap",
       "downloadUrl": "/download/desktop-setup.exe",
-      "generatedAt": "2026-11-16T15:25:55.062Z"
+      "generatedAt": "2026-11-17T13:17:06.347Z"
     }
   }
 }

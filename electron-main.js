@@ -208,6 +208,7 @@ app.whenReady().then(async () => {
         { label: '功能追踪', accelerator: 'CmdOrCtrl+3', click: () => { if (mainWin) mainWin.loadURL('http://127.0.0.1:' + HUB_PORT + '/admin/features'); } },
         { label: '维护决策', accelerator: 'CmdOrCtrl+5', click: () => { if (mainWin) mainWin.loadURL('http://127.0.0.1:' + HUB_PORT + '/admin/insights'); } },
         { type: 'separator' },
+        { label: '立即检查更新', click: () => { try { require('./dev-auto-update').checkOnce(); } catch (e) {} } },
         { label: '影视页', accelerator: 'CmdOrCtrl+4', click: () => { if (mainWin) mainWin.loadURL('http://127.0.0.1:' + HUB_PORT + PAGE_MOVIE); } }
       ]
     }] : []),
@@ -226,6 +227,8 @@ app.whenReady().then(async () => {
   await pickPort();
   startServer();
   createWindow();
+  // 开发端自更新：启动后检查本机镜像站新包，下载校验后静默安装并重启（客户版不会加载这段）
+  if (DEV_BUILD) { try { require('./dev-auto-update').start(); } catch (e) {} }
 });
 
 app.on('window-all-closed', () => {

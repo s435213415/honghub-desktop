@@ -7,7 +7,7 @@
    3) 生成 server/feature-version.json（功能清单随版本发布的快照）
    4) 把「自动安装」宣传文案改成与真实能力一致
    5) 同步 package.json.version —— 安装包文件名 / 主程序版本信息跟随本次发版
-   KH_RELEASE_BUMP=0 可跳过递增（重复调试打包用，但仍会同步版本号）。
+   KH_RELEASE_BUMP=1 才递增版本号（默认不涨，避免调试打包把版本刷高；正式发版显式 bump）。
 */
 const fs = require('fs');
 const path = require('path');
@@ -56,7 +56,7 @@ try {
 const m = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
 if (!m.release || !m.release.latest) { console.error('清单缺少 release.latest，已中止'); process.exit(1); }
 const latest = m.release.latest;
-const bump = process.env.KH_RELEASE_BUMP !== '0';
+const bump = process.env.KH_RELEASE_BUMP === '1';
 if (bump) {
   const oldCode = Number(latest.versionCode) || 0;
   latest.versionCode = oldCode + 1;

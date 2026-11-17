@@ -56,7 +56,8 @@
     "dev:auto": "node scripts/dev-auto.mjs",
     "dev:auto:check": "node scripts/dev-auto.mjs --check",
     "build:dev-scripts": "node scripts/build-dev-package.js",
-    "build:client": "node scripts/build-client-exe.js"
+    "build:client": "node scripts/build-client-exe.js",
+    "oneclick": "node scripts/oneclick-release.js"
   },
   "devDependencies": {
     "electron": "^30.0.0",
@@ -84,7 +85,9 @@
       "!server/data/app.page.html",
       "!**/*.bak",
       "!**/*.log",
-      "!**/*.dev-backup"
+<<<<<<< HEAD
+      "!**/*.dev-backup",
+      "dev-auto-update.js"
     ],
     "directories": {
       "output": "dist"
