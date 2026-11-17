@@ -48,6 +48,7 @@ server/data/weekly.md
 __pycache__/
 *.pyc
 _signtmp/
+logs/
 certs/
 _check.js
 _*.js

@@ -60,7 +60,12 @@ step('4/8 桌面端出包（含内置 HAP / 清单）', process.execPath, [path.
 if (!NO_CLIENT) step('5/8 客户版 Setup（剥离 /admin 运维入口）', process.execPath, [path.join(__dirname, 'build-client-exe.js')]);
 /* 6/8 去掉了 make-portable-zip：它从开发端 win-unpacked 打包，会把开发端页面下发成客户免安装包。
    客户免安装 zip 由 build-client-exe.js 在净化后直接从 win-unpacked 打，才是正确来源。 */
-if (!NO_RELEASE) step('7/8 下发（镜像站 + 桌面夹 + 清单）', process.execPath, [path.join(__dirname, 'auto-release.js')]);
+if (!NO_RELEASE) {
+  step('7/8 下发（镜像站 + 桌面夹 + 清单）', process.execPath, [path.join(__dirname, 'auto-release.js')]);
+  // 8/8 零积分公网下发：把签发好的成品同步到本机镜像站 8099，经 Cloudflare 隧道
+  //      回下验证三件直链并输出公网下载链接。走本机文件+隧道流量，不消耗平台积分。
+  step('7.1/8 零积分公网下发（上传+回下验证+链接）', process.execPath, [path.join(__dirname, 'publish-free.js')]);
+}
 step('8/8 验收', process.execPath, [path.join(__dirname, 'verify-release.js')]);
 
 say('=== 鸿汇影一键流水线 ' + new Date().toLocaleString('zh-CN') + ' ===');

@@ -83,24 +83,32 @@ if (tool) {
 }
 
 // 无 signtool：PowerShell 兜底。
-// 用 .NET X509Certificate2 直接载入 PFX（口令只经环境变量传入，不出现在命令行，
-// 也不做明文 SecureString 转换），避免凭据处理被安全策略拦截。
+// 关键坑：Set-AuthenticodeSignature 要求证书在「当前用户证书存储」里，直接传内存中的
+// X509Certificate2 会报「指定的证书不适用于代码签名」。故先把证书临时导入 My 存储，
+// 签完立即移除（finally 保证清理）。口令只经环境变量传入，不进命令行/日志。
+// 自签证书链不受信任时 Status=UnknownError 属预期，硬判据是「签名块存在且指纹匹配」。
 const q = (s) => '"' + String(s).replace(/"/g, '`"') + '"';
 const ps = [
   '$ErrorActionPreference="Stop"',
-  '$cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(' + q(CERT) + ', $env:KH_CSC_PWD)',
+  '$cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(' +
+    q(CERT) + ', $env:KH_CSC_PWD, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::PersistKeySet)',
   'if (-not $cert.HasPrivateKey) { Write-Error "PFX 未包含私钥，无法签名"; exit 1 }',
-  '$signParams = @{ FilePath=' + q(TARGET) + '; Certificate=$cert; HashAlgorithm="SHA256" }',
-  "if ($env:KH_CSC_TIMESTAMP) { $signParams.TimestampServer = $env:KH_CSC_TIMESTAMP }",
-  '$r = Set-AuthenticodeSignature @signParams',
-  '$v = Get-AuthenticodeSignature -FilePath ' + q(TARGET),
-  // 自签 / 本地测试证书链不受信任时 Status 为 UnknownError，属预期；
-  // 唯一的硬判据是「签名块存在且指纹匹配」，避免把成功误判为失败。
-  'if (-not $v.SignerCertificate) { Write-Error ("签名块缺失: " + $r.Status + " " + $r.StatusMessage); exit 1 }',
-  'if ($v.SignerCertificate.Thumbprint -ne $cert.Thumbprint) { Write-Error "签名证书指纹不匹配"; exit 1 }',
-  'if ($v.Status -notin @("Valid","UnknownError")) { Write-Error ("签名状态异常: " + $v.Status); exit 1 }',
-  'Write-Output ("SIGNED " + $v.Status + " " + $v.SignerCertificate.Thumbprint)'
-].join('; ');
+  '$store = New-Object System.Security.Cryptography.X509Certificates.X509Store("My","CurrentUser")',
+  '$imported = $false',
+  'try {',
+  '  $store.Open("ReadWrite"); $store.Add($cert); $imported = $true; $store.Close()',
+  '  $signParams = @{ FilePath=' + q(TARGET) + '; Certificate=$cert; HashAlgorithm="SHA256" }',
+  '  if ($env:KH_CSC_TIMESTAMP) { $signParams.TimestampServer = $env:KH_CSC_TIMESTAMP }',
+  '  $r = Set-AuthenticodeSignature @signParams',
+  '  $v = Get-AuthenticodeSignature -FilePath ' + q(TARGET),
+  '  if (-not $v.SignerCertificate) { Write-Error ("签名块缺失: " + $r.Status + " " + $r.StatusMessage); exit 1 }',
+  '  if ($v.SignerCertificate.Thumbprint -ne $cert.Thumbprint) { Write-Error "签名证书指纹不匹配"; exit 1 }',
+  '  if ($v.Status -notin @("Valid","UnknownError")) { Write-Error ("签名状态异常: " + $v.Status); exit 1 }',
+  '  Write-Output ("SIGNED " + $v.Status + " " + $v.SignerCertificate.Thumbprint)',
+  '} finally {',
+  '  if ($imported) { try { $store.Open("ReadWrite"); $store.Remove($cert); $store.Close() } catch {} }',
+  '}'
+].join('\n');
 const r = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], {
   encoding: 'utf8', timeout: 180000,
   env: Object.assign({}, process.env, { KH_CSC_PWD: PWD, KH_CSC_TIMESTAMP: TIMESTAMP })

@@ -18,6 +18,9 @@
     "check:features": "node scripts/check-feature-wiring.js",
     "doctor": "node scripts/doctor.js",
     "signing:setup": "node scripts/setup-signing.js",
+    "signing:connect": "node scripts/signing-connect.js",
+    "signing:connect:check": "node scripts/signing-connect.js --check",
+    "signing:connect:selftest-cert": "node scripts/signing-connect.js --make-selftest",
     "hap:sign": "node scripts/hap-sign.js",
     "smoke:hap": "node scripts/smoke-hap.js",
     "hap:watch": "node scripts/hap-watch.js",
@@ -57,7 +60,9 @@
     "dev:auto:check": "node scripts/dev-auto.mjs --check",
     "build:dev-scripts": "node scripts/build-dev-package.js",
     "build:client": "node scripts/build-client-exe.js",
-    "oneclick": "node scripts/oneclick-release.js"
+    "oneclick": "node scripts/oneclick-release.js",
+    "publish:free": "node scripts/publish-free.js",
+    "publish:free:verify": "node scripts/publish-free.js --verify"
   },
   "devDependencies": {
     "electron": "^30.0.0",
@@ -85,9 +90,7 @@
       "!server/data/app.page.html",
       "!**/*.bak",
       "!**/*.log",
-<<<<<<< HEAD
-      "!**/*.dev-backup",
-      "dev-auto-update.js"
+      "!**/*.dev-backup"
     ],
     "directories": {
       "output": "dist"
