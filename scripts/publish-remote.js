@@ -110,7 +110,8 @@ function getJson(url) {
 (async () => {
   if (SITES) {
     const probeManifest = await head(asset('remote-manifest.json'));
-    if (probeManifest.code !== 200 || !/"versionCode"/.test(probeManifest.body)) {
+    // 清单探测：公网站点返回 200，本机镜像站对 Range 返回 206（正常断点续传语义），两者都算可达。
+    if (!((probeManifest.code === 200) || (probeManifest.code === 206)) || !/"versionCode"/.test(probeManifest.body)) {
       finish('prepared-local', '静态目录已备好，但远端清单尚不可达（' + asset('remote-manifest.json') +
         ' → HTTP ' + probeManifest.code + '）：请先重新发布 dist/public/ 站点，再重跑本命令');
     }

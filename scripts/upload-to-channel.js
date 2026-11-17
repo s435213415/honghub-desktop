@@ -140,13 +140,24 @@ async function main() {
   const vcode = arg('version-code', String(rel.versionCode));
   if (!/^\d+\.\d+\.\d+$/.test(version)) { console.error('[失败] 版本号非法：' + version); process.exit(1); }
 
+  // 产物可能在三处：dist/honghub/v<ver>/（构建主目录）、dist/ 根（别名）、
+  // dist/public/honghub/v<ver>/（publish-remote 生成的静态发布目录）。逐个探测，避免漏掉 bin。
   const vdir = path.join(projectRoot, 'dist', 'honghub', 'v' + version);
+  const pubdir = path.join(projectRoot, 'dist', 'public', 'honghub', 'v' + version);
+  const pick = (name) => {
+    for (const d of [vdir, path.join(projectRoot, 'dist'), pubdir]) {
+      const p = path.join(d, name);
+      if (fs.existsSync(p)) return p;
+    }
+    return path.join(vdir, name);
+  };
+  const binName = 'honghub-desktop-' + version + '-win.bin';
   const candidates = {
-    exe: fs.existsSync(path.join(vdir, 'desktop-setup.exe')) ? path.join(vdir, 'desktop-setup.exe') : path.join(projectRoot, 'dist', 'desktop-setup.exe'),
-    hap: fs.existsSync(path.join(vdir, 'HongHubMovie.hap')) ? path.join(vdir, 'HongHubMovie.hap') : path.join(projectRoot, 'dist', 'HongHubMovie.hap'),
-    bin: fs.existsSync(path.join(vdir, 'honghub-desktop-' + version + '-win.bin'))
-      ? path.join(vdir, 'honghub-desktop-' + version + '-win.bin')
-      : path.join(projectRoot, 'dist', 'honghub-desktop-' + version + '-win.bin')
+    exe: pick('desktop-setup.exe'),
+    hap: (fs.existsSync(path.join(vdir, 'HongHubMovie.hap')) ? path.join(vdir, 'HongHubMovie.hap')
+           : (fs.existsSync(path.join(projectRoot, 'dist', 'HongHubMovie.hap')) ? path.join(projectRoot, 'dist', 'HongHubMovie.hap')
+             : (fs.existsSync(path.join(pubdir, 'HongHubMovie.hap')) ? path.join(pubdir, 'HongHubMovie.hap') : path.join(vdir, 'HongHubMovie.hap')))),
+    bin: pick(binName)
   };
   const names = {
     exe: 'desktop-setup.exe',

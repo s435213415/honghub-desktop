@@ -160,8 +160,11 @@ function findCustomerNote() {
         if (!field) continue;
         check('远端 ' + label + ' 哈希 = 本地', !!sha && sha === String(field).toLowerCase(), String(field).slice(0, 16));
       }
+      // 站点可能要求每个资源都带访问码（sharecode）；清单与成品链接都带，
+      // 这里三个页面 URL 也必须带，否则会被站点判 403 而误报失败。
+      const q = endpoint.shareQuery || '';
       const urls = ['/index.html', '/remote-manifest.json', '/app-page.html']
-        .map((p) => base + p)
+        .map((p) => base + p + q)
         .concat([rj.desktopUrl, rj.hapUrl].filter(Boolean));
       for (const u of urls) {
         const r = await get(u);
