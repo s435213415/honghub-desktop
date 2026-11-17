@@ -100,8 +100,24 @@ function parseBaseline(notePath) {
   const vm = txt.match(/v(\d+\.\d+\.\d+)\s*\/\s*#(\d+)/);
   const hashes = {};
   let m;
+  // 旧格式：行首 exe/hap/zip + 哈希
   const re = /^(exe|hap|zip)\s+([0-9a-f]{64})/gim;
   while ((m = re.exec(txt))) hashes[m[1].toLowerCase()] = m[2].toLowerCase();
+  // 新格式（v1.7.30 起）：文件名行 + 字节数 + 哈希行（可能无空行分隔），从文件名往后 5 行内找哈希
+  if (!hashes.exe || !hashes.hap || !hashes.zip) {
+    const lines = txt.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      let kind = null;
+      if (/\.exe\b/i.test(lines[i])) kind = 'exe';
+      else if (/\.hap\b/i.test(lines[i])) kind = 'hap';
+      else if (/\.zip\b/i.test(lines[i])) kind = 'zip';
+      if (!kind || hashes[kind]) continue;
+      for (let j = i; j < Math.min(i + 5, lines.length); j++) {
+        const hm = lines[j].match(/\b([0-9a-f]{64})\b/i);
+        if (hm) { hashes[kind] = hm[1].toLowerCase(); break; }
+      }
+    }
+  }
   if (!vm || !hashes.exe || !hashes.hap || !hashes.zip) return null;
   return { versionName: vm[1], versionCode: Number(vm[2]), hashes };
 }
@@ -213,23 +229,67 @@ function parseBaseline(notePath) {
   copyIf(artifacts.zip, binDst);   // .bin 别名：站点 WAF 拦截 .zip 直链
   record('组装站点成品', 'passed', prefix + '/ 下 desktop-setup.exe + HongHubMovie.hap + win.bin（zip 别名）');
 
-  // 下载页：保留本地已有；否则从公网取现存页；再否则生成最小降级页
+  // 下载页：每次按当前发版版本与实测哈希重新生成，避免旧页残留导致版本/链接失真
   const idxDst = path.join(PUB, 'index.html');
-  if (!fs.existsSync(idxDst)) {
-    const live = await fetchBuf(asset('index.html'), 15000);
-    if (live && /<html/i.test(live.toString('utf8'))) fs.writeFileSync(idxDst, live);
-    else fs.writeFileSync(idxDst, [
-      '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>鸿汇影 · 下载</title>',
-      '<body style="font:15px/1.7 sans-serif;max-width:720px;margin:48px auto;padding:0 20px">',
-      '<h1>鸿汇影桌面版 v' + V + '</h1>',
-      '<p>已安装用户无需卸载：内容自动更新；本体更新为覆盖安装，不删数据。</p>',
-      '<ul>',
-      '<li><a href="' + asset(prefix + '/desktop-setup.exe') + '">Windows 安装包</a></li>',
-      '<li><a href="' + asset(prefix + '/HongHubMovie.hap') + '">HAP（深开鸿 / OpenHarmony）</a></li>',
-      '<li><a href="' + asset(prefix + '/honghub-desktop-' + V + '-win.bin') + '">免安装版（下载后改名 .zip 解压）</a></li>',
-      '</ul><p>所有链接需带访问码 ' + Q + '。</p></body></html>'
-    ].join('\n'));
-  }
+  const fmtSize = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const pubDate = new Date().toISOString().slice(0, 10);
+  const idxHtml = [
+    '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width,initial-scale=1">',
+    '<title>鸿汇影 · 客户下载中心</title><style>',
+    ':root{color-scheme:dark}*{box-sizing:border-box}',
+    'body{margin:0;font-family:-apple-system,"Microsoft YaHei","Segoe UI",sans-serif;background:#0e1116;color:#e6ebf2;line-height:1.7}',
+    '.wrap{max-width:880px;margin:0 auto;padding:48px 20px 72px}h1{font-size:26px;margin:0 0 6px}',
+    '.sub{color:#8b97a8;font-size:14px;margin-bottom:28px}',
+    '.badge{display:inline-block;padding:2px 10px;border:1px solid #2c3a4d;border-radius:999px;font-size:12px;color:#7fd3a8;margin-left:8px;vertical-align:middle}',
+    '.card{background:#151b24;border:1px solid #22303f;border-radius:14px;padding:18px 20px;margin:14px 0}',
+    '.card h2{font-size:16px;margin:0 0 4px}.card p{margin:4px 0;color:#8b97a8;font-size:13px}',
+    '.btn{display:inline-block;margin-top:10px;padding:10px 18px;background:#2f6fed;color:#fff;text-decoration:none;border-radius:10px;font-size:14px}',
+    '.meta{font-size:12px;color:#6d7a8c;word-break:break-all;margin-top:8px}',
+    'h3{font-size:15px;margin:32px 0 8px;color:#cfe0f5}ul{color:#9aa7b8;font-size:13px;padding-left:20px}ul li{margin:5px 0}a{color:#6fa8ff}',
+    '</style></head><body><div class="wrap">',
+    '<h1>鸿汇影 · 客户下载中心<span class="badge">v' + V + '</span></h1>',
+    '<div class="sub">' + pubDate + ' 发布 · 版本号 ' + V + ' / #' + CODE + ' · 覆盖升级不需要先卸载</div>',
+    // 上传入口：公网静态站无后端，按钮展开操作指引，引导到本机开发端运维台执行真实上传
+    '<div class="card"><h2>📤 上传成品（开发端）</h2>',
+    '<p>对外下载页只读；上传新成品请在本机开发端运维台操作，需访问口令，不暴露到公网。</p>',
+    '<button class="btn" type="button" id="uploadHelpBtn">📤 上传成品</button>',
+    '<div id="uploadHelp" style="display:none;margin-top:10px;padding:12px;background:#10161f;border:1px solid #2c3a4d;border-radius:10px;font-size:13px;color:#b9c6d8">',
+    '<div style="margin-bottom:6px">1. 本机启动开发端：<code>npm start</code>（默认 <a href="http://127.0.0.1:8787/admin">http://127.0.0.1:8787/admin</code>）</div>',
+    '<div style="margin-bottom:6px">2. 在「🛠️ 开发者端运维」点 <b>📤 发布并校验</b>，走上传通道并回读校验 SHA256。</div>',
+    '<div>3. 命令行等价：<code>npm run ship:client</code>（发布成功后本页自动更新）。</div>',
+    '</div></div>',
+    '<div class="card"><h2>Windows 安装版</h2>',
+    '<p>双击安装，装完桌面有快捷方式。已装旧版直接覆盖安装即可，收藏与登录状态保留。</p>',
+    '<p>体积 ' + fmtSize(measured.exe.size) + ' B</p>',
+    '<a class="btn" href="' + asset(prefix + '/desktop-setup.exe') + '">下载 Setup ' + V + '.exe</a>',
+    '<div class="meta">sha256 ' + measured.exe.sha + '</div></div>',
+    '<div class="card"><h2>Windows 免安装版</h2>',
+    '<p>解压即用，不写注册表、不占系统目录；适合放 U 盘或临时机器。</p>',
+    '<p>体积 ' + fmtSize(measured.zip.size) + ' B · 后缀是 .bin，下载后改成 .zip 再解压</p>',
+    '<a class="btn" href="' + asset(prefix + '/honghub-desktop-' + V + '-win.bin') + '">下载免安装包</a>',
+    '<div class="meta">sha256 ' + measured.zip.sha + '</div></div>',
+    '<div class="card"><h2>深开鸿 / 鸿蒙 HAP</h2>',
+    '<p>走 hdc 安装，与旧包同证书，可覆盖安装，不需要先卸载。</p>',
+    '<p>体积 ' + fmtSize(measured.hap.size) + ' B</p>',
+    '<a class="btn" href="' + asset(prefix + '/HongHubMovie.hap') + '">下载 HongHubMovie.hap</a>',
+    '<div class="meta">sha256 ' + measured.hap.sha + '</div></div>',
+    '<h3>这一版改了什么</h3><ul>',
+    '<li>客户端与深开鸿 HAP 前端同源，功能与页面随公网清单自动热更新，已装用户刷新即生效。</li>',
+    '<li>本体更新走同目录覆盖安装，不卸载、不删用户数据。</li>',
+    '<li>更新清单支持多源探测，主源失败自动回退，全挂时保留上一次缓存。</li>',
+    '</ul><h3>装机提示</h3><ul>',
+    '<li>Windows 提示「已保护你的电脑」：点「更多信息」→「仍要运行」。</li>',
+    '<li>HAP 安装前确认设备已开「开发者模式」和 USB 调试，命令：hdc install -r HongHubMovie.hap。</li>',
+    '<li>更新清单：<a href="' + asset('remote-manifest.json') + '">remote-manifest.json</a></li>',
+    '</ul></div>',
+    '<script>',
+    'document.getElementById("uploadHelpBtn").addEventListener("click",function(){',
+    'var b=document.getElementById("uploadHelp");b.style.display=b.style.display==="none"?"block":"none";});',
+    '</script></body></html>'
+  ].join('\n');
+  fs.writeFileSync(idxDst, idxHtml);
+  record('生成客户下载页', 'passed', 'v' + V + ' / #' + CODE + ' · 三件链接带访问码，体积与哈希取实测值');
 
   // 客户可用应用页面：随公网下发，已装客户端按 SHA256 校验后热更新（免重打包）
   const pageSrc = path.join(ROOT, 'app', 'index.html');

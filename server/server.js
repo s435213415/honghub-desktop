@@ -863,6 +863,8 @@ const BOARD = [
   '<div class="bar"><button onclick="load()">⟳ 立即刷新</button>',
   '<button class="fix" onclick="fix()">🔧 一键自愈（重排源 / 刷新清单）</button>',
   '<button class="pub" onclick="updatePublish()">🚀 一键同时更新发布</button>',
+  // 顶层上传按钮：与下方「发布并校验」同一接口，放在首屏便于开发端直接上传成品
+  '<button class="pub" onclick="opsPublish()">📤 上传成品（发布校验）</button>',
   '<button onclick="setAccessToken()">🔑 口令</button>',
   '<span class="note" id="upd"></span></div>',
   '<div class="cards" id="cards"></div>',
