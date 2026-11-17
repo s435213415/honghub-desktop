@@ -30,6 +30,16 @@ const log = (...a) => console.log(...a);
 function sha(p) { return crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'); }
 function backup(p) { const b = p + '.dev-backup'; if (!fs.existsSync(b)) fs.copyFileSync(p, b); return b; }
 function restore(p) { const b = p + '.dev-backup'; if (fs.existsSync(b)) { fs.copyFileSync(b, p); fs.unlinkSync(b); } }
+function assertBundledEndpoint(epPath) {
+  let d;
+  try { d = JSON.parse(fs.readFileSync(epPath, 'utf8')); }
+  catch (e) { throw new Error('随包端点 JSON 解析失败'); }
+  const base = String(d.baseUrl || '');
+  if (!/^https:\/\//.test(base) || /127\.0\.0\.1|localhost|trycloudflare/i.test(base)) {
+    throw new Error('随包端点仍是失效地址，拒绝打包: ' + base);
+  }
+  log('[校验] 随包端点 OK: ' + base + ' ' + (d.shareQuery || ''));
+}
 
 if (!fs.existsSync(UNPACKED)) { console.error('缺少 dist/win-unpacked'); process.exit(1); }
 fs.mkdirSync(OUT, { recursive: true });
@@ -38,13 +48,17 @@ fs.mkdirSync(OUT, { recursive: true });
 const srcEm = path.join(ROOT, 'electron-main.js');
 const srcSv = path.join(ROOT, 'server', 'server.js');
 const srcPage = path.join(ROOT, 'app', 'index.html');
+const srcEp = path.join(ROOT, 'server', 'public-endpoint.json');
 const dstEm = path.join(UNPACKED, 'resources', 'app', 'electron-main.js');
 const dstSv = path.join(UNPACKED, 'resources', 'app', 'server', 'server.js');
 const dstPage = path.join(UNPACKED, 'resources', 'app', 'app', 'index.html');
+const dstEp = path.join(UNPACKED, 'resources', 'app', 'server', 'public-endpoint.json');
 fs.copyFileSync(srcEm, dstEm);
 fs.copyFileSync(srcSv, dstSv);
 if (fs.existsSync(srcPage)) fs.copyFileSync(srcPage, dstPage);
-log('[0/4] 已用当前源码同步 win-unpacked 入口（electron-main / server / app 页面）');
+// 随包端点必须同步：客户机没有 .env，只能读这份配置；旧值 127.0.0.1:8099 会让更新检查失效。
+if (fs.existsSync(srcEp)) fs.copyFileSync(srcEp, dstEp);
+log('[0/4] 已用当前源码同步 win-unpacked 入口（electron-main / server / app 页面 / 随包端点）');
 
 const emPath = dstEm;
 const pagePath = path.join(UNPACKED, 'resources', 'app', 'app', 'index.html');
@@ -77,6 +91,8 @@ try {
   if (!fs.existsSync(SEVEN)) throw new Error('7za 不存在');
   const rz = spawnSync(SEVEN, ['a', '-tzip', '-mx=9', '-bso0', '-bsp0', zipPath, UNPACKED], { stdio: 'ignore' });
   if (rz.status !== 0 || !fs.existsSync(zipPath)) throw new Error('免安装 zip 打包失败');
+  // 断言随包端点是正式站点，不再残留 127.0.0.1 / 隧道域名
+  assertBundledEndpoint(dstEp);
   log('[3/4] 免安装包: ' + zipName + ' · ' + fs.statSync(zipPath).size + ' B · ' + sha(zipPath).slice(0, 12));
 
   // 3) 打安装版 Setup.exe：electron-builder 固定输出 dist/，先备份开发端产物，
@@ -103,7 +119,14 @@ try {
   }
   log('[4/4] 安装版: ' + setupName + ' · ' + fs.statSync(dest).size + ' B · ' + sha(dest).slice(0, 12));
 
-  log('\n客户版产物目录: ' + OUT + '（dist/ 下的 Setup.exe 已还原为开发端版）');
+  // 5) 把纯净版同步回 dist 根别名，供 maintain 体检 / ship-client 读取真实哈希。
+  //    否则 electron-builder 还原后的旧哈希会让"发布校验"误报不一致。
+  fs.copyFileSync(dest, path.join(DIST, 'desktop-setup.exe'));
+  fs.copyFileSync(dest, path.join(DIST, setupName));
+  fs.copyFileSync(zipPath, path.join(DIST, '鸿汇影桌面版 Setup ' + VER + '.zip'));
+  log('[5/5] dist 根产物已同步为纯净版（体检/清单读真实哈希）');
+
+  log('\n客户版产物目录: ' + OUT + '（dist 根别名亦为纯净版，与交付夹一致）');
 } finally {
   // 4) 无论成败都恢复开发端入口
   restore(emPath);
