@@ -53,7 +53,8 @@
     "hooks:install": "node scripts/install-hooks.js",
     "dev:auto": "node scripts/dev-auto.mjs",
     "dev:auto:check": "node scripts/dev-auto.mjs --check",
-    "build:dev-scripts": "node scripts/build-dev-package.js"
+    "build:dev-scripts": "node scripts/build-dev-package.js",
+    "build:client": "node scripts/build-client-exe.js"
   },
   "devDependencies": {
     "electron": "^30.0.0",

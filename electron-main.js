@@ -25,13 +25,18 @@ let HUB_PORT = BASE_PORT;
 /* 开发端构建（KH_DEV_MODE=1）：额外开放「运维看板」入口与发布/自治类接口。
    客户成品不带这个开关，首页固定是影视页，运维看板不存在。
    免安装版没有环境变量可设，因此额外认两种本机开关：启动参数 --dev、程序目录下的 dev-mode.flag。 */
-const DEV_BUILD = process.env.KH_DEV_MODE === '1'
+/* 构建期客户版硬开关：默认 false（开发端）。打包客户 exe 时由 scripts/build-client-exe.js
+   改为 true——客户版从此不再认 dev-mode.flag / --dev，物理上无法切到运维面板。 */
+const CLIENT_ONLY = false; // KH_BUILD_CLIENT_ONLY
+const DEV_BUILD = !CLIENT_ONLY && (
+  process.env.KH_DEV_MODE === '1'
   || process.argv.indexOf('--dev') >= 0
   || (() => {
     try {
       return fs.existsSync(path.join(path.dirname(process.execPath), 'dev-mode.flag'));
     } catch (e) { return false; }
-  })();
+  })()
+);
 /* 客户成品加载的页面：明确指向影视页 /index.html，而不是服务根路径
    （根路径过去返回运维看板，客户点开看到的是运维界面，属于入口错位）。
    开发端反过来：打开就是运维面板 /admin，影视页留在菜单里随时切。 */
@@ -109,7 +114,7 @@ function startServer() {
   // 关键：打包后 process.execPath 是 Electron 的 exe，必须用 ELECTRON_RUN_AS_NODE=1
   // 才能把它当纯 Node 运行 server.js；否则服务起不来，窗口加载 localhost 就会白屏。
   serverProc = spawn(process.execPath, [path.join(__dirname, 'server', 'server.js')], {
-    env: Object.assign({}, process.env, { PORT: String(HUB_PORT), ELECTRON_RUN_AS_NODE: '1', KH_DEV_MODE: DEV_BUILD ? '1' : '0' }),
+    env: Object.assign({}, process.env, { PORT: String(HUB_PORT), ELECTRON_RUN_AS_NODE: '1', KH_DEV_MODE: DEV_BUILD ? '1' : '0', KH_CLIENT_ONLY: CLIENT_ONLY ? '1' : '0' }),
     stdio: ['ignore', 'pipe', 'pipe']
   });
   if (serverProc.stdout) serverProc.stdout.on('data', (d) => console.log('[服务]', d.toString().trim()));

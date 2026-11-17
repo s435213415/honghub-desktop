@@ -41,7 +41,10 @@ const REPORT_TOKEN = process.env.REPORT_TOKEN || '';
 const FIX_TOKEN = process.env.FIX_TOKEN || '';
 /* 开发端模式：默认关闭。关闭时客户包不暴露运维看板与发布/自治类接口，
    开启（KH_DEV_MODE=1）才提供 /admin 与 /api/publish 等开发端能力。 */
-const DEV_MODE = process.env.KH_DEV_MODE === '1';
+/* 构建期客户版硬锁：客户 exe 打包时注入 KH_CLIENT_ONLY=1，
+   此后无论环境变量如何，客户版都不提供任何开发端能力。 */
+const CLIENT_ONLY = process.env.KH_CLIENT_ONLY === '1';
+const DEV_MODE = !CLIENT_ONLY && process.env.KH_DEV_MODE === '1';
 /* 监听地址：桌面客户端默认只绑本机回环，避免同网段设备直接操作用户的中枢；
    需要局域网分发时显式设 KH_HOST=0.0.0.0（此时自动要求访问口令）。 */
 const HOST = process.env.KH_HOST || '127.0.0.1';
@@ -212,6 +215,19 @@ function send(res, code, obj) {
   res.end(body);
 }
 function clip(v, n) { return String(v === undefined || v === null ? '' : v).slice(0, n); }
+
+/* 开发端子页面（维护决策 / 功能追踪 / 开关台 / 站点管理）统一注入返回条。
+   这些页从主看板右下角入口点进来，原本只能靠浏览器后退返回，容易被困住。 */
+function withAdminBack(html) {
+  const bar = '<div style="position:sticky;top:0;z-index:99999;margin:-22px -22px 16px;padding:10px 22px;'
+    + 'background:#0B1622E6;border-bottom:1px solid #1E3450;display:flex;gap:10px;align-items:center;backdrop-filter:blur(6px)">'
+    + '<a href="/admin" style="display:inline-block;padding:6px 14px;border-radius:16px;background:#1B3A5B;'
+    + 'color:#CFE3FF;text-decoration:none;font:13px/1.4 sans-serif;border:1px solid #2A4E77">← 返回运维看板</a>'
+    + '<a href="/index.html" style="display:inline-block;padding:6px 14px;border-radius:16px;background:#12233B;'
+    + 'color:#9CC5FF;text-decoration:none;font:13px/1.4 sans-serif;border:1px solid #1E3450">🎬 影视页</a>'
+    + '</div>';
+  return String(html).replace(/<body(\s[^>]*)?>/i, (m) => m + bar);
+}
 function cleanIssue(x) {
   return {
     kind: clip(x && x.kind, 16), sev: clip(x && x.sev, 8), code: clip(x && x.code, 20),
@@ -861,6 +877,7 @@ const BOARD = [
   '<h1>鸿汇影 · 远程问题看板</h1>',
   '<div class="sub">桌面版 / 真机自动上报的脱敏问题摘要 · 仅含类别 / 错误码 / 消息 / 次数 / 站点域名与匿名设备 ID · 数据不跨应用共享</div>',
   '<div class="bar"><button onclick="load()">⟳ 立即刷新</button>',
+  '<button onclick="location.href=\'/index.html\'">🎬 返回影视页</button>',
   '<button class="fix" onclick="fix()">🔧 一键自愈（重排源 / 刷新清单）</button>',
   '<button class="pub" onclick="updatePublish()">🚀 一键同时更新发布</button>',
   // 顶层上传按钮：与下方「发布并校验」同一接口，放在首屏便于开发端直接上传成品
@@ -1379,6 +1396,7 @@ function handleRequest(req, res) {
     let html = '';
     try { html = fs.readFileSync(path.join(__dirname, 'sites-admin.html'), 'utf8'); }
     catch (e) { send(res, 500, { ok: false, error: 'sites-admin.html 缺失' }); return; }
+    html = withAdminBack(html);
     cors(res);
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(html) });
     res.end(html);
@@ -1401,6 +1419,7 @@ function handleRequest(req, res) {
     let html = '';
     try { html = fs.readFileSync(path.join(__dirname, 'features-admin.html'), 'utf8'); }
     catch (e) { send(res, 500, { ok: false, error: 'features-admin.html 缺失' }); return; }
+    html = withAdminBack(html);
     cors(res);
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(html) });
     res.end(html);
@@ -1425,6 +1444,7 @@ function handleRequest(req, res) {
     let html = '';
     try { html = fs.readFileSync(path.join(__dirname, 'insights-admin.html'), 'utf8'); }
     catch (e) { send(res, 500, { ok: false, error: 'insights-admin.html 缺失' }); return; }
+    html = withAdminBack(html);
     cors(res);
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(html) });
     res.end(html);
@@ -1498,6 +1518,7 @@ function handleRequest(req, res) {
     let html = '';
     try { html = fs.readFileSync(path.join(__dirname, 'extras-admin.html'), 'utf8'); }
     catch (e) { send(res, 500, { ok: false, error: 'extras-admin.html 缺失' }); return; }
+    html = withAdminBack(html);
     cors(res);
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(html) });
     res.end(html);
