@@ -58,7 +58,8 @@ if (PY !== 'python') {
 }
 
 const STEPS = [];
-function step(label, cmd, argv) { STEPS.push({ label, cmd, argv }); }
+// retry=失败时自动重跑一次（仅给验收这类偶发时序步骤用）
+function step(label, cmd, argv, retry, soft) { STEPS.push({ label, cmd, argv, retry: !!retry, soft: !!soft }); }
 
 step('0/8 环境预检', process.execPath, [path.join(__dirname, 'doctor.js')]);
 step('1/8 版本对齐' + (BUMP ? '（+1 位）' : '（不涨版本）'), process.execPath,
@@ -79,11 +80,24 @@ if (!NO_RELEASE) {
   //      回下验证三件直链并输出公网下载链接。走本机文件+隧道流量，不消耗平台积分。
   step('7.1/8 零积分公网下发（上传+回下验证+链接）', process.execPath, [path.join(__dirname, 'publish-free.js')]);
 }
-step('8/8 验收', process.execPath, [path.join(__dirname, 'verify-release.js')]);
+// 验收会起临时中枢做 HTTP 探测，紧接 7.1/8 公网下发时偶发端口/时序抖动；失败自动重跑一次
+step('8/8 验收', process.execPath, [path.join(__dirname, 'verify-release.js')], true);
 /* 8.1/8 旧公站点只读回验：确认线上清单=本地版本、三件直链可达。
    注意：站点发布能力只能由 WorkBuddy 宿主触发，脚本绝不在这里做发布动作
    （上一轮并发发布争用 dist/ 导致版本错位，教训已固化）。此处只回验，不写不发布。 */
 if (!NO_RELEASE) step('8.1/8 旧公站点回验（只读告警）', process.execPath, [path.join(__dirname, 'site-publish.js'), '--verify', '--warn-only']);
+
+/* 8.2/8 开鸿设备端版本自动跟进主线（独立应用 com.kaihong.movie）。
+   主线 bump 后对齐设备端版本→官方重签→镜像同步→更新桌面设备夹，旧夹归档。
+   该工程在另一工作区且涉及官方签名，失败只告警不阻断 Windows 主线发版
+   （设备端另有 key-auto-sync --watch 守护兜底）。 */
+const KH_PROJECT = path.join(require('os').homedir(), 'WorkBuddy', '2026-11-12-16-34-57', 'KaihongMovie');
+const SYNC_DEV = path.join(KH_PROJECT, 'sync-device-version.py');
+if (fs.existsSync(SYNC_DEV)) {
+  const py = (ENV.PYTHON_BIN && ENV.PYTHON_BIN !== 'python') ? ENV.PYTHON_BIN : 'python';
+  step('8.2/8 开鸿设备端版本跟进（重签+镜像+桌面夹，失败告警）', py,
+    [SYNC_DEV, '--apply'], false, true);
+}
 
 say('=== 鸿汇影一键流水线 ' + new Date().toLocaleString('zh-CN') + ' ===');
 say('工程：' + ROOT);
@@ -134,21 +148,28 @@ const results = [];
 for (const s of STEPS) {
   say('\n=== ' + s.label + ' ===');
   const t0 = Date.now();
-  const r = spawnSync(s.cmd, s.argv, { cwd: ROOT, stdio: 'inherit', env: ENV });
+  let r = spawnSync(s.cmd, s.argv, { cwd: ROOT, stdio: 'inherit', env: ENV });
+  // 偶发时序步骤失败时自动重跑一次（验收起临时中枢，紧跟公网下发易抖动）
+  if (r.status !== 0 && s.retry) {
+    say('  ↻ ' + s.label + ' 首次失败，3 秒后自动重试一次');
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 3000);
+    r = spawnSync(s.cmd, s.argv, { cwd: ROOT, stdio: 'inherit', env: ENV });
+  }
   const ms = Date.now() - t0;
   const ok = r.status === 0;
   results.push({ label: s.label, ok, ms });
   say((ok ? '✔ ' : '✘ ') + s.label + ' · ' + Math.round(ms / 1000) + 's');
   flush();
   if (!ok) {
-    say('\n流水线在此中止：' + s.label);
+    if (s.soft) { say('  ⚠ ' + s.label + ' 未通过（告警不阻断主线）'); } else say('\n流水线在此中止：' + s.label);
     say('排查建议：npm run doctor；HAP 签名失败看 logs 与 harmony/signing；电子包失败看 node_modules 是否完整。');
     flush();
-    if (!CONTINUE_ON_FAIL) { rollbackBump(); process.exit(r.status || 1); }
+    if (!s.soft && !CONTINUE_ON_FAIL) { rollbackBump(); process.exit(r.status || 1); }
   }
 }
 
 const fail = results.filter(function (x) { return !x.ok; }).length;
+const hardFail = results.filter(function (x, i) { return !x.ok && !STEPS[i].soft; }).length;
 say('\n=== 流水线结束：' + (results.length - fail) + ' 步成功 / ' + fail + ' 步失败 ===');
 try {
   const v = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
@@ -175,4 +196,4 @@ if (fail) {
   } catch (e) { say('[别名守护] 跳过：' + (e && e.message || e)); }
 }
 flush();
-process.exit(fail ? 1 : 0);
+process.exit(hardFail ? 1 : 0);

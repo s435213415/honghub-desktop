@@ -3444,11 +3444,11 @@
   },
   "release": {
     "schema": 1,
-    "generatedAt": "2026-11-17T13:17:06.347Z",
+    "generatedAt": "2026-11-18T03:14:52.329Z",
     "latest": {
-      "versionName": "1.7.42",
-      "versionCode": 1000156,
-      "publishedAt": "2026-11-17T13:17:06.347Z",
+      "versionName": "1.7.43",
+      "versionCode": 1000157,
+      "publishedAt": "2026-11-18T03:14:52.329Z",
       "minApi": 12,
       "targetApi": 26,
       "compatibleSdk": "5.0.0(12)",
@@ -3503,7 +3503,7 @@
       "hapAutoInstall": false,
       "hapUrl": "/download/honghub-harmony.hap",
       "downloadUrl": "/download/desktop-setup.exe",
-      "generatedAt": "2026-11-17T13:17:06.347Z"
+      "generatedAt": "2026-11-18T03:14:52.329Z"
     }
   }
 }

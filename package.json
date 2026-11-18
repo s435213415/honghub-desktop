@@ -1,6 +1,6 @@
 {
   "name": "honghub-desktop",
-  "version": "1.7.42",
+  "version": "1.7.43",
   "description": "鸿汇影 · 免费桌面版：双端隔离（开发端运维面板 / 客户端纯净影视页）+ 远程问题自动收集 + 实时更新 + 可扩展功能 + 一键自愈 + 换版免人工",
   "main": "electron-main.js",
   "scripts": {
