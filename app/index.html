@@ -1199,10 +1199,20 @@ function probePlatforms(force){
   var now = Date.now();
   if(!force && now - PLAT_PROBE_AT < 300000) return;   // 结果缓存 5 分钟
   PLAT_PROBE_AT = now;
-  var pending = BUILTIN_SITES.length;
-  function done(){ pending--; if(pending <= 0 && state.view === 'sites') render(); }
+  /* 海外站(oversea)与只读项目页(project)本就预期受网络/地区限制，
+     国内网络下 fetch 必然超时。对它们不做可达探测，也不发"不可达"告警，
+     统一标记 limited（中性），避免把正常海外站误报成故障。 */
+  var pending = 0;
   for(var i=0;i<BUILTIN_SITES.length;i++){
+    var s0 = BUILTIN_SITES[i];
+    if(!platDirect(s0)){ PLAT_HEALTH[s0.name] = 'limited'; continue; }
+    pending++;
+  }
+  if(pending <= 0){ if(state.view === 'sites') render(); return; }
+  function done(){ pending--; if(pending <= 0 && state.view === 'sites') render(); }
+  for(var j=0;j<BUILTIN_SITES.length;j++){
     (function(s){
+      if(!platDirect(s)) return;
       var key = s.name;
       PLAT_HEALTH[key] = 'ping';
       var ctl = ('AbortController' in window) ? new AbortController() : null;
@@ -1214,7 +1224,7 @@ function probePlatforms(force){
           issuePush('平台', '入口探测不可达：' + key, {url:platOpenUrl(s)});
           done();
         });
-    })(BUILTIN_SITES[i]);
+    })(BUILTIN_SITES[j]);
   }
 }
 function platHealthDot(name){
@@ -1222,16 +1232,18 @@ function platHealthDot(name){
   if(v === 'ok') return '<span class="pdot ok" title="实时巡检：网络可达"></span>';
   if(v === 'down') return '<span class="pdot down" title="实时巡检：探测不可达，入口仍可尝试打开"></span>';
   if(v === 'ping') return '<span class="pdot ping" title="巡检中…"></span>';
+  if(v === 'limited') return '<span class="pdot ping" title="海外站/只读页：受网络或地区限制，建议系统浏览器打开"></span>';
   return '';
 }
 function platHealthSummary(){
-  var ok = 0, down = 0;
+  var ok = 0, down = 0, limited = 0;
   for(var i=0;i<BUILTIN_SITES.length;i++){
     var v = PLAT_HEALTH[BUILTIN_SITES[i].name];
-    if(v === 'ok') ok++; else if(v === 'down') down++;
+    if(v === 'ok') ok++; else if(v === 'down') down++; else if(v === 'limited') limited++;
   }
-  if(!ok && !down) return '尚未巡检';
-  return '实时巡检：' + ok + ' 可达' + (down ? ' / ' + down + ' 不可达' : '');
+  if(!ok && !down && !limited) return '尚未巡检';
+  return '实时巡检：' + ok + ' 可达' + (down ? ' / ' + down + ' 不可达' : '') +
+    (limited ? ' / ' + limited + ' 海外站需浏览器' : '');
 }
 
 /* ---------------- 远程配置 · 实时同步 ---------------- */
