@@ -51,6 +51,17 @@ function runPipeline(reason) {
     log('冷却中（' + Math.round((COOLDOWN_MS - (now - lastRun)) / 60000) + ' 分钟后可再发版），本次跳过：' + reason);
     return;
   }
+  /* 跨进程 dist 锁：手工出包/另一条流水线正占用 dist 时，本次直接跳过，
+     绝不并发写 dist/（并发是把开发端包写进客户别名的根因）。真正的持锁由
+     oneclick-release.js 负责；这里只做前置探测，避免无谓拉起一整个进程。 */
+  try {
+    const lock = require('./lib/dist-lock');
+    const st = lock.check();
+    if (st.held) {
+      log('dist 出包锁被占用（' + lock.describe(st.info) + '），本次跳过：' + reason);
+      return;
+    }
+  } catch (e) { /* 锁模块异常不阻断发版，oneclick 内部仍会兜底申请 */ }
   running = true;
   lastRun = now;
   const argv = [path.join(__dirname, 'oneclick-release.js'), '--bump', '--keep-going'];

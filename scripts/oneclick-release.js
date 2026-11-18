@@ -78,6 +78,41 @@ say('日志：' + LOG);
 STEPS.forEach(function (s, i) { say('  ' + (i + 1) + ') ' + s.label); });
 if (DRY) { flush(); say('（--dry：以上步骤仅预览，未执行）'); process.exit(0); }
 
+/* 跨进程文件锁：自动发版(watcher)与手工出包若同时跑，会争用 dist/ 并把开发端包
+   写进客户版别名。所有真正的出包都在这里申请同一把磁盘锁；子进程通过环境变量
+   KH_DIST_LOCK_OWNER 继承，内部脚本若再申请会命中重入分支，不会自锁。 */
+let _distLock = null;
+try {
+  _distLock = require('./lib/dist-lock').acquire({ label: 'oneclick' + (BUMP ? ' --bump' : '') });
+  say('[锁] 已获取 dist 出包锁（owner ' + _distLock.owner + '）');
+} catch (e) {
+  say('[锁] 获取 dist 出包锁失败，中止：' + (e && e.message || e));
+  flush();
+  process.exit(1);
+}
+process.on('exit', function () { try { if (_distLock) _distLock.release(); } catch (e) {} });
+
+/* 失败回滚保护：--bump 把版本推到新号后，若流水线中途失败，源码会停在「新版本
+   + 旧产物」的错位中间态（曾导致体检掉到 15/20）。这里在 bump 前记下 git 里受控
+   的版本文件，失败时 checkout 回退，避免留半截。仅对 --bump 且工作区原本干净时生效。 */
+const VERSION_FILES = ['package.json', 'app/index.html',
+  'harmony/entry/src/main/resources/rawfile/www/index.html',
+  'releases/index.json', 'server/feature-version.json', 'server/manifest.json'];
+let _preBumpClean = false;
+if (BUMP) {
+  const st = require('child_process').spawnSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' });
+  _preBumpClean = st.status === 0 && !String(st.stdout || '').trim();
+  if (_preBumpClean) say('[回滚保护] bump 前工作区干净，失败将自动回滚版本文件');
+  else say('[回滚保护] bump 前工作区有改动，跳过自动回滚（避免误伤未提交工作）');
+}
+function rollbackBump() {
+  if (!BUMP || !_preBumpClean) return;
+  say('[回滚保护] 流水线失败，回滚版本文件到发版前');
+  const r = require('child_process').spawnSync('git', ['checkout', '--'].concat(VERSION_FILES),
+    { cwd: ROOT, encoding: 'utf8' });
+  say('[回滚保护] ' + (r.status === 0 ? '版本文件已回退' : '回退失败，请人工 git checkout'));
+}
+
 const results = [];
 for (const s of STEPS) {
   say('\n=== ' + s.label + ' ===');
@@ -92,7 +127,7 @@ for (const s of STEPS) {
     say('\n流水线在此中止：' + s.label);
     say('排查建议：npm run doctor；HAP 签名失败看 logs 与 harmony/signing；电子包失败看 node_modules 是否完整。');
     flush();
-    if (!CONTINUE_ON_FAIL) process.exit(r.status || 1);
+    if (!CONTINUE_ON_FAIL) { rollbackBump(); process.exit(r.status || 1); }
   }
 }
 
@@ -110,5 +145,17 @@ try {
     }
   }
 } catch (e) {}
+
+/* 成功收尾：守护 dist 客户版别名=客户正式版（防止任何开发端打包残留污染别名）。
+   失败收尾：回滚本次 bump，避免把源码留在「新版本 + 旧产物」的错位中间态。 */
+if (fail) {
+  rollbackBump();
+} else {
+  try {
+    const g = spawnSync(process.execPath, [path.join(__dirname, 'guard-client-alias.js')],
+      { cwd: ROOT, stdio: 'inherit', env: ENV });
+    say('[别名守护] ' + (g.status === 0 ? 'dist 客户别名正常' : 'dist 客户别名守护未通过（exit=' + g.status + '）'));
+  } catch (e) { say('[别名守护] 跳过：' + (e && e.message || e)); }
+}
 flush();
 process.exit(fail ? 1 : 0);

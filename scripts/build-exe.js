@@ -255,6 +255,13 @@ function deliver() {
   }
 }
 
+/* 跨进程 dist 出包锁：防止与自动发版(watcher→oneclick)或其他手工出包并发争用 dist/。
+   由 oneclick 调用时 KH_DIST_LOCK_OWNER 已继承，acquire 命中重入分支，不会自锁。 */
+let _lock = null;
+try { _lock = require('./lib/dist-lock').acquire({ label: 'build-exe' }); }
+catch (e) { console.error('[dist-lock] 获取出包锁失败：' + (e && e.message || e)); process.exit(1); }
+process.on('exit', function () { try { if (_lock) _lock.release(); } catch (e) {} });
+
 const vBefore = pkgVersion();
 step('0/6 发版', path.join(__dirname, 'release.js'));
 console.log('  [版本] ' + vBefore + ' → ' + pkgVersion());

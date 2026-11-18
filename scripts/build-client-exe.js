@@ -57,6 +57,13 @@ function assertBundledEndpoint(epPath) {
 if (!fs.existsSync(UNPACKED)) { console.error('缺少 dist/win-unpacked'); process.exit(1); }
 fs.mkdirSync(OUT, { recursive: true });
 
+/* 跨进程 dist 出包锁：客户版打包会改写 win-unpacked 与 dist 别名，必须与自动发版
+   及其他出包互斥。oneclick 调用时 owner 已继承 → 重入，不自锁。 */
+let _lock = null;
+try { _lock = require('./lib/dist-lock').acquire({ label: 'build-client' }); }
+catch (e) { log('[dist-lock] 获取出包锁失败：' + (e && e.message || e)); process.exit(1); }
+process.on('exit', function () { try { if (_lock) _lock.release(); } catch (e) {} });
+
 // 0) win-unpacked 里的入口可能是旧版（昨晚打包的），先用当前源码同步，确保注入点存在
 const srcEm = path.join(ROOT, 'electron-main.js');
 const srcSv = path.join(ROOT, 'server', 'server.js');
