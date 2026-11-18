@@ -62,7 +62,9 @@
     "build:client": "node scripts/build-client-exe.js",
     "oneclick": "node scripts/oneclick-release.js",
     "publish:free": "node scripts/publish-free.js",
-    "publish:free:verify": "node scripts/publish-free.js --verify"
+    "publish:free:verify": "node scripts/publish-free.js --verify",
+    "site:check": "node scripts/site-publish.js",
+    "site:verify": "node scripts/site-publish.js --verify"
   },
   "devDependencies": {
     "electron": "^30.0.0",

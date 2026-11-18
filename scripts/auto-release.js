@@ -67,6 +67,25 @@ log('=== 全自动同步 v' + VER + ' / #' + M.versionCode + ' ===');
 
 /* 1) 补齐发布目录 */
 log('[1/4] 发布目录 dist/public');
+/* 1.0 只保留当前版本：把 dist/public/honghub/ 下的历史版本目录归档，
+   否则站点发布目录会越堆越大（曾堆到 1.4G / 9 个版本导致上传超时）。
+   归档到 dist/_archive_public_versions/（同盘 rename 瞬时、可回滚），不影响线上。 */
+const PUB_HUB = path.join(PUB, 'honghub');
+const ARCHIVE = path.join(DIST, '_archive_public_versions');
+if (fs.existsSync(PUB_HUB)) {
+  try { fs.mkdirSync(ARCHIVE, { recursive: true }); } catch (e) { }
+  for (const name of fs.readdirSync(PUB_HUB)) {
+    if (name === 'v' + VER) continue; // 当前版本保留
+    const src = path.join(PUB_HUB, name);
+    try {
+      if (!fs.statSync(src).isDirectory()) continue;
+      const dst = path.join(ARCHIVE, name);
+      if (fs.existsSync(dst)) fs.rmSync(dst, { recursive: true, force: true });
+      fs.renameSync(src, dst);
+      log('  [归档] 历史版本 ' + name + ' → dist/_archive_public_versions/');
+    } catch (e) { log('  [警告] 归档 ' + name + ' 失败：' + e.message); }
+  }
+}
 copyKeep(DIST_EXE, SRC.exe);
 copyKeep(DIST_HAP, SRC.hap);
 copyKeep(DIST_ZIP, SRC.bin);
