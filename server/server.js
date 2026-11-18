@@ -548,10 +548,35 @@ function normalizeFeature(raw) {
 }
 
 /* ---------------- 一键自愈（异步，避免阻塞服务） ---------------- */
+/* 定位鸿蒙影视工程根目录（历史上叫 HongHubMovie，现为 KaihongMovie，且可能在 WorkBuddy
+   任一工作区下）。绝不写死单一路径，否则工程一改名/搬家，面板「一键自愈」就报
+   「未找到流水线脚本」。优先级：环境变量 > 旧路径 > 扫描 WorkBuddy 各工作区。 */
+function findKhRoot() {
+  const candidates = [];
+  if (process.env.KH_MOVIE_PROJECT) candidates.push(process.env.KH_MOVIE_PROJECT);
+  // 旧布局：与桌面工程同级
+  candidates.push(path.resolve(__dirname, '..', '..', 'HongHubMovie'));
+  candidates.push(path.resolve(__dirname, '..', '..', 'KaihongMovie'));
+  // 新布局：桌面工程在 WorkBuddy/<工作区>/<工程> 下，影视工程可能在另一个工作区
+  const workbuddyRoot = path.resolve(__dirname, '..', '..', '..');
+  try {
+    for (const entry of fs.readdirSync(workbuddyRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const base = path.join(workbuddyRoot, entry.name);
+      candidates.push(path.join(base, 'HongHubMovie'));
+      candidates.push(path.join(base, 'KaihongMovie'));
+    }
+  } catch (e) { }
+  for (const c of candidates) {
+    try { if (fs.existsSync(path.join(c, '_signtmp', 'auto_update.py'))) return path.normalize(c); } catch (e) { }
+  }
+  return null;
+}
+
 function runFix(cb) {
-  const khRoot = path.normalize(path.join(__dirname, '..', '..', 'HongHubMovie'));
-  const script = path.join(khRoot, '_signtmp', 'auto_update.py');
-  if (!fs.existsSync(script)) { cb({ ok: false, error: '未找到 HongHubMovie 流水线脚本（仅开发者机可用）' }); return; }
+  const khRoot = findKhRoot();
+  const script = khRoot ? path.join(khRoot, '_signtmp', 'auto_update.py') : '';
+  if (!script || !fs.existsSync(script)) { cb({ ok: false, error: '未找到 HongHubMovie/KaihongMovie 流水线脚本（仅开发者机可用；可用 KH_MOVIE_PROJECT 指定工程目录）' }); return; }
   let done = false;
   const finish = (r) => { if (done) return; done = true; try { clearTimeout(timer); } catch (e) {} cb(r); };
   let stderr = '';
