@@ -280,6 +280,7 @@ step('5/6 同步产物与校验清单', path.join(__dirname, 'postpack.js'));
 buildPortableZip();
 step('5.5/6 自动生成批量下发与不限设备/内存清单', path.join(__dirname, 'build-archs.js'));
 step('5.6/6 版本归档与可回滚索引', path.join(__dirname, 'archive-release.js'));
+step('5.65/6 旧版本自动归档(dist只留当前版,腾空间)', path.join(__dirname, 'prune-and-archive.js'));
 step('5.7/6 依赖审计与 SBOM', path.join(__dirname, 'sbom.js'));
 step('5.8/6 公网分发（未配置凭证时自动跳过）', path.join(__dirname, 'publish-remote.js'));
 step('5.9/6 开发端交付脚本（turn flag / BOM-free 启动 / 桌面快捷方式）', path.join(__dirname, 'build-dev-package.js'));

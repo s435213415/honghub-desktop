@@ -44,6 +44,19 @@ ENV.PATH = 'C:\\Windows\\System32;C:\\Windows;C:\\Users\\admin\\Desktop\\command
 try { require('./lib/env').apply(); } catch (e) {}
 for (const k of ['OH_KEY_PWD', 'PYTHON_BIN', 'KH_HDC', 'KH_DEPLOY_CMD']) if (process.env[k] && !ENV[k]) ENV[k] = process.env[k];
 
+/* ★ python 绝对路径兜底：开机自启 watcher 用系统 node 启动，PATH 里没有 WorkBuddy
+   私有 python，裸 `python` 会 ENOENT —— 这是自动发版 4 连败的根因。
+   探测到绝对路径后同时注入 PYTHON_BIN（所有子脚本都读它）与 ENV.PATH（兜底裸命令）。 */
+const libEnv = require('./lib/env');
+const PY = libEnv.findPython();
+ENV.PYTHON_BIN = PY;
+process.env.PYTHON_BIN = PY;
+if (PY !== 'python') {
+  const pyDir = require('path').dirname(PY);
+  ENV.PATH = pyDir + ';' + ENV.PATH;
+  console.log('[python] 采用绝对路径：' + PY);
+}
+
 const STEPS = [];
 function step(label, cmd, argv) { STEPS.push({ label, cmd, argv }); }
 
@@ -53,7 +66,7 @@ step('1/8 版本对齐' + (BUMP ? '（+1 位）' : '（不涨版本）'), proces
 step('2/8 页面频道/平台表重建', process.execPath, [path.join(__dirname, 'repair-page-sources.js')]);
 step('2.1/8 平台格子重建（BUILTIN_SITES）', process.execPath, [path.join(__dirname, 'rebuild-builtin-sites.js')]);
 if (!SKIP_HAP) {
-  step('3/8 深开鸿前端生成', 'python', [path.join('harmony', 'build_hap.py')]);
+  step('3/8 深开鸿前端生成', PY, [path.join('harmony', 'build_hap.py')]);
   step('3.1/8 HAP 注入与签名', process.execPath, [path.join(__dirname, 'hap-sign.js')]);
 }
 step('4/8 桌面端出包（含内置 HAP / 清单）', process.execPath, [path.join(__dirname, 'build-exe.js'), '--no-bump', '--skip-zip']);
@@ -84,6 +97,10 @@ if (DRY) { flush(); say('（--dry：以上步骤仅预览，未执行）'); proc
 let _distLock = null;
 try {
   _distLock = require('./lib/dist-lock').acquire({ label: 'oneclick' + (BUMP ? ' --bump' : '') });
+  /* ★ 必须把 owner 写回 ENV 快照：ENV 在文件顶部就 Object.assign 好了，早于 acquire，
+     不含 acquire 设置的 KH_DIST_LOCK_OWNER。不写回的话子进程 build-exe 会当成别人持锁
+     而等待 15 分钟，与父进程自己死锁（2026-11-18 11:04 实测踩坑）。 */
+  ENV[require('./lib/dist-lock').OWNER_ENV] = _distLock.owner;
   say('[锁] 已获取 dist 出包锁（owner ' + _distLock.owner + '）');
 } catch (e) {
   say('[锁] 获取 dist 出包锁失败，中止：' + (e && e.message || e));

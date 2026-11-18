@@ -85,4 +85,33 @@ function findHdc() {
   return exe; // 回落为命令名，由调用方明确报 SKIP，绝不假装可用
 }
 
-module.exports = { ROOT, loadEnv, apply, findHdc };
+/* 定位 python 绝对路径：开机自启的 watcher 用系统 node 启动，PATH 里没有
+   WorkBuddy 私有 python，裸 `python` 会 ENOENT（曾导致自动发版 4 连败）。
+   优先级：显式 PYTHON_BIN > 系统 PATH(python/py) > 本机稳定 runtime > WorkBuddy 私有。
+   返回绝对路径（存在即返回），找不到时回退 'python' 让调用方明确报错。 */
+function findPython() {
+  const explicit = process.env.PYTHON_BIN;
+  if (explicit && fs.existsSync(explicit)) return explicit;
+  const home = os.homedir();
+  const candidates = [
+    path.join(home, 'HongHubServer', 'runtime', 'python', 'python.exe'),
+    path.join(home, 'HongHubTools', 'python', 'python.exe')
+  ];
+  try {
+    for (const d of fs.readdirSync(path.join(home, '.workbuddy', 'binaries', 'python', 'versions')).sort().reverse()) {
+      candidates.push(path.join(home, '.workbuddy', 'binaries', 'python', 'versions', d, 'python.exe'));
+    }
+  } catch (e) {}
+  for (const p of candidates) if (fs.existsSync(p)) return p;
+  // PATH 探测（当前 shell 有 python 时）
+  for (const cmd of ['python', 'py']) {
+    const probe = spawnSync(process.platform === 'win32' ? 'where' : 'which', [cmd], { encoding: 'utf8', timeout: 4000, windowsHide: true });
+    if (!probe.error && probe.status === 0) {
+      const first = String(probe.stdout || '').split(/\r?\n/).map(s => s.trim()).find(Boolean);
+      if (first && fs.existsSync(first)) return first;
+    }
+  }
+  return 'python'; // 兜底，调用方会因找不到而报明确错
+}
+
+module.exports = { ROOT, loadEnv, apply, findHdc, findPython };
