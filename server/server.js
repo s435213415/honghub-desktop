@@ -15,6 +15,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 // 进程启动时加载 .env：让 KH_DEPLOY_CMD（上传通道）/ KH_DEV_MODE / 公网分发端点等配置生效。
@@ -557,16 +558,22 @@ function findKhRoot() {
   // 旧布局：与桌面工程同级
   candidates.push(path.resolve(__dirname, '..', '..', 'HongHubMovie'));
   candidates.push(path.resolve(__dirname, '..', '..', 'KaihongMovie'));
-  // 新布局：桌面工程在 WorkBuddy/<工作区>/<工程> 下，影视工程可能在另一个工作区
-  const workbuddyRoot = path.resolve(__dirname, '..', '..', '..');
-  try {
-    for (const entry of fs.readdirSync(workbuddyRoot, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const base = path.join(workbuddyRoot, entry.name);
-      candidates.push(path.join(base, 'HongHubMovie'));
-      candidates.push(path.join(base, 'KaihongMovie'));
-    }
-  } catch (e) { }
+  // 新布局：影视工程在 WorkBuddy/<工作区>/<工程> 下。关键：运行目录
+  // HongHub-Dev/resources/app/server 离 WorkBuddy 有好几层，靠固定层数往上找必然落空，
+  // 所以直接用用户主目录下的 WorkBuddy 作为扫描根（覆盖所有工作区，最稳）。
+  const roots = [];
+  try { roots.push(path.join(os.homedir(), 'WorkBuddy')); } catch (e) { }
+  roots.push(path.resolve(__dirname, '..', '..', '..')); // 兼容从源码工程运行的情况
+  for (const workbuddyRoot of roots) {
+    try {
+      for (const entry of fs.readdirSync(workbuddyRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const base = path.join(workbuddyRoot, entry.name);
+        candidates.push(path.join(base, 'HongHubMovie'));
+        candidates.push(path.join(base, 'KaihongMovie'));
+      }
+    } catch (e) { }
+  }
   for (const c of candidates) {
     try { if (fs.existsSync(path.join(c, '_signtmp', 'auto_update.py'))) return path.normalize(c); } catch (e) { }
   }
