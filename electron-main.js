@@ -43,6 +43,18 @@ const DEV_BUILD = !CLIENT_ONLY && (
 const PAGE_PATH = DEV_BUILD ? '/admin' : '/index.html';
 const PAGE_MOVIE = '/index.html';
 
+/* 开发端桌面窗口直接带本机口令打开 /admin，避免首屏弹 prompt 要手点确定。
+   页面里的引导脚本会读 URL 的 token 写入 localStorage（server.js 已实现）。
+   读不到口令时保持 /admin 原样，页面仍会自动从 /api/dev/access-token 取。 */
+function adminPath() {
+  if (!DEV_BUILD) return PAGE_PATH;
+  try {
+    const tokenFile = path.join(__dirname, 'server', 'data', 'access-token.txt');
+    const tok = fs.readFileSync(tokenFile, 'utf8').trim();
+    return tok ? '/admin?token=' + encodeURIComponent(tok) : PAGE_PATH;
+  } catch (e) { return PAGE_PATH; }
+}
+
 // 应用名（影响窗口/任务栏默认名称）设为中文
 app.setName(APP_TITLE);
 
@@ -163,7 +175,7 @@ function createWindow() {
 
   let failed = 0;
   waitForServer(() => {
-    if (mainWin) mainWin.loadURL('http://127.0.0.1:' + HUB_PORT + PAGE_PATH);
+    if (mainWin) mainWin.loadURL('http://127.0.0.1:' + HUB_PORT + adminPath());
   });
   // 加载失败不立刻定版在错误页：先重试几次（服务可能还在起），仍失败才给可读提示 + 重载按钮
   mainWin.webContents.on('did-fail-load', (e, code, desc, url, isMainFrame) => {
@@ -171,7 +183,7 @@ function createWindow() {
     if (failed < 5) {
       failed += 1;
       setTimeout(() => {
-        if (mainWin && !mainWin.isDestroyed()) mainWin.loadURL('http://127.0.0.1:' + HUB_PORT + PAGE_PATH);
+        if (mainWin && !mainWin.isDestroyed()) mainWin.loadURL('http://127.0.0.1:' + HUB_PORT + adminPath());
       }, 1200 * failed);
       return;
     }
@@ -180,7 +192,7 @@ function createWindow() {
       '<h2>本地服务未就绪</h2>' +
       '<p>端口 ' + HUB_PORT + ' · 错误：' + desc + ' (' + code + ')</p>' +
       '<p style="color:#888">可点下面的按钮重试；若仍失败，请关闭后重新打开应用。</p>' +
-      '<button onclick="location.href=\'http://127.0.0.1:' + HUB_PORT + PAGE_PATH + '\'" ' +
+      '<button onclick="location.href=\'http://127.0.0.1:' + HUB_PORT + adminPath() + '\'" ' +
       'style="margin-top:12px;padding:8px 18px;border-radius:8px;border:0;background:#2E86C1;color:#fff;font-size:14px;cursor:pointer">重新载入</button></body>'));
   });
   // 加载成功后复位失败计数，后续偶发失败仍能重试
