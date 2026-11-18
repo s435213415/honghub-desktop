@@ -2351,7 +2351,7 @@ var state = {
   liveFast:true, watchdogToken:0, watchdogTimer:0, watchdogFired:0,
   liveKeyword:'', liveSearchFocus:false, liveSearchTimer:0,
   resEdit:-1, resConfirmClear:false,
-  platCat:'电影', platFilter:'all', syncTitle:'',
+  platCat:'电影', platFilter:'direct', syncTitle:'',  /* 默认只显示可直接打开的平台，海外站不干扰日常；点“显示全部”可展开 */
   issueConfirm:false, issueReportText:'', issuePaintTimer:0
 };
 /* 视图恢复必须早于 boot 的第一次 render()。
@@ -2444,6 +2444,7 @@ function siteItem(s, index, builtin){
     '<div class="u">' + url + '</div></div>' +
     (builtin ? '' : '<button class="mini" data-act="site-up" data-index="' + index + '" title="上移">↑</button>' +
                     '<button class="mini" data-act="site-edit" data-index="' + index + '" title="编辑">✎</button>') +
+    '<button class="mini" data-act="plat-copy" data-url="' + url + '" title="复制网址（可粘到有网络条件的浏览器）">⧉</button>' +
     '<button class="siteopen" data-act="site-open" data-mode="' + mode + '" data-url="' + url + '">打开</button>' +
     (builtin ? '' : '<button class="sitedel" data-act="site-del" data-index="' + index + '" title="删除">✕</button>') +
   '</div>';
@@ -3215,10 +3216,24 @@ function clearSites(yes){
   render();
 }
 /* HAP 内由 ArkWeb 注入 window.KaihongBridge.openSite，走原生网页页；
-   普通浏览器预览时降级为新窗口打开。第三方站点普遍禁止 iframe 嵌入，故不用 iframe。 */
+   普通浏览器预览时降级为新窗口打开。第三方站点普遍禁止 iframe 嵌入，故不用 iframe。
+   海外站(project 同理)直接走系统浏览器：应用内 ArkWeb 在国内网络必然白屏超时，
+   交给用户设备的浏览器与其网络环境处理，体验更好。 */
 function openSite(url, mode){
   if(!url) return;
   var m = mode || 'pc';
+  if((m === 'oversea' || m === 'project') &&
+     window.KaihongBridge && typeof window.KaihongBridge.openExternal === 'function'){
+    try{
+      var opened = window.KaihongBridge.openExternal(url);
+      if(opened){
+        toast(m === 'oversea'
+          ? '已交给系统浏览器打开（海外站受网络环境影响，如打不开请检查网络）'
+          : '已交给系统浏览器打开');
+        return;
+      }
+    }catch(e){}
+  }
   if(window.KaihongBridge && typeof window.KaihongBridge.openSiteMode === 'function'){
     window.KaihongBridge.openSiteMode(url, m);
     return;
