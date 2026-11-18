@@ -70,7 +70,7 @@ step('8/8 验收', process.execPath, [path.join(__dirname, 'verify-release.js')]
 /* 8.1/8 旧公站点只读回验：确认线上清单=本地版本、三件直链可达。
    注意：站点发布能力只能由 WorkBuddy 宿主触发，脚本绝不在这里做发布动作
    （上一轮并发发布争用 dist/ 导致版本错位，教训已固化）。此处只回验，不写不发布。 */
-if (!NO_RELEASE) step('8.1/8 旧公站点回验（只读）', process.execPath, [path.join(__dirname, 'site-publish.js'), '--verify']);
+if (!NO_RELEASE) step('8.1/8 旧公站点回验（只读告警）', process.execPath, [path.join(__dirname, 'site-publish.js'), '--verify', '--warn-only']);
 
 say('=== 鸿汇影一键流水线 ' + new Date().toLocaleString('zh-CN') + ' ===');
 say('工程：' + ROOT);

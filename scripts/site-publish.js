@@ -27,6 +27,9 @@ const ENDPOINT = path.join(ROOT, 'server', 'public-endpoint.json');
 const READY = process.argv.includes('--ready');
 const VERIFY = process.argv.includes('--verify');
 const DEEP = process.argv.includes('--deep');
+/* 一键流水线里用 --warn-only：站点发布由宿主手动触发，源码 bump 后与站点短暂不一致是常态，
+   只读回验失败只应告警，绝不能让整条发版流水线退出码变 1（否则每次自动发版都假失败）。 */
+const WARN_ONLY = process.argv.includes('--warn-only');
 
 function j(p) { return JSON.parse(fs.readFileSync(p, 'utf8')); }
 function sha256(p) { return require('crypto').createHash('sha256').update(fs.readFileSync(p)).digest('hex'); }
@@ -133,6 +136,10 @@ function head(url, timeout) {
       console.log('  线上版本: ' + result.onlineVersion + ' (期望 ' + result.expectedVersion + ')');
       for (const [k, c] of Object.entries(links)) console.log('  [' + (c === 200 || c === 206 ? 'PASS' : 'FAIL') + '] ' + k + ' HTTP ' + c);
       console.log('  ' + (result.ok ? '✓ 站点已接上，线上=本地，成品可下载' : '✗ 站点未跟上，需重新发布'));
+    }
+    if (!result.ok && WARN_ONLY) {
+      console.log('  [WARN] 站点暂未跟上（通常由宿主未手动发布导致），仅告警，不影响流水线。');
+      process.exit(0);
     }
     process.exit(result.ok ? 0 : 1);
   }
