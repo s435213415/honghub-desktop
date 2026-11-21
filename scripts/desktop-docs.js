@@ -11,6 +11,8 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 
+const ROOT = path.join(__dirname, '..');
+
 const BEGIN = '<!-- KH_AUTO_BEGIN 以下为本版自动信息，随发版重写，手改会被覆盖 -->';
 const END = '<!-- KH_AUTO_END -->';
 
@@ -31,17 +33,16 @@ function pick(cands) {
   return null;
 }
 
-/* 隧道地址每次重启都会漂，以镜像站 current-url.txt 为准；读不到就留空 */
-function publicBase() {
-  const dir = (process.env.KH_MIRROR_DIR || 'C:\\Users\\admin\\HongHubServer\\site');
-  const root = path.dirname(dir);
-  for (const f of [path.join(root, 'current-url.txt'), path.join(root, 'url.txt')]) {
-    try {
-      const s = fs.readFileSync(f, 'utf8').trim();
-      if (/^https?:\/\//.test(s)) return s.replace(/\/+$/, '');
-    } catch (e) {}
-  }
-  return '';
+/* 下发地址以随包正式端点为准（WorkBuddy 稳定源）；临时隧道只作联调，不能写进交付资料。
+   历史坑：过去这里读镜像站 current-url.txt，隧道一重启文档里的链接就全失效。 */
+function publicEndpoint() {
+  try {
+    const ep = JSON.parse(fs.readFileSync(path.join(ROOT, 'server', 'public-endpoint.json'), 'utf8'));
+    if (ep.baseUrl && /^https?:\/\//.test(ep.baseUrl)) {
+      return { base: ep.baseUrl.replace(/\/+$/, ''), query: String(ep.shareQuery || '') };
+    }
+  } catch (e) {}
+  return { base: '', query: '' };
 }
 
 function buildBlock(env) {
@@ -57,9 +58,10 @@ function buildBlock(env) {
     path.join(desktop, '鸿汇影·客户成品_' + v, 'HongHubMovie.hap')]);
   const dev = pick([path.join(dist, '鸿汇影桌面版 开发端 ' + VER + '.exe'),
     path.join(desktop, '鸿汇影·开发端_' + v, '鸿汇影桌面版 开发端 ' + VER + '.exe')]);
-  const deviceDir = path.join(desktop, '开鸿影视·设备端_' + v);
-  const device = pick([path.join(deviceDir, 'KaihongMovie_' + v + '.hap'),
-    path.join('C:\\Users\\admin\\WorkBuddy\\2026-11-12-16-34-57\\KaihongMovie\\sign', 'KaihongMovie.hap')]);
+  const devHap = pick([path.join(dist, 'honghub-harmony-dev.hap'),
+    path.join(desktop, '鸿汇影·开发端_' + v, 'HongHubMovie-开发端.hap')]);
+  const clientHap = pick([path.join(dist, 'public', 'honghub', v, 'HongHubMovie.hap'),
+    path.join(dist, 'honghub-harmony.hap')]);
 
   const rows = [];
   rows.push('【本版信息 · ' + v + ' / #' + CODE + '】');
@@ -76,30 +78,29 @@ function buildBlock(env) {
   rows.push('  签名密钥\\kaihong 内置开鸿开发服务平台 p12/cer/p7b；KaihongMovie 工程 make.py 有材料即优先用平台证书签名，缺材料自动回退官方链。');
   rows.push('  开发端与客户成品严格隔离：客户夹只放成品，密钥口令只在开发端夹与工程目录。');
   rows.push('');
-  rows.push('三、深开鸿 / 开鸿影视设备端');
-  if (device) {
-    rows.push('  KaihongMovie_' + v + '.hap  ' + nf(fs.statSync(device).size) + ' B  sha256 ' + sha256(device));
-  } else {
-    rows.push('  本版未产出设备端包（设备端目录或签名包缺失）。');
-  }
-  rows.push('  签名链：CN=HongHub Movie ← Kaihong Application Sub CA ← Kaihong Application Root CA（profile=debug，verify-app 通过）');
-  rows.push('  证书有效期 2026-11-19 ~ 2027-11-19，到期前需在 developer.kaihong.com 重新申请证书与 Profile。');
+  rows.push('三、深开鸿 / OpenHarmony 端（本工程 HongHubMovie）');
+  if (clientHap) rows.push('  客户版 HAP ' + nf(fs.statSync(clientHap).size) + ' B  sha256 ' + sha256(clientHap) + '（包内无运维入口）');
+  else rows.push('  客户版 HAP 未生成。');
+  if (devHap) rows.push('  开发端 HAP ' + nf(fs.statSync(devHap).size) + ' B  sha256 ' + sha256(devHap) + '（仅本机，不下发）');
+  else rows.push('  开发端 HAP 未生成。');
+  rows.push('  签名链：OpenHarmony 官方发布证书链（official-openharmony），与旧版同链可覆盖安装；');
+  rows.push('  装过 v1.7.45 及更早自签版本的设备需先卸载。hdc list targets 为空，本轮仅做包内核验，未跑真机。');
   rows.push('');
   rows.push('四、下发渠道');
-  const base = publicBase();
-  if (base) {
-    rows.push('  零积分公网（本机镜像 + 隧道，地址会漂移，以镜像站根 current-url.txt 为准）：' + base + '/');
-    rows.push('  安装包 ' + base + '/honghub/' + v + '/desktop-setup.exe');
-    rows.push('  鸿蒙HAP ' + base + '/honghub/' + v + '/HongHubMovie.hap');
-    rows.push('  更新清单 ' + base + '/remote-manifest.json');
+  const ep = publicEndpoint();
+  if (ep.base) {
+    rows.push('  稳定源（WorkBuddy 站点，已发布并回验）：' + ep.base + '/?' + ep.query.replace(/^\?/, ''));
+    rows.push('  安装包 ' + ep.base + '/honghub/' + v + '/desktop-setup.exe' + ep.query);
+    rows.push('  鸿蒙HAP ' + ep.base + '/honghub/' + v + '/HongHubMovie.hap' + ep.query);
+    rows.push('  更新清单 ' + ep.base + '/remote-manifest.json' + ep.query);
+    rows.push('  客户应用页与 6 个外链 kh-*.js 同目录发布，缺一个就是空壳；无 sharecode 返回 403 是门禁，不是故障。');
   } else {
-    rows.push('  零积分公网地址暂时取不到（隧道未运行或 current-url.txt 缺失），先看镜像站目录。');
+    rows.push('  正式下发端点未配置，先看 server/public-endpoint.json；本机隧道只作联调，不作分发依据。');
   }
-  rows.push('  旧公网站点（wbapp）只能由 WorkBuddy 宿主手工发布，脚本不代发；站点版本可能落后于本版。');
   rows.push('');
   rows.push('五、质量门禁');
   rows.push('  自动修 Bug 闭环：脚本语法 / 页面版本 / 功能快照 / 产物校验值 四类故障注入自检全通过（4/4 自动修复、复检归零）。');
-  rows.push('  签名验签：hap-sign-tool verify-app 通过后才进桌面设备端夹。');
+  rows.push('  HAP 门禁：包内版本、前端哈希与开发/客户变体隔离校验通过后才进交付夹；真机待接。');
   rows.push('生成时间：' + new Date().toISOString().slice(0, 10));
   return [BEGIN, ...rows, END].join('\r\n');
 }
