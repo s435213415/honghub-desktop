@@ -81,10 +81,7 @@
     "productName": "鸿汇影桌面版",
     "asar": false,
     "compression": "maximum",
-    "electronLanguages": [
-      "zh-CN",
-      "en-US"
-    ],
+    "electronLanguages": [],
     "icon": "assets/icon.ico",
     "files": [
       "app/**/*",
