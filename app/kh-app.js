@@ -983,7 +983,7 @@ setDiag('state','ready');
   } catch (e) {}
 })();
 
-var KH_APP_CODE = 1000198;   // 当前客户端版本号（构建/发版时注入），用于自动更新比对
+var KH_APP_CODE = 1000199;   // 当前客户端版本号（构建/发版时注入），用于自动更新比对
 window.KH_APP_VERSION = window.KH_APP_VERSION || '1.7.70';   // 版本名（发版时同样会被注入覆盖），升级失败横幅按名字比较归档
 var KH_PRODUCT = '鸿汇影';   // 产品名（单点配置，改名只需改 build_desktop.py 顶部 PRODUCT_NAME）
 
@@ -2895,7 +2895,7 @@ function khFeatureOS(){
       marketName: '桌面版 Desktop', deviceType: 'desktop', model: 'HongHub-Desktop',
       abi: 'web', osFullName: navigator.userAgent, apiVersion: 26, minApi: 12, targetApi: 26,
       tier: 'high', screenW: window.innerWidth || 1280, screenH: window.innerHeight || 720,
-      densityDPI: 96, appVersion: '1.7.84-desktop', appCode: 1000198
+      densityDPI: 96, appVersion: '1.7.85-desktop', appCode: 1000199
     });
   } catch (e) {}
   function deskUpdate() {

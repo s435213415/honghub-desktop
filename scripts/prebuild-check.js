@@ -76,10 +76,14 @@ if (!STATIC) {
     if (!fs.existsSync(f)) fail('缺少本次发版 HAP（dist/honghub-harmony.hap）');
     else {
       const html = zipRead.readText(f, 'resources/rawfile/www/index.html');
-      const mm = html.match(/var KH_APP_CODE\s*=\s*(\d+)/);
+      /* 前端模块化后 KH_APP_CODE 落在 kh-app.js，不再是壳页内联；两处都要认。 */
+      let bundle = html;
+      try { bundle += '\n' + zipRead.readText(f, 'resources/rawfile/www/kh-app.js'); } catch (e) { }
+      const mm = bundle.match(/var KH_APP_CODE\s*=\s*(\d+)/) ||
+                 bundle.match(/versionCode["'\s:=]+(\d{5,})/);
       if (!mm) fail('HAP 包内前端缺少 KH_APP_CODE');
       else if (Number(mm[1]) !== targetCode) fail('HAP 包内前端 #' + mm[1] + ' ≠ 发版 #' + targetCode + '（疑似沿用旧 HAP）');
-      else if (html.indexOf('KH_HARMONY') < 0) fail('HAP 包内缺少深开鸿适配标记');
+      else if (bundle.indexOf('KH_HARMONY') < 0) fail('HAP 包内缺少深开鸿适配标记');
       else pass('HAP 新鲜度一致（#' + targetCode + ' · 包内前端为本次发版）');
     }
   } catch (e) { fail('HAP 新鲜度检查失败：' + e.message); }

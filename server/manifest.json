@@ -1438,11 +1438,11 @@
   },
   "release": {
     "schema": 1,
-    "generatedAt": "2026-11-21T11:22:26.612Z",
+    "generatedAt": "2026-11-21T13:47:35.132Z",
     "latest": {
-      "versionName": "1.7.84",
-      "versionCode": 1000198,
-      "publishedAt": "2026-11-21T11:22:26.612Z",
+      "versionName": "1.7.85",
+      "versionCode": 1000199,
+      "publishedAt": "2026-11-21T13:47:35.132Z",
       "minApi": 12,
       "targetApi": 26,
       "compatibleSdk": "5.0.0(12)",

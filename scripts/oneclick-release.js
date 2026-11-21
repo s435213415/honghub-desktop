@@ -156,6 +156,11 @@ function rollbackBump() {
   const r = require('child_process').spawnSync('git', ['checkout', '--'].concat(VERSION_FILES),
     { cwd: ROOT, encoding: 'utf8' });
   say('[回滚保护] ' + (r.status === 0 ? '版本文件已回退' : '回退失败，请人工 git checkout'));
+  /* dist/ 被 .gitignore 排除，git checkout 碰不到；失败时必须把 dist 清单也拉回真相源，
+     否则下次 doctor 会看到「源码 1.7.84 / 清单 1.7.85」而卡在 HAP 新鲜度误报。 */
+  const s = require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'version.js'), '--sync'],
+    { cwd: ROOT, encoding: 'utf8' });
+  say('[回滚保护] ' + (s.status === 0 ? 'dist 版本清单已同步回退' : 'dist 清单回退失败，请人工 npm run version:sync'));
 }
 
 const results = [];
