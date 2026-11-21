@@ -69,6 +69,8 @@ archive/oneoff-*/
 harmony/.hvigor/
 harmony/entry/build/
 harmony/local.properties
+# 开发端变体前端的临时备份：HAP 已签出成品，源码目录不入库
+harmony/entry/src/main/resources/rawfile/www-*-backup/
 *.bak-*
 
 # ---------- 系统与编辑器 ----------
