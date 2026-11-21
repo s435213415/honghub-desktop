@@ -76,10 +76,12 @@ const telemetry = {
   append(evt) {
     const rec = {
       at: new Date().toISOString(),
-      stage: String((evt && evt.stage) || 'unknown').slice(0, 24),   // check / download / install / fail / done
+      stage: String((evt && evt.stage) || 'unknown').slice(0, 24),   // check / download / verify / install / done / failed
       versionName: String((evt && evt.versionName) || '').slice(0, 24),
       versionCode: Number((evt && evt.versionCode) || 0) || null,
       ok: evt && evt.ok !== false,
+      failKind: String((evt && evt.failKind) || '').slice(0, 16),
+      channel: String((evt && evt.channel) || '').slice(0, 16),
       error: String((evt && evt.error) || '').slice(0, 160),
       platform: String((evt && evt.platform) || '').slice(0, 16),
       deviceId: String((evt && evt.deviceId) || '').slice(0, 40)
@@ -91,16 +93,19 @@ const telemetry = {
   summary() {
     const all = rows(TEL_FP);
     const keep = all.slice(-2000);
-    const byStage = {}, byVersion = {};
+    const byStage = {}, byVersion = {}, byFailKind = {};
     let fail = 0;
     keep.forEach(function (r) {
       byStage[r.stage] = (byStage[r.stage] || 0) + 1;
       if (r.versionName) byVersion[r.versionName] = (byVersion[r.versionName] || 0) + 1;
-      if (!r.ok) fail++;
+      if (!r.ok) {
+        fail++;
+        if (r.failKind) byFailKind[r.failKind] = (byFailKind[r.failKind] || 0) + 1;
+      }
     });
     return {
       ok: true, total: keep.length, failed: fail,
-      byStage: byStage, byVersion: byVersion,
+      byStage: byStage, byVersion: byVersion, byFailKind: byFailKind,
       last: keep.slice(-15).reverse()
     };
   }

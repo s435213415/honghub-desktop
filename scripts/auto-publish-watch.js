@@ -8,6 +8,10 @@
    防失败循环：发版前跑 doctor 预检，未过则跳过本轮不 bump；流水线连续失败达阈值
      (KH_AUTOPUB_FAIL_LIMIT，默认 2)写入 logs/auto-publish.paused.json 熔断暂停，
      之后每轮只跳过，直到人工 --resume。成功一次自动清零计数。
+   三条护栏：
+     ① 单实例锁 logs/auto-publish.lock —— 守候进程只允许活一个，守护进程重复拉起时第二个直接退出
+     ② 内容指纹 logs/auto-publish.state.json —— 文件被碰过但内容没变不重跑；同内容失败后重跑不涨版本
+     ③ dist 出包锁 —— 手工出包或另一条流水线占着 dist 时本轮跳过
    环境变量：
      KH_AUTOPUB_COOLDOWN_MIN  两次发版最小间隔，默认 20 分钟
      KH_AUTOPUB_DEBOUNCE_SEC  变化静默多久才发版，默认 90 秒
@@ -15,15 +19,21 @@
 */
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { spawn, spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const LOG_DIR = path.join(ROOT, 'logs');
 const LOG = path.join(LOG_DIR, 'auto-publish.log');
-const WATCH = ['app', 'server', 'features', 'assets', 'harmony', 'electron-main.js', 'dev-auto-update.js', 'package.json'];
+const WATCH = ['app', 'server', 'features', 'assets', 'harmony', 'electron-main.js', 'preload.js', 'dev-auto-update.js', 'package.json'];
 const IGNORE = [
   /\bserver[\\/]data[\\/]/i,
   /\bserver[\\/]snapshots[\\/]/i,
+  /\bserver[\\/]manifest\.json$/i,
+  /\bserver[\\/]remote-manifest\.json$/i,
+  /\bserver[\\/]feature-version\.json$/i,
+  /\bharmony[\\/](build|oh_modules|\.hvigor|\.hvigor_cache)[\\/]/i,
+  /\bharmony[\\/][^\\/]+[\\/]build[\\/]/i,
   /\blogs[\\/]/i,
   /\bdist[\\/]/i,
   /\bnode_modules[\\/]/i,
@@ -37,8 +47,11 @@ const ARGS = process.argv.slice(2);
 const ONCE = ARGS.includes('--once');
 const DRY = ARGS.includes('--dry');
 const RESUME = ARGS.includes('--resume');
+const HASH_ONLY = ARGS.includes('--hash');
 const FAIL_LIMIT = Math.max(1, Number(process.env.KH_AUTOPUB_FAIL_LIMIT || 2));
 const PAUSE_FILE = path.join(LOG_DIR, 'auto-publish.paused.json');
+const STATE_FILE = path.join(LOG_DIR, 'auto-publish.state.json');
+const SELF_LOCK = path.join(LOG_DIR, 'auto-publish.lock');
 
 let timer = null;
 let lastRun = 0;
@@ -62,11 +75,60 @@ function writePause(streak, reason, paused) {
 }
 function clearPause() { try { fs.unlinkSync(PAUSE_FILE); } catch (e) {} }
 
+/* 内容指纹统一由 scripts/lib/content-hash.js 提供（手工出包也用同一套算法，
+   否则两边算出的指纹不一致，手工出包中间改动就会被误判成「用户又改了代码」）。 */
+const CH = require('./lib/content-hash');
+const contentHash = CH.hash;
+const readState = CH.readState;
+const writeState = CH.writeState;
+const currentVersion = CH.currentVersion;
+
+/* 守候进程单实例锁：开机自启 + 守护拉起的多个 watcher 只允许活一个。
+   进程还活着就退出；PID 已消失（上次被强杀）则接管，不会把自己锁死。 */
+function acquireSelfLock() {
+  try {
+    if (fs.existsSync(SELF_LOCK)) {
+      const info = JSON.parse(fs.readFileSync(SELF_LOCK, 'utf8'));
+      if (info && info.pid && Number(info.pid) !== process.pid) {
+        try {
+          process.kill(Number(info.pid), 0);
+          log('已有自动发版守候进程在运行（pid ' + info.pid + '），本进程直接退出，避免两条流水线并发');
+          process.exit(0);
+        } catch (e) { /* 旧进程已不在，接管锁 */ }
+      }
+    }
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    fs.writeFileSync(SELF_LOCK, JSON.stringify({ pid: process.pid, at: new Date().toISOString() }, null, 2) + '\n');
+    const release = () => {
+      try {
+        const info = JSON.parse(fs.readFileSync(SELF_LOCK, 'utf8'));
+        if (Number(info.pid) === process.pid) fs.unlinkSync(SELF_LOCK);
+      } catch (e) {}
+    };
+    process.on('exit', release);
+    process.on('SIGINT', () => { release(); process.exit(0); });
+    process.on('SIGTERM', () => { release(); process.exit(0); });
+  } catch (e) {}
+}
+
 /* 发版前预检：doctor 非 0 直接跳过本轮，不 bump、不制造错位态。 */
 function preflight() {
   try {
     const r = spawnSync(process.execPath, [path.join(__dirname, 'doctor.js')],
       { cwd: ROOT, stdio: 'ignore', windowsHide: true, timeout: 120000 });
+    if (r.status !== 0) {
+      /* 失败原因必须留痕，否则日志只有一句「未通过」，排查全靠猜。 */
+      try {
+        fs.appendFileSync(LOG, new Date().toLocaleString('zh-CN') + '  预检详情：status=' + r.status
+          + ' error=' + ((r.error && r.error.code) || '') + ' signal=' + (r.signal || '') + '\n');
+      } catch (e) {}
+      const dbg = spawnSync(process.execPath, [path.join(__dirname, 'doctor.js')],
+        { cwd: ROOT, encoding: 'utf8', windowsHide: true, timeout: 120000 });
+      try {
+        const tail = String((dbg.stdout || '') + (dbg.stderr || '')).trim().split('\n').slice(-6).join(' | ');
+        fs.appendFileSync(LOG, new Date().toLocaleString('zh-CN') + '  预检输出：' + tail + '\n');
+      } catch (e) {}
+    }
     return r.status === 0;
   } catch (e) { return false; }
 }
@@ -88,6 +150,23 @@ function runPipeline(reason) {
       ' 次），本次跳过：' + reason + '；修复后运行 --resume 恢复');
     return;
   }
+  /* 手工出包静默窗口：手工流水线自己会重建页面、生成深开鸿前端、回写清单，
+     守候进程此时必须退让，否则会把流水线自己的改动当成「用户又改了代码」再 bump 一版。
+     这条就是 2026-11-19 版本虚涨（1.7.54→1.7.55）与两次验收失败的根因。 */
+  if (CH.muted()) {
+    log('手工出包进行中（静默窗口），本次跳过并吸收当前内容：' + reason);
+    try { CH.absorb(); } catch (e) {}
+    return;
+  }
+  /* 内容指纹闸门：内容与上次成功发版一致时，任何"文件被动过"的触发都直接跳过。 */
+  const hash = contentHash();
+  const st = readState();
+  if (st.okHash && st.okHash === hash) {
+    log('内容与 v' + (st.version || '?') + ' 已发布内容一致（指纹 ' + hash + '），跳过出包：' + reason);
+    return;
+  }
+  /* 同一份内容已经失败过：重跑不再 bump，避免「失败一次版本涨一位」把版本号冲飞。 */
+  const retrySame = !!(st.failHash && st.failHash === hash);
   const now = Date.now();
   if (now - lastRun < COOLDOWN_MS) {
     log('冷却中（' + Math.round((COOLDOWN_MS - (now - lastRun)) / 60000) + ' 分钟后可再发版），本次跳过：' + reason);
@@ -111,19 +190,28 @@ function runPipeline(reason) {
   } catch (e) { /* 锁模块异常不阻断发版，oneclick 内部仍会兜底申请 */ }
   running = true;
   lastRun = now;
-  const argv = [path.join(__dirname, 'oneclick-release.js'), '--bump', '--keep-going'];
+  const argv = [path.join(__dirname, 'oneclick-release.js')];
+  if (retrySame) {
+    argv.push('--keep-going'); // 同指纹重跑：沿用当前版本号，不 bump
+  } else {
+    argv.push('--bump', '--keep-going');
+  }
   if (DRY) argv.push('--dry');
-  log('开始自动发版：' + reason + (DRY ? '（演练）' : ''));
+  log('开始自动发版：' + reason + '（指纹 ' + hash + ' · ' +
+    (retrySame ? '同一内容失败重跑，不涨版本' : '内容变更，版本 +1') + (DRY ? ' · 演练' : '') + '）');
   const p = spawn(process.execPath, argv, { cwd: ROOT, env: Object.assign({}, process.env), windowsHide: true });
   p.stdout.on('data', (d) => { const s = String(d).trim(); if (s) log('[流水线] ' + s.split('\n').slice(-1)[0]); });
   p.stderr.on('data', (d) => { const s = String(d).trim(); if (s) log('[流水线:err] ' + s); });
   p.on('close', (code) => {
     running = false;
-    log('发版结束，退出码 ' + code + '。产物见 dist 与桌面两个交付夹。');
+    log('发版结束，退出码 ' + code + '（指纹 ' + hash + '）。产物见 dist 与桌面两个交付夹。');
     if (code === 0) {
       clearPause(); // 成功即清零熔断状态
+      writeState({ okHash: hash, version: currentVersion(), okAt: new Date().toISOString(), failHash: '', failVersion: '' });
       return;
     }
+    /* 失败留痕：记下本次指纹，下次同内容重跑只跑不涨版本。 */
+    writeState({ failHash: hash, failVersion: currentVersion(), failAt: new Date().toISOString() });
     // 失败累计：读现有 streak（可能别的进程写过），+1；达阈值则熔断
     const prev = readPause();
     const streak = (prev && prev.failStreak ? prev.failStreak : 0) + 1;
@@ -166,13 +254,23 @@ function start() {
   WATCH.forEach(watchOne);
 }
 
-if (RESUME) {
+if (HASH_ONLY) {
+  const h = contentHash();
+  console.log('内容指纹 ' + h + ' · 当前版本 ' + currentVersion());
+  const st = readState();
+  console.log('上次成功发版：' + (st.okHash || '无') + (st.version ? '' : '') + (st.okAt ? ' @ ' + st.okAt : '') +
+    (st.failHash ? ' · 上次失败指纹 ' + st.failHash : ''));
+  process.exit(0);
+} else if (RESUME) {
+  acquireSelfLock();
   clearPause();
   log('已清除熔断暂停状态，自动发版恢复；失败计数归零。');
 } else if (ONCE) {
+  acquireSelfLock();
   log('单次检查：直接执行一次流水线（' + (DRY ? '演练' : '真实出包') + '）');
   runPipeline('手动 --once');
 } else {
+  acquireSelfLock();
   const p = readPause();
   if (p && p.paused) log('⚠ 当前处于熔断暂停态（' + p.at + '），自动发版不会执行；修复后运行 --resume');
   start();

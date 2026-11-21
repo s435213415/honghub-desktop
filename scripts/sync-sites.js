@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const MAN = path.join(ROOT, 'server/manifest.json');
-const PAGES = [path.join(ROOT, 'app/index.html')];
+const PAGES = [path.join(ROOT, 'app/index.html'), path.join(ROOT, 'app/kh-config.js')]; // 模块化后 BUILTIN_SITES 在 kh-config.js
 const CHECK = process.argv.includes('--check');
 
 const man = JSON.parse(fs.readFileSync(MAN, 'utf8'));

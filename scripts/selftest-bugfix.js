@@ -9,6 +9,7 @@ const path = require('path');
 const vm = require('vm');
 const ROOT = path.join(__dirname, '..');
 const bugfix = require(path.join(ROOT, 'server', 'auto-bugfix.js'));
+const fe = require(path.join(__dirname, 'frontend-source.js'));   // 前端已模块化：断言走聚合视图（壳页 + kh-*.js）
 
 const APP = path.join(ROOT, 'app', 'index.html');
 const STAMP = path.join(ROOT, 'server', 'feature-version.json');
@@ -60,8 +61,10 @@ try {
   if (!m) throw new Error('未找到可注入的前端脚本段');
   const at = m.index + m[0].indexOf(m[2]);
   let broken = html.slice(0, at) + '\n(function(){ /* __KH_SELFTEST_BROKEN__ */\n' + html.slice(at);
-  /* 2) 页面版本基线漂移 */
-  broken = broken.replace(/var KH_APP_CODE\s*=\s*\d+\s*;/, 'var KH_APP_CODE = 1;');
+  /* 2) 页面版本基线漂移：模块化后壳页自身没有版本号，改为在壳页注入一个假的
+     KH_APP_CODE（合并视图里排在最前），让「页面版本与发版不一致」真实成立，
+     同时只动壳页、恢复仍走同版本良好副本，不会破坏 kh-*.js。 */
+  broken = broken.replace(/<\/body>/i, '<script>var KH_APP_CODE = 1;</script>\n</body>');
   fs.writeFileSync(APP, broken);
   /* 3) 功能快照过期 */
   const stamp = JSON.parse(fs.readFileSync(STAMP, 'utf8'));
@@ -86,7 +89,9 @@ try {
   if (!s.verified || s.unresolved !== 0) bad('自动复检未归零（verified=' + s.verified + ' unresolved=' + s.unresolved + '）');
   else ok('自动复检归零（第 ' + s.rounds + ' 轮通过）');
 
-  const fixedHtml = fs.readFileSync(APP, 'utf8');
+  /* 前端已模块化（1.7.72）：版本号与业务函数都在 app/kh-app.js，壳页只留结构。
+     断言统一用聚合视图（壳页 + 全部外链 kh-*.js），否则会被判成「业务函数丢失」假失败。 */
+  const fixedHtml = fe.merged(APP);
   if (scriptsBad(fixedHtml) !== 0) bad('修复后前端脚本仍有语法错误');
   else ok('修复后前端整页脚本语法复检通过');
   if (fixedHtml.indexOf('__KH_SELFTEST_BROKEN__') >= 0) bad('仍残留注入的破损代码（未走同版本良好副本恢复）');

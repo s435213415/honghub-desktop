@@ -1,0 +1,80 @@
+{
+  "schema": 1,
+  "versionName": "1.7.57",
+  "generatedAt": "2026-11-19T05:08:57.664Z",
+  "archs": {
+    "x64": {
+      "status": "ready",
+      "file": "desktop-setup.exe",
+      "size": 79930444,
+      "sha256": "2c374e5d1ffbeced73f55953f93cd4b3e79a4cf6a0576a954ff8b74af92c0813",
+      "url": "/download/desktop-setup.exe",
+      "native": false
+    },
+    "ia32": {
+      "status": "fallback",
+      "file": "鸿汇影桌面版 Setup 1.7.57-ia32.exe",
+      "url": "/download/desktop-setup.exe",
+      "fallbackTo": "x64",
+      "note": "无原生包，自动回退 x64 通用包（ARM64 Windows 可经系统模拟运行）"
+    },
+    "arm64": {
+      "status": "fallback",
+      "file": "鸿汇影桌面版 Setup 1.7.57-arm64.exe",
+      "url": "/download/desktop-setup.exe",
+      "fallbackTo": "x64",
+      "note": "无原生包，自动回退 x64 通用包（ARM64 Windows 可经系统模拟运行）"
+    }
+  },
+  "hap": {
+    "status": "ready",
+    "file": "honghub-harmony.hap",
+    "size": 966239,
+    "sha256": "b60b1113588c37f1c76bb56cd87cbba0b5fa79830d1dbfc3c9f252db311fa6ec",
+    "url": "/download/honghub-harmony.hap"
+  },
+  "features": {
+    "count": 38,
+    "hash": "78c545d7ffe9ce9c",
+    "ids": [
+      "board",
+      "report",
+      "sourcespeed",
+      "fix",
+      "updatepublish",
+      "automation",
+      "updatecheck",
+      "govern",
+      "preset-open-dashboard",
+      "preset-dingtalk",
+      "preset-wecom",
+      "preset-feishu",
+      "preset-backup",
+      "preset-broadcast",
+      "feature-mine",
+      "auto-batch",
+      "arch-adaptive",
+      "play-smooth",
+      "mem-adaptive",
+      "auto-update",
+      "os-follow",
+      "ops-audit",
+      "ops-trend",
+      "ops-rollout",
+      "ops-publish",
+      "ops-smoke",
+      "ops-alerts",
+      "ops-catalog",
+      "ops-play",
+      "ops-issues",
+      "stats-heat",
+      "fail-top",
+      "kid-mode",
+      "handoff",
+      "handoff-take",
+      "search-all",
+      "rank-sources",
+      "upgrade-telemetry"
+    ]
+  }
+}

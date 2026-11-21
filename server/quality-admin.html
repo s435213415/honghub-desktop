@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>鸿汇影 · 质量门禁</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:22px; background:#0B1622; color:#E8F1FF; font:14px/1.65 "Microsoft YaHei",-apple-system,sans-serif; }
+  h1 { font-size:19px; margin:0 0 4px; }
+  .sub { color:#8CA0BE; font-size:12px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:14px; margin-top:16px; }
+  .card { background:#12233B; border:1px solid #1E3450; border-radius:12px; padding:15px 18px; display:flex; flex-direction:column; }
+  .card .h { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+  .card .t { font-size:15px; font-weight:700; }
+  .card .d { color:#7E93B4; font-size:12px; margin:6px 0 10px; min-height:36px; }
+  .card .s { font-size:13px; margin-bottom:10px; }
+  pre { background:#08111C; border:1px solid #1B3149; border-radius:8px; padding:10px; margin:0; height:210px; overflow:auto;
+        font:12px/1.5 Consolas,monospace; color:#B9CCE4; white-space:pre-wrap; }
+  button { background:#1C3555; color:#E8F1FF; border:1px solid #2A4A72; border-radius:8px; padding:6px 12px; font-size:13px; cursor:pointer; }
+  button:hover { background:#23426A; }
+  button.primary { background:#1F6FEB; border-color:#3B82F6; }
+  button:disabled { opacity:.5; cursor:default; }
+  .ok { color:#6BE3A0; } .bad { color:#FF9B9B; } .warn { color:#FFD48A; } .mut { color:#7E93B4; }
+  .bar { display:flex; gap:10px; align-items:center; margin-top:16px; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<h1>鸿汇影 · 质量门禁</h1>
+<div class="sub">这里跑的是仓库里原有的检查脚本，输出原样落盘在 <code>logs/qc-*.log</code>，不是另写的假检测。每 6 秒自动刷新一次状态。</div>
+
+<div class="bar">
+  <button class="primary" id="btnAll">全部跑一遍</button>
+  <span class="sub" id="hint"></span>
+</div>
+
+<div class="cards" id="cards"></div>
+
+<h1 style="margin-top:26px;font-size:17px">AI 自动修 Bug</h1>
+<div class="sub">模型给出「精确字符串替换」补丁，本机安全闸校验路径白名单 / find 唯一命中 / 语法检查后才落盘，写前备份、校验不过立即还原。未配置模型密钥时如实显示 not-configured，不会伪装成已修。</div>
+<div class="cards">
+  <div class="card">
+    <div class="h"><span class="t">🤖 AI 自动修 Bug（真改码闭环）</span><span id="aiState" class="mut">未检测</span></div>
+    <div class="d" id="aiDesc">正在读取状态…</div>
+    <div class="s mut" id="aiSum">上一轮：—</div>
+    <pre id="aiTail">（无输出）</pre>
+    <div class="bar" style="margin-top:10px">
+      <button class="primary" id="aiRun">跑一轮 AI 修 Bug</button>
+      <span class="sub" id="aiHint"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function ts(t){ return t ? new Date(t).toLocaleString('zh-CN',{hour12:false}) : '—'; }
+function dur(ms){ if(!ms) return '—'; var s=Math.round(ms/1000); return s>=60 ? (Math.floor(s/60)+' 分 '+(s%60)+' 秒') : (s+' 秒'); }
+
+var last = {items:[]};
+function render(d){
+  last = d || {items:[]};
+  var box = document.getElementById('cards');
+  box.innerHTML = (d.items||[]).map(function(it){
+    var cls = it.ok === true ? 'ok' : (it.ok === false ? 'bad' : 'warn');
+    var stateTxt = it.running ? '<span class="warn">运行中</span>' : (it.ok === true ? '<span class="ok">通过</span>' : (it.ok === false ? '<span class="bad">未通过</span>' : '<span class="mut">未运行</span>'));
+    return '<div class="card" data-name="' + esc(it.name) + '">' +
+      '<div class="h"><span class="t">' + esc(it.label) + '</span>' + stateTxt + '</div>' +
+      '<div class="d">' + esc(it.desc) + '</div>' +
+      '<div class="s"><span class="' + cls + '">' + esc(it.summary) + '</span> · 上次 ' + ts(it.at) + ' · 耗时 ' + dur(it.durationMs) + '</div>' +
+      '<pre id="tail-' + esc(it.name) + '">' + esc((it.tail||[]).join('\n') || '（无输出）') + '</pre>' +
+      '<div class="bar" style="margin-top:10px">' +
+        '<button data-run="' + esc(it.name) + '"' + (it.running?' disabled':'') + '>运行 ' + esc(it.label) + '</button>' +
+        '<span class="sub">' + esc(it.log || '') + '</span>' +
+      '</div></div>';
+  }).join('');
+  box.querySelectorAll('button[data-run]').forEach(function(b){
+    b.onclick = function(){ start(b.getAttribute('data-run')); };
+  });
+  (d.items||[]).forEach(function(it){ var p=document.getElementById('tail-'+it.name); if(p) p.scrollTop=p.scrollHeight; });
+}
+function load(){
+  fetch('/api/quality/status',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ if(d&&d.ok) render(d); }).catch(function(){});
+}
+function start(name){
+  document.getElementById('hint').textContent = '已启动，脚本跑完状态会自动更新…';
+  fetch('/api/quality/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})})
+    .then(function(r){return r.json();}).then(function(d){
+      document.getElementById('hint').textContent = d && d.ok ? ('已启动：' + name + '（' + d.log + '）') : ('启动失败：' + ((d&&d.error)||''));
+      setTimeout(load, 1500);
+    }).catch(function(e){ document.getElementById('hint').textContent = '启动失败：' + e.message; });
+}
+document.getElementById('btnAll').onclick = function(){
+  var names = (last.items||[]).map(function(i){ return i.name; });
+  var i = 0;
+  (function next(){
+    if(i >= names.length){ return; }
+    var n = names[i++];
+    fetch('/api/quality/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n})})
+      .then(function(){ return new Promise(function(r){ setTimeout(r, 800); }); }).then(next);
+  })();
+  document.getElementById('hint').textContent = '已依次启动全部检查（' + names.length + ' 项）';
+};
+load();
+setInterval(load, 6000);
+
+/* ---- AI 自动修 Bug ---- */
+function aiRender(d){
+  var st = document.getElementById('aiState'), desc = document.getElementById('aiDesc');
+  var sum = document.getElementById('aiSum'), tail = document.getElementById('aiTail');
+  var conf = d && d.configured;
+  st.textContent = conf ? '模型已配置' : '未配置模型';
+  st.className = conf ? 'ok' : 'warn';
+  desc.textContent = conf
+    ? ('通道：' + (d.model || '自定义模型') + ' · 只改源码目录，改完仍需重跑门禁与验收才算发布级通过。')
+    : '未配置 KH_AI_BASE_URL / KH_AI_API_KEY / KH_AI_MODEL，AI 改码不可用（外部条件）；可先用上方静态检查与 auto-codefix 机械修复。';
+  var last = d && d.last;
+  if(!last){ sum.textContent = '上一轮：—'; tail.textContent = '（无输出）'; return; }
+  var s = last.summary || {};
+  sum.textContent = '上一轮：' + (last.finishedAt ? new Date(last.finishedAt).toLocaleString('zh-CN',{hour12:false}) : '—')
+    + ' · 修 ' + (s.fixed||0) + ' / 失败 ' + (s.failed||0) + (last.reason ? ' · ' + last.reason : '');
+  var lines = [];
+  (last.notes||[]).forEach(function(n){ lines.push('· ' + n); });
+  (last.fixed||[]).forEach(function(f){ lines.push('[已修] ' + f.file + (f.reason ? ' — ' + f.reason : '')); });
+  (last.failed||[]).forEach(function(f){ lines.push('[未修] ' + f.file + ' — ' + (f.reason||'')); });
+  tail.textContent = lines.join('\n') || '（无输出）';
+}
+function aiLoad(){
+  fetch('/api/aibugfix',{cache:'no-store'}).then(function(r){return r.json();})
+    .then(function(d){ if(d && d.ok) aiRender(d); }).catch(function(){});
+}
+document.getElementById('aiRun').onclick = function(){
+  var b = this, hint = document.getElementById('aiHint');
+  b.disabled = true; hint.textContent = 'AI 正在看源码并出补丁，校验通过才落盘…';
+  fetch('/api/aibugfix/run',{method:'POST'}).then(function(r){return r.json();})
+    .then(function(d){
+      var res = d && d.result;
+      hint.textContent = d && d.ok ? ('本轮完成：修 ' + ((res&&res.summary&&res.summary.fixed)||0) + ' 条') : ('本轮未全通过：' + ((res&&res.notes&&res.notes[0]) || (d&&d.error) || ''));
+      aiLoad(); b.disabled = false;
+    }).catch(function(e){ hint.textContent = '调用失败：' + e.message; b.disabled = false; });
+};
+aiLoad();
+</script>
+</body>
+</html>

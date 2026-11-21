@@ -87,7 +87,8 @@ def hub_candidates():
     """生成供深开鸿端启动时并行探测的地址列表（注入为 JS 数组字面量）。"""
     out = []
     for ip in lan_ips():
-        for port in (8787, 8788):
+        # 8787 为设计基线端口；8788 / 8890 为占用顺延与本次开发中枢常用端口，一并纳入探测
+        for port in (8787, 8788, 8890):
             u = 'http://%s:%d' % (ip, port)
             if u not in out:
                 out.append(u)
@@ -335,6 +336,7 @@ HAP_BLOCK = r'''
     try { return (localStorage.getItem('khHub') || KH_HUB_DEFAULT || '').replace(/\/+$/, ''); }
     catch (e) { return (KH_HUB_DEFAULT || ''); }
   })();
+  window.KH_HUB = KH_HUB;   // 暴露当前中枢绝对地址，供 dev 变体拼接 /admin 等面板链接
   // 始终跟随操作系统（桌面中枢）版本：本机版本基线在首次成功同步时锁定为中枢当前版本，
   // 之后只有中枢发布「更高」版本才提示更新；重装后基线随 OS 版本自动对齐。
   var khSynced = false;
@@ -417,7 +419,7 @@ HAP_BLOCK = r'''
         if (!finished && d) {
           found = true; finished = true; khRememberHubs(d);
           if (KH_HUB !== base) {
-            KH_HUB = base;
+            KH_HUB = base; window.KH_HUB = base;
             try { localStorage.setItem('khHub', base); } catch (e) {}
             try { khShowToast('🛰️ 中枢已自动切换：' + base); } catch (e) {}
           }
@@ -541,7 +543,14 @@ HAP_BLOCK = r'''
       b.innerHTML = '🆕 发现新版本 v' + esc(lat.versionName) + '（#' + esc(lat.versionCode) + '） <button id="khUpdBtn" style="border:0;border-radius:8px;padding:4px 10px;background:#2563EB;color:#fff;cursor:pointer;margin-left:6px">⬇️ 下载更新包</button> <span id="khUpdClose" style="cursor:pointer;margin-left:6px;color:#9AA6C4">✕</span>' + shaTip +
         '<div style="color:#9AA6C4;font-size:11px;margin-top:4px">下载后由系统安装器 / hdc 完成安装（应用内不静默安装）</div>';
       document.body.appendChild(b);
-      document.getElementById('khUpdBtn').onclick = function () { window.open(url, '_blank'); khShowToast('📦 更新包开始下载，请核对 SHA256 后在系统安装器中安装'); };
+      document.getElementById('khUpdBtn').onclick = function () {
+        try {
+          if (window.KaihongBridge && typeof window.KaihongBridge.openUpdatePage === 'function') {
+            window.KaihongBridge.openUpdatePage(url);
+          } else { window.open(url, '_blank'); }
+        } catch (e) { window.open(url, '_blank'); }
+        khShowToast('📦 更新包开始下载，请核对 SHA256 后在系统安装器中安装');
+      };
       document.getElementById('khUpdClose').onclick = function () { try { localStorage.setItem('khHarmonyDismissed', String(lat.versionCode)); } catch (e) {} b.style.display = 'none'; };
     } catch (e) {}
   }
@@ -822,6 +831,14 @@ def feature_snapshot():
 
 
 def inject(html, hub):
+    # 开发端变体（KH_DEVUI=1）：放开纯净开关。HAP 是离线快照、无服务端注入，
+    # 必须在打包期把写死的纯净默认值翻成开发端（与桌面 build-client-exe 物理替换
+    # CLIENT_ONLY 同理）；客户默认（KH_DEVUI 未置 1）保持纯净，行为与现状一致。
+    if os.environ.get('KH_DEVUI') == '1':
+        html = html.replace('var KH_CLIENT_ONLY = true;', 'var KH_CLIENT_ONLY = false;', 1)
+        html = html.replace(
+            "var KH_UI_CLEAN = (typeof window.KH_UI_CLEAN === 'undefined') ? true : !!window.KH_UI_CLEAN;",
+            "var KH_UI_CLEAN = false;", 1)
     # 0) 内嵌本次发版的功能清单（反馈建议自动提取的新功能随包到开发者端 / 开鸿端）
     feats_json, ver_json = feature_snapshot()
     html = html.replace('var KH_FEATURE_SNAPSHOT = [];',
@@ -849,7 +866,9 @@ def inject(html, hub):
     # 4) 注入 HAP 块（含默认中枢地址 + 自动发现候选列表）
     anchor = "setDiag('state','ready');"
     if anchor not in html:
-        raise RuntimeError('找不到 boot 收尾注入点')
+        # 前端已模块化（1.7.72）：boot 收尾在 app/kh-app.js 里，不在壳页。
+        # 这里不再直接报错，交回调用方按文件列表继续找（inject_main 会遍历 kh-*.js）。
+        return html, False
     block = (HAP_BLOCK
              .replace('__KH_HUB_DEFAULT__', hub)
              .replace('__KH_HUB_CANDIDATES__', hub_candidates()))
@@ -867,7 +886,31 @@ def inject(html, hub):
     if os.environ.get('KH_DEVUI') != '1':
         html = re.sub(r'/\* KH_DEVUI_START \*/.*?/\* KH_DEVUI_END \*/', '', html, flags=re.S)
     html = html.replace(anchor, anchor + "\n" + bridge, 1)
-    return html
+    return html, True
+
+
+def inject_main(www_dir, hub):
+    """对壳页与模块化脚本逐个注入，返回命中 boot 锚点的文件名。
+    1.7.72 起 app/index.html 只剩壳，HAP 适配块 / 中枢地址 / 开关中和都在 app/kh-*.js 里，
+    所以注入要按文件遍历，不能只改 index.html。"""
+    names = ['index.html'] + sorted(
+        n for n in os.listdir(www_dir) if n.startswith('kh-') and n.endswith('.js'))
+    touched, hit = [], None
+    for name in names:
+        p = os.path.join(www_dir, name)
+        if not os.path.isfile(p):
+            continue
+        text = open(p, encoding='utf-8').read()
+        new, ok = inject(text, hub)
+        new = inject_sites(new)
+        if new != text:
+            open(p, 'w', encoding='utf-8').write(new)
+            touched.append(name)
+        if ok and not hit:
+            hit = name
+    if not hit:
+        raise RuntimeError('找不到 boot 收尾注入点（已遍历：%s）' % ', '.join(names))
+    return hit, touched
 
 
 def inject_sites(html):
@@ -924,14 +967,13 @@ def main():
     if os.path.exists(WWW):
         shutil.rmtree(WWW)
     shutil.copytree(src, WWW)
-    html = open(os.path.join(WWW, 'index.html'), encoding='utf-8').read()
-    html = inject(html, hub)
-    html = inject_sites(html)
-    open(os.path.join(WWW, 'index.html'), 'w', encoding='utf-8').write(html)
+    hit, touched = inject_main(WWW, hub)
+    mods = [t for t in touched if t != 'index.html']
 
     print('OK 深开鸿 HAP 前端构建完成')
     print('   源：', src)
-    print('   产物：', WWW, '/index.html')
+    print('   产物：', WWW, '（壳页 + %d 个模块改动）' % len(mods) if mods else '（壳页）')
+    print('   注入命中：', hit, '· 改动文件：', ', '.join(touched))
     print('   默认中枢地址（已自动写入）：', hub)
     print('   已中和桌面开关并注入 HAP 适配（KH_HARMONY），/api 将自动走桌面中枢')
     print('   下一步：用 DevEco Studio 打开本 harmony/ 工程 → 自动签名 → 运行到 KaihongOS 设备')

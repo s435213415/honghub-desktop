@@ -92,8 +92,9 @@ if (rel) {
   if (fs.existsSync(hapFile)) {
     try {
       const html = zip.readText(hapFile, 'resources/rawfile/www/index.html');
-      const m = html.match(/var KH_APP_CODE\s*=\s*(\d+)/);
-      if (!m) err('HAP 新鲜度', '包内前端缺少 KH_APP_CODE');
+      // 兼容两代前端版本标记：新版用 versionCode，旧版用 var KH_APP_CODE
+      const m = html.match(/versionCode["'\s:=]+(\d{5,})/) || html.match(/var KH_APP_CODE\s*=\s*(\d+)/) || html.match(/KH_APP_CODE[^\d]{0,15}(\d{5,})/);
+      if (!m) err('HAP 新鲜度', '包内前端缺少版本标记（versionCode / KH_APP_CODE）');
       else if (Number(m[1]) !== Number(rel.versionCode)) err('HAP 新鲜度', '包内 #' + m[1] + ' ≠ 发版 #' + rel.versionCode + '（旧 HAP 冒充新版）');
       else ok('HAP 新鲜度', '包内前端与发版一致（#' + rel.versionCode + '）');
     } catch (e) { err('HAP 新鲜度', e.message); }

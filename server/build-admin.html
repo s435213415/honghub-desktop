@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>鸿汇影 · 发版流水线</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 22px; background: #0B1622; color: #E8F1FF;
+         font: 14px/1.65 "Microsoft YaHei", -apple-system, sans-serif; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  .sub { color: #8CA0BE; font-size: 12px; margin-bottom: 16px; }
+  .bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+  button { background: #1C3555; color: #E8F1FF; border: 1px solid #2A4A72; border-radius: 8px;
+           padding: 7px 14px; font-size: 13px; cursor: pointer; }
+  button:hover { background: #23426A; }
+  button.primary { background: #1F6FEB; border-color: #3B82F6; }
+  button.primary:hover { background: #2A7BF5; }
+  button.danger { background: #4A1620; border-color: #7A2231; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 12px; margin-bottom: 18px; }
+  .card { background: #12233B; border: 1px solid #1E3450; border-radius: 10px; padding: 13px 15px; }
+  .card .k { color: #8CA0BE; font-size: 12px; margin-bottom: 6px; }
+  .card .v { font-size: 20px; font-weight: 700; }
+  .card .d { color: #7E93B4; font-size: 12px; margin-top: 5px; word-break: break-all; }
+  .ok { color: #6BE3A0; } .bad { color: #FF9B9B; } .warn { color: #FFD48A; }
+  h2 { font-size: 15px; margin: 22px 0 10px; padding-top: 12px; border-top: 1px solid #1E3450; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid #17283C; vertical-align: top; }
+  th { color: #8CA0BE; font-weight: 600; }
+  .step { display: inline-block; margin: 2px 3px 2px 0; padding: 2px 9px; border-radius: 7px; font-size: 12px; }
+  .s-ok { background: #14472F; color: #6BE3A0; }
+  .s-bad { background: #4A1620; color: #FF9B9B; }
+  pre { background: #0E1B2B; border: 1px solid #1A2E45; border-radius: 8px; padding: 10px 12px;
+        font: 12px/1.55 Consolas, monospace; color: #AFC3DC; max-height: 260px; overflow: auto; white-space: pre-wrap; }
+  .empty { color: #7E93B4; font-size: 13px; }
+  input { background: #0E1B2B; border: 1px solid #24405F; border-radius: 7px; color: #E8F1FF; padding: 6px 10px; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>鸿汇影 · 发版流水线</h1>
+<div class="sub">发版过程以前只有命令行和日志文件，这里把它搬上界面：版本四源是否一致、产物哈希是否对得上、最近几次流水线卡在哪一步、自动发版是否在跑。</div>
+
+<div class="bar">
+  <button class="primary" id="btnRun">▶ 跑一次发版（--keep-going）</button>
+  <button id="btnRefresh">⟳ 刷新</button>
+  <input id="rbVer" placeholder="回滚到版本，如 1.7.57" style="width:170px">
+  <button class="danger" id="btnRollback">↩ 回滚到该版本</button>
+  <input id="apReason" placeholder="暂停原因（可选）" style="width:150px">
+  <button class="danger" id="btnApPause">⏸ 暂停自动发版</button>
+  <button class="primary" id="btnApResume">▶ 恢复自动发版</button>
+  <span id="hint" class="sub" style="margin:0"></span>
+</div>
+
+<div class="cards">
+  <div class="card"><div class="k">当前版本（四源）</div><div class="v" id="cVer">-</div><div class="d" id="dVer">加载中…</div></div>
+  <div class="card"><div class="k">产物校验</div><div class="v" id="cArt">-</div><div class="d" id="dArt">加载中…</div></div>
+  <div class="card"><div class="k">最近一次流水线</div><div class="v" id="cPipe">-</div><div class="d" id="dPipe">加载中…</div></div>
+  <div class="card"><div class="k">自动发版</div><div class="v" id="cAuto">-</div><div class="d" id="dAuto">加载中…</div></div>
+  <div class="card"><div class="k">HAP 签名链</div><div class="v" id="cSign">-</div><div class="d" id="dSign">加载中…</div></div>
+</div>
+
+<h2>版本四源</h2>
+<table><thead><tr><th style="width:32%">来源</th><th style="width:18%">版本号</th><th style="width:16%">versionCode</th></tr></thead>
+<tbody id="tbVer"><tr><td colspan="3" class="empty">加载中…</td></tr></tbody></table>
+
+<h2>产物哈希</h2>
+<table><thead><tr><th style="width:22%">产物</th><th style="width:12%">体积</th><th>实测 / 清单 SHA256</th></tr></thead>
+<tbody id="tbArt"><tr><td colspan="3" class="empty">加载中…</td></tr></tbody></table>
+
+<h2>最近几次流水线</h2>
+<div id="pipes" class="empty">加载中…</div>
+
+<script>
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function kb(n){ return n >= 1048576 ? (n/1048576).toFixed(1) + ' MB' : Math.round(n/1024) + ' KB'; }
+function ts(t){ return new Date(t).toLocaleString('zh-CN', {hour12:false}); }
+
+var last = null;
+function load(){
+  fetch('/api/build/status', {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(d){
+    if(!d || !d.ok){ document.getElementById('hint').textContent = '读取失败'; return; }
+    last = d;
+    // 版本卡
+    var v = d.versions;
+    document.getElementById('cVer').textContent = v.versionName || '未知';
+    document.getElementById('cVer').className = 'v ' + (v.consistent ? 'ok' : 'bad');
+    document.getElementById('dVer').innerHTML = (v.consistent ? '四处一致 · #' + esc(v.versionCode || '') : '<b class="bad">四源不一致，先对齐再发版</b>');
+    document.getElementById('tbVer').innerHTML = v.list.map(function(x){
+      return '<tr><td>' + esc(x.key) + '</td><td>' + esc(x.name || '缺失') + '</td><td>' + esc(x.code == null ? '—' : '#' + x.code) + '</td></tr>';
+    }).join('');
+
+    // 产物卡
+    var badArt = d.artifacts.filter(function(a){ return !a.ok; });
+    document.getElementById('cArt').textContent = badArt.length ? (badArt.length + ' 项不符') : '全部对得上';
+    document.getElementById('cArt').className = 'v ' + (badArt.length ? 'bad' : 'ok');
+    document.getElementById('dArt').textContent = d.artifacts.map(function(a){ return a.label; }).join(' · ');
+    document.getElementById('tbArt').innerHTML = d.artifacts.map(function(a){
+      return '<tr><td>' + esc(a.label) + '</td><td>' + kb(a.size) + '</td><td>' +
+        (a.ok ? '<span class="ok">一致</span>' : '<span class="bad">不符</span>') +
+        '<div class="sub" style="margin:2px 0">实测 ' + esc((a.actual || '').slice(0,24) || '文件缺失') +
+        '<br>清单 ' + esc((a.expect || '').slice(0,24) || '未写入') + '</div></td></tr>';
+    }).join('');
+
+    // 最近流水线卡
+    var p0 = d.pipelines[0];
+    if(p0){
+      document.getElementById('cPipe').textContent = p0.passed ? '通过' : (p0.finished ? '有失败' : '进行中/中断');
+      document.getElementById('cPipe').className = 'v ' + (p0.passed ? 'ok' : (p0.finished ? 'bad' : 'warn'));
+      document.getElementById('dPipe').textContent = p0.name + ' · ' + ts(p0.mtime) + ' · ' + p0.steps.length + ' 步';
+    } else {
+      document.getElementById('cPipe').textContent = '无记录';
+    }
+
+    // 签名链卡：说清这次 HAP 是谁的密钥签的
+    var sg = d.signing;
+    if (sg) {
+      document.getElementById('cSign').textContent = sg.owner === 'self' ? '自持私钥' : (sg.owner ? 'SDK 公开密钥' : '无记录');
+      document.getElementById('cSign').className = 'v ' + (sg.owner === 'self' ? 'ok' : 'warn');
+      document.getElementById('dSign').innerHTML = esc(sg.chain || '未出包') + (sg.version ? (' · v' + esc(sg.version)) : '') +
+        '<br>自持材料 ' + (sg.ownKeyMaterials && sg.ownKeyMaterials['kaihong.p12'] ? '齐全' : '缺失') +
+        (sg.warnings && sg.warnings.length ? '<br><span class="bad">' + sg.warnings.map(esc).join('；') + '</span>' : '');
+    }
+
+    // 自动发版卡
+    var ap = d.autopublish;    document.getElementById('cAuto').textContent = ap.paused ? '已暂停' : (ap.watcherAlive ? '运行中' : '未在跑');
+    document.getElementById('cAuto').className = 'v ' + (ap.paused ? 'warn' : (ap.watcherAlive ? 'ok' : 'bad'));
+    document.getElementById('dAuto').innerHTML = (ap.paused ? esc(ap.pausedReason || '人工暂停') : '守候 pid ' + esc(ap.watcherPid || '—')) +
+      ' · 基线 ' + esc(ap.baseline || '空') + ' / v' + esc(ap.baselineVersion || '?');
+
+    // 流水线明细
+    document.getElementById('pipes').className = '';
+    document.getElementById('pipes').innerHTML = d.pipelines.map(function(p, i){
+      var steps = p.steps.map(function(s){
+        return '<span class="step ' + (s.ok ? 's-ok' : 's-bad') + '">' + (s.ok ? '✔' : '✘') + ' ' + esc(s.label) + ' · ' + s.sec + 's</span>';
+      }).join('');
+      var fails = p.fails.length ? '<div class="warn" style="margin:6px 0">失败项：' + p.fails.map(esc).join('；') + '</div>' : '';
+      return '<div class="card" style="margin-bottom:10px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:baseline">' +
+        '<b>' + esc(p.name) + '</b><span class="sub" style="margin:0">' + ts(p.mtime) + ' · ' + p.sizeKB + ' KB · ' +
+        (p.passed ? '<span class="ok">验收通过</span>' : (p.finished ? '<span class="bad">未通过</span>' : '<span class="warn">未收尾</span>')) + '</span></div>' +
+        '<div style="margin:8px 0">' + (steps || '<span class="empty">未解析到步骤</span>') + '</div>' + fails +
+        '<pre>' + esc(p.tail) + '</pre></div>';
+    }).join('') || '<div class="empty">logs 下没有流水线日志</div>';
+  }).catch(function(e){
+    document.getElementById('hint').textContent = '读取失败：' + e.message;
+  });
+}
+
+document.getElementById('btnRefresh').onclick = load;
+/* 自动发版开关：暂停写标记并停守候进程；恢复清标记并重新拉起守候进程 */
+function apSwitch(paused){
+  var hint = document.getElementById('hint');
+  var reason = (document.getElementById('apReason') || {}).value || '';
+  hint.textContent = paused ? '正在暂停自动发版…' : '正在恢复自动发版…';
+  var btnP = document.getElementById('btnApPause'), btnR = document.getElementById('btnApResume');
+  btnP.disabled = btnR.disabled = true;
+  fetch('/api/autopublish', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({paused: paused, reason: reason})})
+    .then(function(r){ return r.json(); }).then(function(d){
+      btnP.disabled = btnR.disabled = false;
+      hint.textContent = d && d.ok ? (d.hint || '已生效') : ('失败：' + ((d && d.error) || '未知错误'));
+      load();
+    }).catch(function(e){
+      btnP.disabled = btnR.disabled = false;
+      hint.textContent = '失败：' + e.message;
+    });
+}
+document.getElementById('btnApPause').onclick = function(){
+  if(!confirm('暂停后不会再自动出包（手工「跑一次发版」不受影响）。确定暂停？')) return;
+  apSwitch(true);
+};
+document.getElementById('btnApResume').onclick = function(){ apSwitch(false); };
+document.getElementById('btnRun').onclick = function(){
+  var b = this; b.disabled = true; document.getElementById('hint').textContent = '已触发，出包约 1–3 分钟…';
+  fetch('/api/build/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'})
+    .then(function(r){ return r.json(); }).then(function(d){
+      document.getElementById('hint').textContent = d.ok ? ('已启动 pid ' + d.pid + ' · 日志 ' + d.log) : ('未启动：' + (d.error || '未知'));
+      setTimeout(load, 4000); setTimeout(function(){ b.disabled = false; }, 6000);
+    }).catch(function(e){ document.getElementById('hint').textContent = '触发失败：' + e.message; b.disabled = false; });
+};
+document.getElementById('btnRollback').onclick = function(){
+  var ver = document.getElementById('rbVer').value.trim();
+  if(!ver){ document.getElementById('hint').textContent = '先填要回滚到的版本号'; return; }
+  if(!confirm('确认把下发版本回滚到 v' + ver + '？设备端会看到更新提示。')) return;
+  fetch('/api/update/rollback/apply', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({version: ver})})
+    .then(function(r){ return r.json(); }).then(function(d){
+      document.getElementById('hint').textContent = d.ok ? ('已回滚：下发版本切到 v' + d.version + ' · ' + (d.note || '')) :
+        ('回滚失败：' + (d.error || '未知') + (d.available && d.available.length ? ' · 可选 ' + d.available.join(' / ') : ''));
+      load();
+    }).catch(function(e){ document.getElementById('hint').textContent = '回滚失败：' + e.message; });
+};
+
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>鸿汇影 · 条目体检</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:22px; background:#0B1622; color:#E8F1FF; font:14px/1.65 "Microsoft YaHei",-apple-system,sans-serif; }
+  h1 { font-size:19px; margin:0 0 4px; }
+  .sub { color:#8CA0BE; font-size:12px; }
+  h2 { font-size:15px; margin:24px 0 10px; border-top:1px solid #1E3450; padding-top:12px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin-top:14px; }
+  .card { background:#12233B; border:1px solid #1E3450; border-radius:10px; padding:12px 14px; }
+  .card .k { color:#8CA0BE; font-size:12px; }
+  .card .v { font-size:22px; font-weight:700; margin-top:2px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:7px 9px; border-bottom:1px solid #17283C; vertical-align:top; }
+  th { color:#8CA0BE; font-weight:600; }
+  button { background:#1C3555; color:#E8F1FF; border:1px solid #2A4A72; border-radius:8px; padding:6px 12px; font-size:13px; cursor:pointer; }
+  button:hover { background:#23426A; }
+  button.primary { background:#1F6FEB; border-color:#3B82F6; }
+  button.danger { background:#5A2330; border-color:#8A3A4A; }
+  .ok { color:#6BE3A0; } .bad { color:#FF9B9B; } .warn { color:#FFD48A; } .mut { color:#7E93B4; }
+  .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  label { color:#8CA0BE; font-size:12.5px; }
+</style>
+</head>
+<body>
+<h1>鸿汇影 · 条目体检</h1>
+<div class="sub">对 <code>server/data/catalog.json</code> 做批量校验：重名、重复 id、类型非法、空名、缺分组、失效条目。修复只做安全项，动手前自动备份。</div>
+
+<div class="bar" style="margin-top:16px">
+  <button class="primary" id="btnAudit">重新体检</button>
+  <button class="danger" id="btnApply">应用安全修复</button>
+  <label><input type="checkbox" id="optDup" checked> 合并重复条目（线路并入保留项）</label>
+  <label><input type="checkbox" id="optGroup" checked> 补齐缺失分组</label>
+  <label><input type="checkbox" id="optTrim" checked> 清理名称多余空格</label>
+  <span class="sub" id="hint"></span>
+</div>
+
+<div class="cards" id="cards"><div class="card"><div class="k">体检中…</div><div class="v">-</div></div></div>
+
+<h2>重名条目</h2>
+<table><thead><tr><th style="width:26%">名称</th><th style="width:10%">类型</th><th style="width:16%">分组</th><th style="width:8%">条数</th><th>涉及 id</th></tr></thead>
+<tbody id="tbDup"><tr><td colspan="5" class="empty mut">加载中…</td></tr></tbody></table>
+
+<h2>缺分组（可自动补齐的已给建议）</h2>
+<table><thead><tr><th style="width:14%">id</th><th style="width:34%">名称</th><th style="width:12%">类型</th><th>建议分组</th></tr></thead>
+<tbody id="tbGroup"><tr><td colspan="4" class="empty mut">加载中…</td></tr></tbody></table>
+
+<h2>源体检（单线路 / 慢速频道）</h2>
+<div class="bar" style="margin-bottom:10px">
+  <button id="btnHunt">补备源（挑最弱的 8 个）</button>
+  <button id="btnPrefer">按最快线路重排优先项</button>
+  <span class="sub" id="srcHint">体检中…</span>
+</div>
+<div class="cards" id="srcCards"></div>
+<table style="margin-top:12px"><thead><tr><th style="width:12%">id</th><th style="width:30%">频道</th><th style="width:10%">状态</th><th style="width:10%">线路</th><th style="width:12%">耗时</th><th>池内同名候选</th></tr></thead>
+<tbody id="tbWeak"><tr><td colspan="6" class="empty mut">加载中…</td></tr></tbody></table>
+
+<h2>线路层问题</h2>
+<table><thead><tr><th style="width:12%">类型</th><th style="width:44%">内容</th><th>涉及</th></tr></thead>
+<tbody id="tbLines"><tr><td colspan="3" class="empty mut">加载中…</td></tr></tbody></table>
+
+<h2>其它异常</h2>
+<div id="other" class="sub">加载中…</div>
+
+<script>
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function card(k, v, cls){ return '<div class="card"><div class="k">' + esc(k) + '</div><div class="v ' + (cls||'') + '">' + esc(v) + '</div></div>'; }
+
+function render(d){
+  var t = d.totals;
+  document.getElementById('cards').innerHTML =
+    card('条目总数', t.items) +
+    card('重名组', t.dupNames, t.dupNames ? 'bad' : 'ok') +
+    card('重复 id', t.dupIds, t.dupIds ? 'bad' : 'ok') +
+    card('类型非法', t.badType, t.badType ? 'bad' : 'ok') +
+    card('空名称', t.emptyName, t.emptyName ? 'bad' : 'ok') +
+    card('缺分组', t.noGroup, t.noGroup ? 'warn' : 'ok') +
+    card('失效条目', t.badStatus, t.badStatus ? 'bad' : 'ok') +
+    card('空线路条目', t.emptySources, t.emptySources ? 'bad' : 'ok') +
+    card('非法地址', t.badUrl, t.badUrl ? 'bad' : 'ok') +
+    card('重复 URL', t.dupUrls, t.dupUrls ? 'warn' : 'ok') +
+    card('条目内重复', t.dupWithin || 0, (t.dupWithin || 0) ? 'warn' : 'ok') +
+    card('非常规空白', t.badChars, t.badChars ? 'warn' : 'ok') +
+    card('可自动修复', (d.canAutoFix.noGroup + d.canAutoFix.removeDup + d.canAutoFix.trimNames), '');
+
+  document.getElementById('tbDup').innerHTML = (d.dupNames||[]).map(function(x){
+    return '<tr><td>' + esc(x.name) + '</td><td>' + esc(x.type) + '</td><td>' + esc(x.group || '—') + '</td><td>' + x.count +
+      '</td><td class="mut">' + esc(x.ids.join('、')) + ' <span class="ok">保留 ' + esc(x.keep) + '</span></td></tr>';
+  }).join('') || '<tr><td colspan="5" class="ok">没有重名条目</td></tr>';
+
+  document.getElementById('tbGroup').innerHTML = (d.noGroup||[]).map(function(x){
+    return '<tr><td class="mut">' + esc(x.id) + '</td><td>' + esc(x.name) + '</td><td>' + esc(x.type) + '</td><td class="' +
+      (x.suggest.indexOf('人工') >= 0 ? 'warn' : 'ok') + '">' + esc(x.suggest) + '</td></tr>';
+  }).join('') || '<tr><td colspan="4" class="ok">没有缺分组的条目</td></tr>';
+
+  var lines = [];
+  (d.emptySources||[]).forEach(function(x){ lines.push('<tr><td class="bad">空线路</td><td>' + esc(x.name) + ' <span class="mut">标称 ' + x.sourceCount + ' 条</span></td><td class="mut">' + esc(x.id) + '</td></tr>'); });
+  (d.badUrl||[]).forEach(function(x){ lines.push('<tr><td class="bad">非法地址</td><td class="mut">' + esc(x.url) + '</td><td class="mut">' + esc(x.id) + ' ' + esc(x.name) + '</td></tr>'); });
+  (d.dupUrls||[]).forEach(function(x){ lines.push('<tr><td class="warn">跨条目重复</td><td class="mut">' + esc(x.url) + '</td><td class="mut">' + x.count + ' 处：' + esc(x.ids.join('、')) + '</td></tr>'); });
+  (d.dupWithin||[]).forEach(function(x){ lines.push('<tr><td class="warn">条目内重复</td><td>' + esc(x.name) + ' <span class="mut">同一条目里 ' + x.count + ' 条重复线路</span></td><td class="mut">' + esc(x.id) + '</td></tr>'); });
+  (d.badChars||[]).forEach(function(x){ lines.push('<tr><td class="warn">非常规空白</td><td>' + esc(x.name) + '</td><td class="mut">' + esc(x.id) + '</td></tr>'); });
+  document.getElementById('tbLines').innerHTML = lines.join('') || '<tr><td colspan="3" class="ok">线路层没有发现问题</td></tr>';
+
+  var parts = [];
+  (d.dupIds||[]).forEach(function(x){ parts.push('<div class="bad">重复 id ' + esc(x.id) + ' × ' + x.count + '（' + esc(x.names.join(' / ')) + '）</div>'); });
+  (d.badType||[]).forEach(function(x){ parts.push('<div class="bad">类型非法 ' + esc(x.id) + ' · ' + esc(x.type) + '</div>'); });
+  (d.emptyName||[]).forEach(function(x){ parts.push('<div class="bad">空名称 ' + esc(x.id) + '</div>'); });
+  (d.badStatus||[]).forEach(function(x){ parts.push('<div class="bad">状态 ' + esc(x.status) + ' · ' + esc(x.id) + ' ' + esc(x.name) + '</div>'); });
+  if(!parts.length){ parts.push('<div class="ok">没有重复 id / 非法类型 / 空名 / 失效条目</div>'); }
+  parts.push('<div class="mut" style="margin-top:8px">状态分布：' + esc(Object.keys(d.statusCount||{}).map(function(k){ return k + ' ' + d.statusCount[k]; }).join(' · ')) + '</div>');
+  document.getElementById('other').innerHTML = parts.join('');
+}
+
+function load(){
+  document.getElementById('hint').textContent = '体检中…';
+  fetch('/api/catalog/audit', {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(d){
+    if(!d || !d.ok){ document.getElementById('hint').textContent = (d && d.error) || '体检失败'; return; }
+    render(d);
+    document.getElementById('hint').textContent = '体检完成：' + new Date(d.at).toLocaleString('zh-CN', {hour12:false});
+  }).catch(function(e){ document.getElementById('hint').textContent = '体检失败：' + e.message; });
+}
+
+document.getElementById('btnAudit').onclick = load;
+document.getElementById('btnApply').onclick = function(){
+  var opts = {
+    removeDup: document.getElementById('optDup').checked,
+    fillGroup: document.getElementById('optGroup').checked,
+    trimNames: document.getElementById('optTrim').checked
+  };
+  if(!confirm('将按勾选项写回 catalog.json（会自动备份到 server/data/catalog-backups）。继续？')) return;
+  fetch('/api/catalog/audit/apply', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(opts)})
+    .then(function(r){ return r.json(); }).then(function(d){
+      document.getElementById('hint').textContent = d && d.ok
+        ? ('已修复：移除 ' + d.removed + ' 条重复、并入 ' + d.mergedSources + ' 条线路、补分组 ' + d.grouped + ' 条、清名 ' + d.trimmed + ' 条；现 ' + d.items + ' 条')
+        : ('修复失败：' + ((d && d.error) || ''));
+      load();
+    }).catch(function(e){ document.getElementById('hint').textContent = '修复失败：' + e.message; });
+};
+
+function loadSources(){
+  fetch('/api/sources/weak', {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(d){
+    if(!d || !d.ok){ document.getElementById('srcHint').textContent = (d && d.error) || '体检失败'; return; }
+    var t = d.totals;
+    document.getElementById('srcCards').innerHTML =
+      card('频道', t.channels) + card('单线路', t.single, t.single ? 'bad' : 'ok') +
+      card('慢速 / 受限', t.slow, t.slow ? 'warn' : 'ok') + card('无线路', t.noLine, t.noLine ? 'bad' : 'ok') +
+      card('源池', t.pool) + card('池内可匹配', t.poolCovered + '/' + t.poolChecked, t.poolCovered ? 'ok' : 'bad');
+    var cov = {};
+    (d.coverage||[]).forEach(function(c){ cov[c.id] = c.candidates; });
+    document.getElementById('tbWeak').innerHTML = (d.single||[]).map(function(x){
+      var n = cov[x.id];
+      return '<tr><td class="mut">' + esc(x.id) + '</td><td>' + esc(x.name) + '</td><td>' + esc(x.status) + '</td><td>1</td><td>' +
+        (x.ms || '—') + '</td><td class="' + (n ? 'ok' : 'bad') + '">' + (n === undefined ? '—' : (n ? n + ' 条' : '池里没有')) + '</td></tr>';
+    }).join('') || '<tr><td colspan="6" class="ok">没有单线路频道</td></tr>';
+    var last = d.lastHunt;
+    document.getElementById('srcHint').textContent = last
+      ? ('上次补源 ' + new Date(last.at).toLocaleString('zh-CN',{hour12:false}) + '：新增 ' + last.added + ' 条' + (last.note ? '（' + last.note + '）' : ''))
+      : '还没有补源记录';
+  }).catch(function(e){ document.getElementById('srcHint').textContent = '体检失败：' + e.message; });
+}
+document.getElementById('btnHunt').onclick = function(){
+  var b = this; b.disabled = true;
+  document.getElementById('srcHint').textContent = '正在探测候选线路，可能要几十秒…';
+  fetch('/api/sources/hunt', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({limit:8})})
+    .then(function(r){ return r.json(); }).then(function(d){
+      document.getElementById('srcHint').textContent = d && d.ok ? ('补源完成：新增 ' + d.added.length + ' 条，检查 ' + d.checkedChannels + ' 个频道') : ('补源失败：' + ((d && d.error) || ''));
+      b.disabled = false; loadSources();
+    }).catch(function(e){ document.getElementById('srcHint').textContent = '补源失败：' + e.message; b.disabled = false; });
+};
+document.getElementById('btnPrefer').onclick = function(){
+  if(!confirm('会把每条频道的最快线路设为优先项（自动备份 catalog.json）。继续？')) return;
+  fetch('/api/sources/prioritize', {method:'POST'}).then(function(r){ return r.json(); }).then(function(d){
+    document.getElementById('srcHint').textContent = d && d.ok ? ('优先项已更新：' + d.changed + ' 条频道') : ('失败：' + ((d && d.error) || ''));
+  }).catch(function(e){ document.getElementById('srcHint').textContent = '失败：' + e.message; });
+};
+
+load(); loadSources();
+</script>
+</body>
+</html>

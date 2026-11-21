@@ -25,7 +25,7 @@ const block = {
   count: man.sources.channels.length,
   channels: man.sources.channels.map((c) => ({ id: c.id, name: c.name, group: c.group, sources: c.sources })),
   sites: man.sources.sites,
-  searchTpl: old.searchTpl || {},
+  searchTpl: (man.sources.searchTpl && Object.keys(man.sources.searchTpl).length) ? man.sources.searchTpl : (old.searchTpl || {}),
   quick: old.quick || {},
   remoteUrl: old.remoteUrl || '',
   siteCount: man.sources.sites.length,

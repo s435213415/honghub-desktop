@@ -43,6 +43,9 @@ const ENV = Object.assign({}, process.env, {
 ENV.PATH = 'C:\\Windows\\System32;C:\\Windows;C:\\Users\\admin\\Desktop\\command-line-tools\\tool\\jre\\bin;' + (process.env.PATH || '');
 try { require('./lib/env').apply(); } catch (e) {}
 for (const k of ['OH_KEY_PWD', 'PYTHON_BIN', 'KH_HDC', 'KH_DEPLOY_CMD']) if (process.env[k] && !ENV[k]) ENV[k] = process.env[k];
+// 隔离闸：标准发版流水线强制客户纯净，忽略外层 shell 可能残留的开发端 / 诊断变体变量，
+// 杜绝客户包被打成 dev 变体（/admin 入口、扩展面板、诊断段不得进入客户成品）。
+for (const k of ['KH_DEVUI', 'KH_DIAG', 'KH_HAP_VARIANT']) delete ENV[k];
 
 /* ★ python 绝对路径兜底：开机自启 watcher 用系统 node 启动，PATH 里没有 WorkBuddy
    私有 python，裸 `python` 会 ENOENT —— 这是自动发版 4 连败的根因。
@@ -69,6 +72,9 @@ step('2.1/8 平台格子重建（BUILTIN_SITES）', process.execPath, [path.join
 if (!SKIP_HAP) {
   step('3/8 深开鸿前端生成', PY, [path.join('harmony', 'build_hap.py')]);
   step('3.1/8 HAP 注入与签名', process.execPath, [path.join(__dirname, 'hap-sign.js')]);
+  /* 3.2/8 签名链门禁：默认只体检+告警（当前主体包走 OpenHarmony 官方链，这是既定现状），
+     设 KH_REQUIRE_SELF_KEY=1 后若产物仍非自持私钥签名，本步非 0 退出、流水线直接中止。 */
+  step('3.2/8 签名链门禁（自持私钥检查）', process.execPath, [path.join(__dirname, 'check-sign-chain.js')]);
 }
 step('4/8 桌面端出包（含内置 HAP / 清单）', process.execPath, [path.join(__dirname, 'build-exe.js'), '--no-bump', '--skip-zip']);
 if (!NO_CLIENT) step('5/8 客户版 Setup（剥离 /admin 运维入口）', process.execPath, [path.join(__dirname, 'build-client-exe.js')]);
@@ -104,6 +110,14 @@ say('工程：' + ROOT);
 say('日志：' + LOG);
 STEPS.forEach(function (s, i) { say('  ' + (i + 1) + ') ' + s.label); });
 if (DRY) { flush(); say('（--dry：以上步骤仅预览，未执行）'); process.exit(0); }
+
+/* 手工出包静默窗口：本流水线会重建页面、生成深开鸿前端、回写清单，
+   自动发版守候若此时还以为「文件变了」就会再 bump 一版，出现两条流水线撞车、版本虚涨
+   （2026-11-19 实测：手工出 1.7.54 的同时自动再发 1.7.55，验收两条失败）。
+   开跑即挂静默标记，成功收尾时把当前内容吸收成基线，异常退出也会摘掉标记。 */
+const CH = require('./lib/content-hash');
+CH.mute('oneclick' + (BUMP ? ' --bump' : ' --no-bump'));
+process.on('exit', () => { try { CH.unmute(); } catch (e) {} });
 
 /* 跨进程文件锁：自动发版(watcher)与手工出包若同时跑，会争用 dist/ 并把开发端包
    写进客户版别名。所有真正的出包都在这里申请同一把磁盘锁；子进程通过环境变量
@@ -188,7 +202,14 @@ try {
    失败收尾：回滚本次 bump，避免把源码留在「新版本 + 旧产物」的错位中间态。 */
 if (fail) {
   rollbackBump();
+  say('[自动发版] 本次未全部成功，基线不更新（同内容重跑不会涨版本）');
 } else {
+  /* 成功即吸收：把此刻（含本流水线自己改过的页面/HAP 前端）记为已发布内容，
+     守候进程不会再为这些改动 bump 一版。 */
+  try {
+    const h = CH.absorb();
+    say('[自动发版] 基线已吸收：' + h);
+  } catch (e) { say('[自动发版] 基线刷新跳过：' + (e && e.message || e)); }
   try {
     const g = spawnSync(process.execPath, [path.join(__dirname, 'guard-client-alias.js')],
       { cwd: ROOT, stdio: 'inherit', env: ENV });

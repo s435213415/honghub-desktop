@@ -61,7 +61,7 @@
 
     <div class="card">
       <h2>升级遥测 <span class="muted" id="telTot"></span></h2>
-      <table><thead><tr><th>时间</th><th>阶段</th><th>版本</th><th>结果</th><th>错误</th></tr></thead><tbody id="telBody"></tbody></table>
+      <table><thead><tr><th>时间</th><th>阶段</th><th>版本</th><th>归类</th><th>通道</th><th>结果</th><th>错误</th></tr></thead><tbody id="telBody"></tbody></table>
     </div>
 
     <div class="card">
@@ -79,6 +79,38 @@
       <h2>双端接力</h2>
       <div class="muted">桌面端生成 6 位接力码，开鸿设备输码即取（10 分钟有效，一次性）。</div>
       <div class="bar" style="margin-top:10px"><button id="mk" class="pri">生成测试接力码</button><span id="mkOut" class="muted"></span></div>
+    </div>
+
+    <div class="card">
+      <h2>接口来源白名单 <span class="muted" id="originAt"></span></h2>
+      <div class="muted">回环（127.0.0.1 / localhost）始终放行；其余来源需在此登记，未登记不下发跨源头。支持整串 origin 或 <code>*.域名</code>。</div>
+      <div class="bar" style="margin-top:10px"><input id="originInput" placeholder="https://tv.example.com 或 *.example.com" style="flex:1"><button id="originAdd" class="pri">添加</button></div>
+      <div id="originList"></div>
+    </div>
+
+    <div class="card">
+      <h2>云端推荐位 <span class="muted" id="promoAt"></span></h2>
+      <div class="row"><span>启用推荐位</span><button id="promoTog">-</button></div>
+      <div class="row"><span>标题</span><input id="promoTitle" style="width:58%" placeholder="今日推荐"></div>
+      <div class="row"><span>副标题</span><input id="promoSub" style="width:58%" placeholder="打开就播 · 云端推荐"></div>
+      <div class="row"><span>条目（每行一条）</span><span class="muted">格式：<code>片单id｜标题｜副标题</code>，最多 12 条；id 需命中客户端片单，否则不渲染</span></div>
+      <textarea id="promoItems" rows="4" style="width:100%;background:#0F131C;border:1px solid var(--line);color:var(--fg);border-radius:9px;padding:8px" placeholder="mv_bbb｜大雄兔｜Blender 开放电影"></textarea>
+      <div style="text-align:right;margin-top:10px"><button id="promoSave" class="pri">保存推荐位</button></div>
+    </div>
+
+    <div class="card">
+      <h2>更新通道 <span class="muted" id="channelAt"></span></h2>
+      <div class="row"><span>当前通道</span><span id="channelActive" class="pill">-</span></div>
+      <div class="row"><span>切换到</span><span><button id="chStable">稳定通道</button> <button id="chBeta">内测通道</button></span></div>
+      <div class="row"><span>内测版本号</span><input id="chBetaVer" size="14" placeholder="如 1.8.0（留空则回退稳定）"></div>
+      <div class="muted" id="channelNote"></div>
+    </div>
+
+    <div class="card">
+      <h2>AI 辅助诊断 <span id="aiStatus" class="pill">…</span></h2>
+      <div class="muted">汇总最近上报问题与健康快照，调用兼容 OpenAI 协议的模型给出排查建议；仅给建议，不自动改码或发布。密钥在服务端环境变量配置（<code>KH_AI_BASE_URL</code> / <code>KH_AI_API_KEY</code> / <code>KH_AI_MODEL</code>），不下发前端。</div>
+      <div class="bar" style="margin-top:10px"><button id="aiRun" class="pri">生成诊断建议</button> <button id="aiAnalyze">结构化分析（问题 / 补丁建议 / 新功能）</button></div>
+      <div id="aiOut" class="muted">未配置模型时如实提示 not-configured。补丁片段仅为建议，需人工审核后应用，不自动改码或发布。</div>
     </div>
   </div>
 </div>
@@ -138,12 +170,13 @@ document.getElementById('kidSave').onclick=function(){
 
 function loadTel(){
   j('/api/telemetry/update').then(function(d){
-    if(!d||!d.ok){ document.getElementById('telBody').innerHTML='<tr><td colspan="5" class="muted">暂无数据（发布后客户端上报）</td></tr>'; return; }
+    if(!d||!d.ok){ document.getElementById('telBody').innerHTML='<tr><td colspan="7" class="muted">暂无数据（发布后客户端上报）</td></tr>'; return; }
     document.getElementById('telTot').textContent=d.total+' 条 · 失败 '+d.failed;
     document.getElementById('telBody').innerHTML=(d.last||[]).map(function(r){
       return '<tr><td class="muted">'+esc((r.at||'').slice(5,19).replace('T',' '))+'</td><td>'+esc(r.stage)+'</td><td>'+esc(r.versionName||'-')+
+        '</td><td class="muted">'+esc(r.failKind||'-')+'</td><td class="muted">'+esc(r.channel||'-')+
         '</td><td>'+(r.ok?'<span class="pill on">成功</span>':'<span class="pill off">失败</span>')+'</td><td class="muted">'+esc(r.error||'')+'</td></tr>';
-    }).join('')||'<tr><td colspan="5" class="muted">暂无数据</td></tr>';
+    }).join('')||'<tr><td colspan="7" class="muted">暂无数据</td></tr>';
   });
 }
 
@@ -176,8 +209,147 @@ document.getElementById('mk').onclick=function(){
   });
 };
 
-document.getElementById('reload').onclick=function(){ loadFlags(); loadKid(); loadTel(); loadRank(); };
-loadFlags(); loadKid(); loadTel(); loadRank();
+/* ---- 来源白名单 ---- */
+function loadOrigins(){
+  j('/api/config/origins').then(function(d){
+    if(!d||!d.ok) return;
+    document.getElementById('originAt').textContent=d.updatedAt?('更新 '+d.updatedAt.slice(0,19).replace('T',' ')):'';
+    var list=d.origins||[];
+    document.getElementById('originList').innerHTML=list.map(function(o){
+      return '<div class="row"><span><code>'+esc(o)+'</code></span><button class="danger" data-origin="'+esc(o)+'">移除</button></div>';
+    }).join('')||'<div class="muted">仅回环放行，暂无额外登记来源</div>';
+    Array.prototype.forEach.call(document.querySelectorAll('#originList button[data-origin]'),function(b){
+      b.onclick=function(){ jp('/api/config/origins/remove',{origin:b.getAttribute('data-origin')}).then(loadOrigins); };
+    });
+  });
+}
+document.getElementById('originAdd').onclick=function(){
+  var v=document.getElementById('originInput').value.trim();
+  if(!v) return;
+  jp('/api/config/origins/add',{origin:v}).then(function(r){
+    if(r&&r.ok){ document.getElementById('originInput').value=''; loadOrigins(); }
+    else alert('添加失败：'+((r&&r.error)||''));
+  });
+};
+
+/* ---- 云端推荐位 ---- */
+var promoCfg=null;
+function loadPromo(){
+  j('/api/promo').then(function(d){
+    if(!d||!d.ok) return;
+    promoCfg=d;
+    document.getElementById('promoAt').textContent=d.updatedAt?('更新 '+d.updatedAt.slice(0,19).replace('T',' ')):'';
+    document.getElementById('promoTitle').value=d.title||'';
+    document.getElementById('promoSub').value=d.subtitle||'';
+    var t=document.getElementById('promoTog');
+    t.textContent=d.enabled?'已启用':'已停用'; t.className=d.enabled?'':'danger';
+    document.getElementById('promoItems').value=(d.items||[]).map(function(it){
+      return [it.id,it.title,it.subtitle||''].join('｜');
+    }).join('\n');
+  });
+}
+document.getElementById('promoTog').onclick=function(){
+  if(!promoCfg) return;
+  savePromo(!promoCfg.enabled);
+};
+document.getElementById('promoSave').onclick=function(){ savePromo(promoCfg?promoCfg.enabled:false); };
+function savePromo(enabled){
+  var rows=document.getElementById('promoItems').value.split('\n').map(function(s){return s.trim()}).filter(Boolean);
+  var items=rows.map(function(line){
+    var p=line.split(/[｜|]/).map(function(x){return x.trim()});
+    return {id:p[0]||'',title:p[1]||'',subtitle:p[2]||''};
+  }).filter(function(x){return x.id&&x.title;}).slice(0,12);
+  jp('/api/promo',{enabled:enabled,title:document.getElementById('promoTitle').value.trim(),
+    subtitle:document.getElementById('promoSub').value.trim(),items:items}).then(function(r){
+    document.getElementById('stat').textContent=r&&r.ok?'推荐位已保存':'保存失败';
+    loadPromo();
+  });
+}
+
+/* ---- 更新通道 ---- */
+function loadChannel(){
+  j('/api/channel').then(function(d){
+    if(!d||!d.ok) return;
+    document.getElementById('channelAt').textContent=d.updatedAt?('更新 '+d.updatedAt.slice(0,19).replace('T',' ')):'';
+    var a=document.getElementById('channelActive');
+    a.textContent=d.active==='beta'?'内测 beta':'稳定 stable';
+    a.className='pill '+(d.active==='beta'?'off':'on');
+    document.getElementById('chBetaVer').value=d.betaVersion||'';
+    document.getElementById('channelNote').textContent=d.note||(d.active==='beta'?'内测通道，仅内测设备比对':'全量放量，默认通道');
+  });
+}
+document.getElementById('chStable').onclick=function(){
+  jp('/api/channel',{active:'stable',betaVersion:''}).then(loadChannel);
+};
+document.getElementById('chBeta').onclick=function(){
+  jp('/api/channel',{active:'beta',betaVersion:document.getElementById('chBetaVer').value.trim()}).then(loadChannel);
+};
+
+/* ---- AI 辅助诊断 ---- */
+function loadAiStatus(){
+  j('/api/ai/diagnose').then(function(d){
+    var p=document.getElementById('aiStatus');
+    if(!d||!d.ok){ p.textContent='不可用'; p.className='pill off'; return; }
+    p.textContent=d.configured?'已配置':'未配置'; p.className='pill '+(d.configured?'on':'off');
+  });
+}
+document.getElementById('aiRun').onclick=function(){
+  var b=document.getElementById('aiRun'), out=document.getElementById('aiOut');
+  b.disabled=true; out.innerHTML='<span class="muted">分析中…</span>';
+  jp('/api/ai/diagnose',{}).then(function(d){
+    b.disabled=false;
+    if(d&&d.ok&&d.reply){ out.innerHTML='<div>'+esc(d.reply).replace(/\n/g,'<br>')+'</div>'; }
+    else {
+      var reason=(d&&d.reason)||'unknown';
+      var hint=reason==='not-configured'?'未配置模型：请在服务端环境变量设置 KH_AI_BASE_URL / KH_AI_API_KEY / KH_AI_MODEL 后重启。':'调用失败：'+reason;
+      out.innerHTML='<span class="muted">'+esc(hint)+'</span>';
+    }
+    loadAiStatus();
+  }).catch(function(e){ b.disabled=false; out.innerHTML='<span class="muted">请求失败：'+esc(e&&e.message||'')+'</span>'; });
+};
+
+function renderAiAnalysis(d){
+  var out=document.getElementById('aiOut');
+  if(!d||!d.ok){
+    var reason=(d&&d.reason)||'unknown';
+    var hint=reason==='not-configured'?'未配置模型：请在服务端环境变量设置 KH_AI_BASE_URL / KH_AI_API_KEY / KH_AI_MODEL 后重启。':'调用失败：'+reason;
+    out.innerHTML='<span class="muted">'+esc(hint)+'</span>'; return;
+  }
+  var a=d.analysis;
+  if(!a){ out.innerHTML='<div>'+esc(d.reply||'（模型未返回结构化结果）').replace(/\n/g,'<br>')+'</div>'; return; }
+  var html='';
+  var issues=Array.isArray(a.issues)?a.issues:[];
+  if(issues.length){
+    html+='<div><b>提取到的问题（'+issues.length+'）</b></div>';
+    issues.forEach(function(it,i){
+      html+='<div style="margin:8px 0;padding:8px;border:1px solid #333;border-radius:6px">'
+        +'<div><b>'+(i+1)+'. '+esc(it.title||'未命名问题')+'</b></div>'
+        +'<div class="muted">根因：'+esc(it.cause||'—')+'</div>';
+      var acts=Array.isArray(it.actions)?it.actions:[];
+      if(acts.length) html+='<div>处理动作：<ol>'+acts.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ol></div>';
+      if(it.patch) html+='<div class="muted">建议补丁片段（人工审核后应用）：</div><pre style="white-space:pre-wrap;background:#111;padding:6px;border-radius:4px">'+esc(it.patch)+'</pre>';
+      html+='</div>';
+    });
+  }
+  var sug=Array.isArray(a.suggestions)?a.suggestions:[];
+  if(sug.length){
+    html+='<div style="margin-top:10px"><b>新功能 / 改进建议（'+sug.length+'）</b></div><ul>';
+    sug.forEach(function(s){ html+='<li><b>'+esc(s.title||'')+'</b> <span class="muted">— '+esc(s.why||'')+'</span></li>'; });
+    html+='</ul>';
+  }
+  if(!issues.length&&!sug.length) html='<div class="muted">模型未提取到明确问题或建议。</div>';
+  out.innerHTML=html;
+}
+document.getElementById('aiAnalyze').onclick=function(){
+  var b=document.getElementById('aiAnalyze'), out=document.getElementById('aiOut');
+  b.disabled=true; out.innerHTML='<span class="muted">结构化分析中…</span>';
+  jp('/api/ai/analyze',{}).then(function(d){
+    b.disabled=false; renderAiAnalysis(d); loadAiStatus();
+  }).catch(function(e){ b.disabled=false; out.innerHTML='<span class="muted">请求失败：'+esc(e&&e.message||'')+'</span>'; });
+};
+
+document.getElementById('reload').onclick=function(){ loadFlags(); loadKid(); loadTel(); loadRank(); loadOrigins(); loadPromo(); loadChannel(); loadAiStatus(); };
+loadFlags(); loadKid(); loadTel(); loadRank(); loadOrigins(); loadPromo(); loadChannel(); loadAiStatus();
 </script>
 </body>
 </html>

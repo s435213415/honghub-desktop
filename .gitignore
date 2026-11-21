@@ -20,6 +20,8 @@ harmony/signing/entry/build/
 !.env.example
 
 # ---------- 构建产物与二进制成品 ----------
+# electron-builder 临时解包目录（win-unpacked）
+$out/
 *.hap
 *.exe
 *.zip

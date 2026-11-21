@@ -13,7 +13,11 @@ const ROOT = env.ROOT;
 const SIGN = path.join(ROOT, 'harmony', 'signing');
 const DIST = path.join(ROOT, 'dist');
 const SCRIPT = path.join(SIGN, 'resign_hap.py');
-const HAP = path.join(DIST, 'honghub-harmony.hap');
+// 变体隔离：KH_HAP_VARIANT=dev 出开发端变体 HAP，产物与 build 记录独立，不覆盖客户包
+const VARIANT = (process.env.KH_HAP_VARIANT || 'client').trim().toLowerCase();
+const IS_DEV = VARIANT === 'dev';
+const HAP = path.join(DIST, IS_DEV ? 'honghub-harmony-dev.hap' : 'honghub-harmony.hap');
+const STAMP = path.join(DIST, IS_DEV ? '.hap-build-dev.json' : '.hap-build.json');
 
 function fail(msg) {
   console.error('[HAP 签名失败] ' + msg);
@@ -46,7 +50,7 @@ if (!fs.existsSync(HAP)) fail('未产出 ' + HAP);
 const buf = fs.readFileSync(HAP);
 const sha = crypto.createHash('sha256').update(buf).digest('hex');
 let meta = {};
-try { meta = JSON.parse(fs.readFileSync(path.join(DIST, '.hap-build.json'), 'utf8')); } catch (e) {}
+try { meta = JSON.parse(fs.readFileSync(STAMP, 'utf8')); } catch (e) {}
 if (Number(meta.versionCode) && Number(meta.versionCode) !== code) fail('dist 内 HAP 版本 #' + meta.versionCode + ' ≠ 本次发版 #' + code);
 if (meta.sha256 && meta.sha256 !== sha) fail('dist 内 HAP 的 sha256 与出包记录不一致');
-console.log('  HAP 新鲜度校验通过：v' + name + ' / #' + code + ' · ' + buf.length + ' B · sha256 ' + sha.slice(0, 16) + '…');
+console.log('  HAP 新鲜度校验通过：v' + name + (IS_DEV ? '（开发端变体）' : '（客户版）') + ' / #' + code + ' · ' + buf.length + ' B · sha256 ' + sha.slice(0, 16) + '…');

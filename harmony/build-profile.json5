@@ -20,7 +20,7 @@
         "name": "default",
         "compileSdkVersion": "26.0.1",
         "compatibleSdkVersion": "4.1.0(11)",
-        "targetSdkVersion": "26.0.1",
+        "targetSdkVersion": "5.0.2(14)",
         "runtimeOS": "OpenHarmony",
         "buildOption": {}
       }

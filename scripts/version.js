@@ -36,7 +36,11 @@ const ENDPOINT = path.join(ROOT, 'server', 'public-endpoint.json');
 const INDEX = path.join(ROOT, 'releases', 'index.json');
 const PAGES = [
   path.join(ROOT, 'app', 'index.html'),
-  path.join(ROOT, 'harmony', 'entry', 'src', 'main', 'resources', 'rawfile', 'www', 'index.html')
+  /* 前端已模块化（1.7.72）：KH_APP_CODE 定义在 app/kh-app.js，必须一起纳入一致性链 */
+  path.join(ROOT, 'app', 'kh-app.js'),
+  path.join(ROOT, 'harmony', 'entry', 'src', 'main', 'resources', 'rawfile', 'www', 'index.html'),
+  /* HAP 端同样是模块化结构：www/kh-app.js 才是 KH_APP_CODE 的落点 */
+  path.join(ROOT, 'harmony', 'entry', 'src', 'main', 'resources', 'rawfile', 'www', 'kh-app.js')
 ];
 
 const ARGS = process.argv.slice(2);

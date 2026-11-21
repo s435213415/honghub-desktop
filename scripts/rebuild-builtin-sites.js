@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 'use strict';
-/* 用 server/manifest.json 的 sites 重写 app/index.html 里的 BUILTIN_SITES 数组。
+/* 用 server/manifest.json 的 sites 重写前端 BUILTIN_SITES 数组。
  * 背景：kh-sources 内嵌 JSON 只是给旧逻辑读的兜底，页面真正渲染平台格子用的是 BUILTIN_SITES，
  * 只重建 JSON 不重建数组，换源/换平台在界面上看不到（U-NEXT 之类旧条目会一直留着）。
+ * 位置变更（1.7.72 模块化）：数组已从 app/index.html 迁到 app/kh-config.js，这里按「先找壳页、
+ * 找不到再找模块」定位，避免布局再变时又要改脚本。
  * 用法：node scripts/rebuild-builtin-sites.js
  */
 const fs = require('fs');
 const path = require('path');
 const ROOT = path.join(__dirname, '..');
-const PAGE = path.join(ROOT, 'app', 'index.html');
+const CANDIDATES = [path.join(ROOT, 'app', 'index.html'), path.join(ROOT, 'app', 'kh-config.js')];
 const MAN = path.join(ROOT, 'server', 'manifest.json');
 
 const man = JSON.parse(fs.readFileSync(MAN, 'utf8'));
@@ -39,6 +41,11 @@ const lines = sites.map(function (s, i) {
   if (s.mobile) parts.push('mobile:' + q(s.mobile));
   return '  {' + parts.join(',') + '}';
 });
+
+const PAGE = CANDIDATES.find(function (p) {
+  try { return fs.readFileSync(p, 'utf8').indexOf('var BUILTIN_SITES = [') >= 0; } catch (e) { return false; }
+});
+if (!PAGE) { console.error('没找到 BUILTIN_SITES（已检查：' + CANDIDATES.map(function (p) { return path.relative(ROOT, p); }).join('、') + '）'); process.exit(1); }
 
 let html = fs.readFileSync(PAGE, 'utf8');
 const startTag = 'var BUILTIN_SITES = [';

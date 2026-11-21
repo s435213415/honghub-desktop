@@ -97,7 +97,7 @@ function fixIndex(moved) {
       const rel = 'dist/_archive_public_versions/v' + hit.ver + '/' + name;
       d.path = rel;
       v.dir = 'dist/_archive_public_versions/v' + hit.ver;
-      if (v.downloadUrl) v.downloadUrl = '/download/archive/' + encodeURIComponent(name);
+      if (v.downloadUrl) v.downloadUrl = '/download/archive/v' + hit.ver + '/' + encodeURIComponent(name);
       changed++;
     }
     if (changed) {

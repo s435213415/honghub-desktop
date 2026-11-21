@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>鸿汇影 · 告警中心</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 22px; background: #0B1622; color: #E8F1FF;
+         font: 14px/1.65 "Microsoft YaHei", -apple-system, sans-serif; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  .sub { color: #8CA0BE; font-size: 12px; margin-bottom: 16px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(200px,1fr)); gap: 12px; margin-bottom: 18px; }
+  .card { background: #12233B; border: 1px solid #1E3450; border-radius: 10px; padding: 13px 15px; }
+  .card .k { color: #8CA0BE; font-size: 12px; margin-bottom: 6px; }
+  .card .v { font-size: 22px; font-weight: 700; }
+  .card .d { color: #7E93B4; font-size: 12px; margin-top: 5px; word-break: break-all; }
+  h2 { font-size: 15px; margin: 22px 0 10px; padding-top: 12px; border-top: 1px solid #1E3450; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid #17283C; vertical-align: top; }
+  th { color: #8CA0BE; font-weight: 600; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; }
+  .p-crit { background: #4A1620; color: #FF9B9B; }
+  .p-warn { background: #453316; color: #FFD48A; }
+  .p-info { background: #1C2B3F; color: #9CC5FF; }
+  .ok { color: #6BE3A0; } .bad { color: #FF9B9B; } .warn { color: #FFD48A; }
+  .empty { color: #7E93B4; font-size: 13px; }
+  input, select { background: #0E1B2B; border: 1px solid #24405F; border-radius: 7px; color: #E8F1FF; padding: 7px 10px; font-size: 13px; }
+  button { background: #1C3555; color: #E8F1FF; border: 1px solid #2A4A72; border-radius: 8px;
+           padding: 7px 14px; font-size: 13px; cursor: pointer; }
+  button:hover { background: #23426A; }
+  button.primary { background: #1F6FEB; border-color: #3B82F6; }
+  .form { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+</style>
+</head>
+<body>
+<h1>鸿汇影 · 告警中心</h1>
+<div class="sub">中枢一直在记告警，但以前只有接口能看、也只留在本机。这里集中分级展示，并把「严重/警告」通过 Webhook 推到你能看到的地方。</div>
+
+<div class="cards">
+  <div class="card"><div class="k">严重</div><div class="v" id="cCrit">-</div><div class="d" id="dCrit">—</div></div>
+  <div class="card"><div class="k">警告</div><div class="v" id="cWarn">-</div><div class="d" id="dWarn">—</div></div>
+  <div class="card"><div class="k">提示</div><div class="v" id="cInfo">-</div><div class="d" id="dInfo">—</div></div>
+  <div class="card"><div class="k">外发通道</div><div class="v" id="cChan">-</div><div class="d" id="dChan">加载中…</div></div>
+</div>
+
+<h2>外发设置</h2>
+<div class="form">
+  <label>启用：<select id="fEnable"><option value="0">关闭</option><option value="1">开启</option></select></label>
+  <label>最低级别：<select id="fLevel"><option value="critical">仅严重</option><option value="warn">严重+警告</option><option value="info">全部</option></select></label>
+  <label>去重窗（分钟）：<input id="fDedupe" type="number" min="1" max="1440" value="30" style="width:90px"></label>
+  <input id="fUrl" placeholder="Webhook 地址（飞书/钉钉群机器人 · 任何接收 JSON 的地址）" style="min-width:420px">
+  <button class="primary" id="btnSave">保存设置</button>
+  <button id="btnTest">发送测试</button>
+  <span id="hint" class="sub" style="margin:0"></span>
+</div>
+<div class="sub" style="margin-top:8px">说明：只做通知，不会触发任何发版动作；外发失败只在这里留痕，不影响中枢运行。</div>
+
+<h2>告警明细（按级别排序，同 code 已合并）</h2>
+<table><thead><tr><th style="width:90px">级别</th><th style="width:22%">告警码</th><th style="width:12%">次数</th><th>最近一次 / 内容</th></tr></thead>
+<tbody id="tbAlerts"><tr><td colspan="4" class="empty">加载中…</td></tr></tbody></table>
+
+<h2>外发记录（最近 12 条）</h2>
+<table><thead><tr><th style="width:20%">时间</th><th style="width:12%">结果</th><th style="width:18%">告警码</th><th>详情 / 返回</th></tr></thead>
+<tbody id="tbOutbox"><tr><td colspan="4" class="empty">加载中…</td></tr></tbody></table>
+
+<script>
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function ts(t){ if(!t) return '—'; return new Date(t).toLocaleString('zh-CN', {hour12:false}); }
+var LV = {critical:['严重','p-crit'], warn:['警告','p-warn'], info:['提示','p-info']};
+
+function fillCfg(c){
+  document.getElementById('fEnable').value = c.enabled ? '1' : '0';
+  document.getElementById('fLevel').value = c.minLevel || 'critical';
+  document.getElementById('fDedupe').value = c.dedupeMin || 30;
+  document.getElementById('fUrl').value = c.webhookUrl || '';
+}
+
+function load(){
+  fetch('/api/alerts/center', {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(d){
+    if(!d || !d.ok){ document.getElementById('hint').textContent = '读取失败'; return; }
+    var t = d.totals;
+    document.getElementById('cCrit').textContent = t.critical;
+    document.getElementById('cCrit').className = 'v ' + (t.critical ? 'bad' : 'ok');
+    document.getElementById('dCrit').textContent = t.critical ? '有严重告警，先处理' : '无';
+    document.getElementById('cWarn').textContent = t.warn;
+    document.getElementById('cWarn').className = 'v ' + (t.warn ? 'warn' : 'ok');
+    document.getElementById('dWarn').textContent = t.warn ? '待观察' : '无';
+    document.getElementById('cInfo').textContent = t.info;
+    document.getElementById('dInfo').textContent = '共去重后 ' + t.total + ' 类';
+    var cfg = d.config;
+    document.getElementById('cChan').textContent = cfg.enabled ? '已启用' : '未启用';
+    document.getElementById('cChan').className = 'v ' + (cfg.enabled ? 'ok' : 'warn');
+    document.getElementById('dChan').textContent = (cfg.webhookUrl ? 'Webhook 已配置' : '未配置地址') + ' · 门槛 ' + ({critical:'仅严重',warn:'严重+警告',info:'全部'}[cfg.minLevel] || cfg.minLevel);
+    fillCfg(cfg);
+
+    document.getElementById('tbAlerts').innerHTML = (d.alerts || []).map(function(a){
+      var lv = LV[a.level] || LV.info;
+      return '<tr><td><span class="pill ' + lv[1] + '">' + lv[0] + '</span></td><td>' + esc(a.code) + '</td><td>' + (a.count || 1) + '</td><td>' +
+        '<span class="sub">' + ts(a.lastAt) + '</span><br>' + esc((a.detail || '').slice(0, 200)) + '</td></tr>';
+    }).join('') || '<tr><td colspan="4" class="empty">当前没有告警（健康监控也没报异常）</td></tr>';
+
+    document.getElementById('tbOutbox').innerHTML = (d.outbox || []).map(function(x){
+      return '<tr><td>' + ts(x.at) + '</td><td>' + (x.ok ? '<span class="ok">成功</span>' : '<span class="bad">失败</span>') +
+        '</td><td>' + esc(x.code || x.kind || '') + '</td><td>' + esc((x.error || x.body || (x.status ? 'HTTP ' + x.status : '')).slice(0, 160)) + '</td></tr>';
+    }).join('') || '<tr><td colspan="4" class="empty">还没有外发记录</td></tr>';
+  }).catch(function(e){ document.getElementById('hint').textContent = '读取失败：' + e.message; });
+}
+
+document.getElementById('btnSave').onclick = function(){
+  var body = {
+    enabled: document.getElementById('fEnable').value === '1',
+    minLevel: document.getElementById('fLevel').value,
+    dedupeMin: Number(document.getElementById('fDedupe').value) || 30,
+    webhookUrl: document.getElementById('fUrl').value.trim()
+  };
+  fetch('/api/alerts/config', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
+    .then(function(r){ return r.json(); }).then(function(d){
+      document.getElementById('hint').textContent = d.ok ? '已保存' : ('保存失败：' + (d.error || ''));
+      load();
+    }).catch(function(e){ document.getElementById('hint').textContent = '保存失败：' + e.message; });
+};
+
+document.getElementById('btnTest').onclick = function(){
+  var b = this; b.disabled = true;
+  document.getElementById('hint').textContent = '正在发送…';
+  fetch('/api/alerts/test', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({url: document.getElementById('fUrl').value.trim()})})
+    .then(function(r){ return r.json(); }).then(function(d){
+      document.getElementById('hint').textContent = d.ok ? ('已送达（HTTP ' + d.status + '）') : ('发送失败：' + (d.error || ('HTTP ' + (d.status || ''))));
+      b.disabled = false; load();
+    }).catch(function(e){ document.getElementById('hint').textContent = '发送失败：' + e.message; b.disabled = false; });
+};
+
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>

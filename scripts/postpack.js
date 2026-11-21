@@ -65,15 +65,16 @@ const zipRead = require('./lib/zip-read');
 function freshHap(p) {
   if (!fs.existsSync(p)) return false;
   /* 包内前端目录以实际壳包为准：v1.7.8 起统一为 resources/rawfile/www/，
-     早期壳包曾用 movie-site，这里两个都试，避免路径变更把新鲜度判定打哑。 */
-  for (const entry of ['resources/rawfile/www/index.html', 'resources/rawfile/movie-site/index.html']) {
-    try {
-      const html = zipRead.readText(p, entry);
-      const m = html.match(/var KH_APP_CODE\s*=\s*(\d+)/);
-      if (m && Number(m[1]) === RELEASE_CODE && html.indexOf('KH_HARMONY') >= 0) return true;
-    } catch (e) { /* 换下一个候选路径 */ }
+     早期壳包曾用 movie-site，这里两个都试，避免路径变更把新鲜度判定打哑。
+     1.7.72 起前端模块化：KH_APP_CODE 在 kh-app.js、KH_HARMONY 也在模块里，必须合并判定。 */
+  const parts = [];
+  for (const entry of ['resources/rawfile/www/index.html', 'resources/rawfile/movie-site/index.html',
+                       'resources/rawfile/www/kh-app.js', 'resources/rawfile/www/kh-config.js']) {
+    try { parts.push(zipRead.readText(p, entry)); } catch (e) { /* 换下一个候选路径 */ }
   }
-  return false;
+  const text = parts.join('\n');
+  const m = text.match(/var KH_APP_CODE\s*=\s*(\d+)/);
+  return !!(m && Number(m[1]) === RELEASE_CODE && text.indexOf('KH_HARMONY') >= 0);
 }
 const buildStamp = (function () { try { return JSON.parse(fs.readFileSync(path.join(DIST, '.hap-build.json'), 'utf8')); } catch (e) { return null; } })();
 const builtSha = buildStamp && buildStamp.sha256;

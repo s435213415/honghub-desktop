@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "size": 990814,
+  "sha256": "edf66a181928a00d8d08336d203d354b0eca7426b5fdbc069e88ba2224ebae50",
+  "versionName": "1.7.69",
+  "versionCode": 1000183,
+  "chain": "official-openharmony",
+  "chainOwner": "sdk-public",
+  "builtAt": "2026-11-19T21:09:33.681905+08:00",
+  "source": "harmony/signing（壳包注入 + official-openharmony 签名）"
+}

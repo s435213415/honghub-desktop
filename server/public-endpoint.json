@@ -6,12 +6,12 @@
   "distribution": "workbuddy-sites",
   "mirrors": [],
   "note": "公网分发端点（非敏感）：正式站点的公开下载域名与分享码，不含任何密钥/口令。临时隧道 / 127.0.0.1 只用于本机联调，绝不作为客户分发地址（重启即失效）。可用 KH_PUBLIC_BASE_URL / KH_PUBLIC_SHARE_QUERY 覆盖，或换成自有稳定域名/对象存储。",
-  "versionName": "1.7.43",
-  "versionCode": 1000157,
-  "desktopUrl": "https://wbapp-j8tm07cirj5x0krfyivhfz.app.workbuddy.host/honghub/v1.7.43/desktop-setup.exe?sharecode=E4RJGYDYNW",
-  "hapUrl": "https://wbapp-j8tm07cirj5x0krfyivhfz.app.workbuddy.host/honghub/v1.7.43/HongHubMovie.hap?sharecode=E4RJGYDYNW",
+  "versionName": "1.7.84",
+  "versionCode": 1000198,
+  "desktopUrl": "https://wbapp-j8tm07cirj5x0krfyivhfz.app.workbuddy.host/honghub/v1.7.84/desktop-setup.exe?sharecode=E4RJGYDYNW",
+  "hapUrl": "https://wbapp-j8tm07cirj5x0krfyivhfz.app.workbuddy.host/honghub/v1.7.84/HongHubMovie.hap?sharecode=E4RJGYDYNW",
   "desktopSha256Source": "remote-manifest.json",
   "desktopSha256Note": "安装包自身 SHA256 / 体积刻意不写入随包配置：该配置是 exe 的一部分，写死会导致重打包后哈希再次变化而永远对不上。真实值由 server/distribute.js 运行时从公网 remote-manifest.json 拉取。",
-  "hapSha256": "279f4449f4738c81ef299c420c5c3fd3f2668d35e84edd7de4f0b7990c24afbb",
-  "hapSize": 959160
+  "hapSha256Source": "remote-manifest.json",
+  "hapSha256Note": "1.7.83 起 HAP 的 SHA256 / 体积同样不在随包里写死。旧的 279f44… / 959160 B 是 1.7.70 的值，留着会让每一次校验都失败，已删除。"
 }

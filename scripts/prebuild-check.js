@@ -7,6 +7,8 @@ const path = require('path');
 const vm = require('vm');
 const http = require('http');
 const { spawn } = require('child_process');
+/* 前端已模块化：页面壳 + app/kh-*.js 外链。所有「扫页面」断言走聚合视图，否则会扫空假绿。 */
+const fe = require('./frontend-source');
 
 const ROOT = path.join(__dirname, '..');
 const errs = [];
@@ -46,7 +48,10 @@ try {
 } catch (e) { fail('读取中枢版本失败：' + e.message); }
 
 if (targetCode) {
-  for (const p of PAGES) {
+  /* 版本号实际定义位置：桌面端在 app/kh-app.js（模块化后不在壳页），开鸿端仍是 rawfile/www/index.html */
+  const CODE_FILES = ['app/kh-app.js', 'harmony/entry/src/main/resources/rawfile/www/index.html'];
+  for (const p of CODE_FILES) {
+    if (!fs.existsSync(at(p))) continue;
     let s = fs.readFileSync(at(p), 'utf8');
     const m = s.match(/var KH_APP_CODE\s*=\s*(\d+)/);
     if (!m) continue;
@@ -59,8 +64,8 @@ if (targetCode) {
   }
 }
 
-// 2) 静态页面脚本语法（影站 + 开鸿端）
-for (const p of PAGES) checkSyntax(p, fs.readFileSync(at(p), 'utf8'));
+// 2) 静态页面脚本语法（影站 + 开鸿端）：按聚合视图检查，拆分出的 kh-*.js 也逐段过 vm
+for (const p of PAGES) checkSyntax(p, fe.merged(at(p)));
 
 // 2.5) HAP 新鲜度阻断：包内前端版本必须等于本次发版，防止「版本号升了但沿用旧 HAP」
 //      旧包会被 postpack 重新计算 sha256 伪装成新产物，所以必须在打包前从包内读真实内容核对
@@ -90,7 +95,8 @@ if (!STATIC) {
     pass('页面缓存闸：安装包内无本地缓存（不会覆盖随包页面）');
   } else {
     const src = fs.readFileSync(page, 'utf8');
-    const want = (src.match(/var KH_APP_CODE\s*=\s*(\d+)/) || [])[1];
+    /* 模块化后版本号在 app/kh-app.js，从聚合视图取；缓存侧若已没有内联版本号，按「需对齐」处理。 */
+    const want = (fe.merged(page).match(/var KH_APP_CODE\s*=\s*(\d+)/) || [])[1];
     const got = (fs.readFileSync(cache, 'utf8').match(/var KH_APP_CODE\s*=\s*(\d+)/) || [])[1];
     if (want && got !== want) {
       fs.writeFileSync(cache, src);
@@ -113,7 +119,7 @@ if (!STATIC) {
 try {
   const man = JSON.parse(fs.readFileSync(at('server/manifest.json'), 'utf8'));
   const want = ((man.sources || {}).sites || []).length;
-  const html = fs.readFileSync(at('app/index.html'), 'utf8');
+  const html = fe.merged('app/index.html');
   const m = html.match(/var BUILTIN_SITES = \[[\s\S]*?\n\];/);
   if (!m) fail('页面缺少 BUILTIN_SITES 基线');
   else {
@@ -252,7 +258,7 @@ function get(pathname) {
         (all.summary.osVersions || 0) + ' 个版本 · 人工项 0');
     } catch (e) { fail('OS 版本检测端点检查失败：' + e.message); }
     for (const p of PAGES) {
-      const s = fs.readFileSync(at(p), 'utf8');
+      const s = fe.merged(at(p));
       const fns = ['khPlayerProfile', 'khHlsConfig', 'khMemoryGuard', 'khApplyDeliveryPlan',
         'khFeatureMemory', 'khFeatureAutoUpdate', 'KH_MEM_TIERS',
         'khReportDevice', 'khDevicePayload', 'khFeatureOS'];

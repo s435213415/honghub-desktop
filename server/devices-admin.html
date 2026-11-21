@@ -55,6 +55,18 @@
 <h2>设备列表</h2>
 <div id="list" class="empty">加载中…</div>
 
+<h2>批量下发队列</h2>
+<div class="sub" style="margin:0 0 8px">
+  服务端已支持排队：选一批设备 + 选动作入队，客户端每 60 秒取一条执行并回报。
+  <b style="color:#7BE0A6">客户端已内置轮询（khQueuePoller），1.7.58 及更早的成品包里没有这段代码；设备装上新版后队列才会被真正消费</b>——队列条目长期不消失，就说明那台设备还是旧包。</div>
+<div class="bar">
+  <input id="qNote" placeholder="备注（可留空）" style="width:260px">
+  <button onclick="enqueue()">把选中设备入队</button>
+  <button onclick="clearQueue()">清空队列</button>
+  <span id="qState" class="empty">队列读取中…</span>
+</div>
+<div id="qList" class="empty">加载中…</div>
+
 <h2>能力表说明</h2>
 <div class="sub" style="margin:0">
   caps 六键：<b>sdk</b>（系统 API 版本，不是 0/1）· <b>fullscreen</b>（全屏是否生效）· <b>hideBars</b>（系统栏是否隐藏）·
@@ -110,15 +122,61 @@ function load(){
       } else {
         chips = '<span class="chip na">该条目是历史数据，没有 caps（升级到带上报的版本后才有）</span>';
       }
-      return '<div class="dev"><div class="top"><span class="id">' + esc(id) + '</span>' +
+      return '<div class="dev"><div class="top"><input type="checkbox" class="qp" value="' + esc(id) + '" style="width:auto;margin-right:8px"><span class="id">' + esc(id) + '</span>' +
         '<span class="meta">OS ' + esc(e.osVersion || '—') + ' · API ' + esc(e.apiVersion || '—') +
         ' · 形态 ' + esc(e.deviceType || '—') + ' · 平台 ' + esc(e.platform || '—') +
         ' · 最后上报 ' + esc(fmt(e.at || e.lastSeen)) + '</span></div>' +
         '<div class="chips">' + chips + '</div></div>';
     }).join('');
+    loadQueue();
   }).catch(function(err){
     el('state').textContent = '读取失败：' + (err && err.message ? err.message : err) + '（若中枢开了口令，先在上面填访问口令再刷新）';
   });
+}
+
+var QACTIONS = ['update', 'reload', 'report', 'diagnose'];
+function loadQueue(){
+  fetch('/api/devices/queue', {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(d){
+    if(!d || !d.ok){ el('qState').textContent = '队列读取失败'; return; }
+    el('qState').textContent = '队列 ' + d.total + ' 条';
+    if(!d.items.length){ el('qList').className = 'empty'; el('qList').innerHTML = '队列为空'; return; }
+    el('qList').className = '';
+    el('qList').innerHTML = d.items.map(function(x){
+      var label = (d.actions && d.actions[x.action] && d.actions[x.action].label) || x.action;
+      var consumed = Array.isArray(x.consumedBy) ? x.consumedBy : [];
+      var detail = consumed.length
+        ? ' · 已回报 ' + consumed.length + ' 台：' + consumed.slice(0,3).map(function(c){ return esc(c.deviceId) + '(' + esc(c.result || 'done') + ')'; }).join('、') + (consumed.length > 3 ? ' 等' : '')
+        : ' · 还没有设备回报';
+      var stateTag = x.state === 'done' ? '<span style="color:#7BE0A6">已完成</span>' : (x.state === 'expired' ? '<span style="color:#9FB3D0">已过期</span>' : '<span style="color:#FFD48A">待执行</span>');
+      return '<div class="dev"><div class="top"><span class="id">' + esc(label) + (x.version ? ' → v' + esc(x.version) : '') +
+        '</span><span class="meta">' + esc(fmt(x.at)) + ' · 目标 ' + x.ids.length + ' 台 · ' + stateTag + detail +
+        (x.note ? ' · ' + esc(x.note) : '') + '</span></div><div class="chips"><span class="chip na">' + esc(x.ids.slice(0,6).join('、')) + (x.ids.length>6?' 等':'') + '</span></div></div>';
+    }).join('');
+  }).catch(function(){ el('qState').textContent = '队列读取失败'; });
+}
+function enqueue(){
+  var ids = Array.prototype.slice.call(document.querySelectorAll('.qp:checked')).map(function(x){ return x.value; });
+  if(!ids.length){ el('qState').textContent = '先用设备卡片左侧的勾选框选设备'; return; }
+  var action = prompt('动作（' + QACTIONS.join(' / ') + '）', 'update');
+  if(!action) return;
+  action = action.trim();
+  if(QACTIONS.indexOf(action) < 0){ el('qState').textContent = '不支持的动作：' + action; return; }
+  /* 灰度比例：默认 100%（全量）；填 20 表示约 20% 设备先领，按 deviceId 稳定分流 */
+  var pctRaw = prompt('灰度比例（1–100，100 = 全量下发）', '100');
+  if(pctRaw === null) return;
+  var percent = Number(String(pctRaw).trim());
+  if(!isFinite(percent) || percent <= 0 || percent > 100){ el('qState').textContent = '灰度比例需在 1–100 之间'; return; }
+  var body = { ids: ids, action: action, note: el('qNote').value.trim(), percent: percent };
+  fetch('/api/devices/queue/add', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
+    .then(function(r){ return r.json(); }).then(function(d){
+      el('qState').textContent = d && d.ok ? ('已入队：' + d.queued + ' 台设备 · ' + action + ' · 灰度 ' + (d.percent || 100) + '%（新版客户端 60 秒内取走）') : ('入队失败：' + ((d && d.error) || ''));
+      loadQueue();
+    }).catch(function(e){ el('qState').textContent = '入队失败：' + e.message; });
+}
+function clearQueue(){
+  if(!confirm('清空整个下发队列？已入队但未消费的动作都会丢。')) return;
+  fetch('/api/devices/queue/clear', {method:'POST'}).then(function(r){ return r.json(); }).then(function(){ loadQueue(); })
+    .catch(function(e){ el('qState').textContent = '清空失败：' + e.message; });
 }
 try { el('tok').value = tok(); } catch (e) {}
 load();

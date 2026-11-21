@@ -1,0 +1,473 @@
+{
+  "_comment": "界面落点与事件名补列。no 对应 scripts/config-items.json。uv=界面位置，evt=真实点击动作名（kh-app.js 中的 act），func=实现函数。计划项前缀「计划：」表示尚未实现。",
+  "items": [
+    {
+      "no": 1,
+      "ui": "设置 · 本机中枢 › 显示与辅助",
+      "evt": "display-save（主题随显示设置落盘）",
+      "func": "getStore('kh_theme')"
+    },
+    {
+      "no": 2,
+      "ui": "设置 · 本机中枢 › 字号调节",
+      "evt": "font-save",
+      "func": "kh_font_scale"
+    },
+    {
+      "no": 3,
+      "ui": "设置 · 本机中枢 › 显示与辅助",
+      "evt": "内部函数（护眼开关直写）",
+      "func": "kh_night"
+    },
+    {
+      "no": 4,
+      "ui": "设置 · 本机中枢 › 显示与辅助",
+      "evt": "内部函数（亮度滑杆）",
+      "func": "kh_brightness"
+    },
+    {
+      "no": 5,
+      "ui": "设置 · 本机中枢 › 显示与辅助 / 字号调节",
+      "evt": "内部函数（长辈模式开关）",
+      "func": "kh_senior"
+    },
+    {
+      "no": 6,
+      "ui": "设置 · 本机中枢 › 显示与辅助",
+      "evt": "内部函数（语言切换）",
+      "func": "kh_lang"
+    },
+    {
+      "no": 7,
+      "ui": "播放器 › 清晰度",
+      "evt": "内部函数",
+      "func": "kh_quality"
+    },
+    {
+      "no": 8,
+      "ui": "播放器 › 画面比例",
+      "evt": "内部函数",
+      "func": "kh_fit"
+    },
+    {
+      "no": 9,
+      "ui": "播放器 › 倍速",
+      "evt": "内部函数（长按倍速）",
+      "func": "kh_rate"
+    },
+    {
+      "no": 10,
+      "ui": "播放器 › 音量",
+      "evt": "内部函数",
+      "func": "kh_vol / kh_mute"
+    },
+    {
+      "no": 11,
+      "ui": "设置 · 本机中枢 › 响度均衡",
+      "evt": "eq-save",
+      "func": "kh_loudness_eq"
+    },
+    {
+      "no": 12,
+      "ui": "播放器 › 字幕",
+      "evt": "内部函数",
+      "func": "kh_sub_style"
+    },
+    {
+      "no": 13,
+      "ui": "设置 · 本机中枢 › 定时关闭",
+      "evt": "sleep-save",
+      "func": "kh_sleep_min"
+    },
+    {
+      "no": 14,
+      "ui": "设置 · 本机中枢 › 兼容播放模式",
+      "evt": "compat-save",
+      "func": "kh_compat_mode"
+    },
+    {
+      "no": 15,
+      "ui": "设置 · 本机中枢 › 开机自启",
+      "evt": "autostart-save",
+      "func": "主进程 setLoginItemSettings"
+    },
+    {
+      "no": 16,
+      "ui": "设置 · 本机中枢 › 版本与升级",
+      "evt": "autoupd-save / kh-check-update",
+      "func": "kh_auto_update"
+    },
+    {
+      "no": 17,
+      "ui": "设置 · 本机中枢 › 中枢地址（多机部署）",
+      "evt": "hub-save / hub-test / boot-retry",
+      "func": "kh_hub_url"
+    },
+    {
+      "no": 18,
+      "ui": "网站视图 › 我的网站",
+      "evt": "site-add / site-del / site-edit / site-up / site-clear / site-probe / site-import / site-batch / site-export / site-group-filter",
+      "func": "kh_sites"
+    },
+    {
+      "no": 19,
+      "ui": "网站视图 › 远程配置 · 实时同步",
+      "evt": "remote-sync / remote-paste / remote-auto",
+      "func": "kh_remote / applyRemoteData"
+    },
+    {
+      "no": 20,
+      "ui": "网站视图 › 影视仓 · 多仓管理 / 添加影视仓",
+      "evt": "wh-add / wh-refresh / wh-refresh-all / wh-toggle / wh-del / wh-paste",
+      "func": "kh_wh / kh_wh_sites / whFetchApply / normalizeWarehouse"
+    },
+    {
+      "no": 21,
+      "ui": "资源视图 › 我配置的资源",
+      "evt": "res-probe",
+      "func": "kh_vod_res"
+    },
+    {
+      "no": 22,
+      "ui": "直播视图 › 频道列表 / 添加直播频道",
+      "evt": "live-backup-add / sync-go",
+      "func": "kh_live / kh_live_backup / kh_livefav"
+    },
+    {
+      "no": 23,
+      "ui": "搜索结果 › 搜索历史",
+      "evt": "内部函数（搜索历史直写）",
+      "func": "kh_search_hist"
+    },
+    {
+      "no": 24,
+      "ui": "各卡片 › 我的收藏",
+      "evt": "play / watchlater-del / watchsub-del",
+      "func": "kh_fav / kh_hist / kh_watchlater / kh_watchlist / kh_prog"
+    },
+    {
+      "no": 25,
+      "ui": "设置 · 本机中枢 › 本机缓存与数据",
+      "evt": "issue-export / issue-export-txt（数据备份走导出链路）",
+      "func": "备份导出/导入"
+    },
+    {
+      "no": 26,
+      "ui": "计划：分类片单与内置入口区 › 「编辑入口」抽屉",
+      "evt": "计划：plat-vis / plat-pin",
+      "func": "计划：kh_plat_pref"
+    },
+    {
+      "no": 27,
+      "ui": "计划：搜索结果页 › 来源筛选条",
+      "evt": "计划：search-scope",
+      "func": "计划：kh_search_scope"
+    },
+    {
+      "no": 28,
+      "ui": "计划：播放器 HUD › 续播提示条",
+      "evt": "计划：resume-set",
+      "func": "计划：kh_resume"
+    },
+    {
+      "no": 29,
+      "ui": "计划：播放器 › 下一集倒计时浮层",
+      "evt": "计划：autonext-set",
+      "func": "计划：kh_autonext"
+    },
+    {
+      "no": 30,
+      "ui": "计划：播放器 HUD › 音轨选单",
+      "evt": "计划：audio-lang",
+      "func": "计划：kh_audio_lang"
+    },
+    {
+      "no": 31,
+      "ui": "计划：播放器 HUD › 字幕选单 / 设置 › 字幕",
+      "evt": "计划：sub-auto / sub-dir",
+      "func": "计划：kh_sub_auto / kh_sub_dir"
+    },
+    {
+      "no": 32,
+      "ui": "计划：设置 › 字幕 › 外观细调",
+      "evt": "计划：sub-font / sub-outline / sub-pos",
+      "func": "计划：kh_sub_font / kh_sub_outline / kh_sub_pos"
+    },
+    {
+      "no": 33,
+      "ui": "计划：直播视图 › 播放设置",
+      "evt": "计划：live-tune",
+      "func": "计划：kh_live_tune"
+    },
+    {
+      "no": 34,
+      "ui": "计划：直播视图 › 默认清晰度 / 启动行为",
+      "evt": "计划：live-pref",
+      "func": "计划：kh_live_pref"
+    },
+    {
+      "no": 35,
+      "ui": "计划：设置 › 网络 › 超时与重试",
+      "evt": "计划：net-tune",
+      "func": "计划：kh_net_tune"
+    },
+    {
+      "no": 36,
+      "ui": "计划：设置 › 网络 › 并发",
+      "evt": "计划：net-conc",
+      "func": "计划：kh_net_conc"
+    },
+    {
+      "no": 37,
+      "ui": "计划：设置 › 网络 › IP 族与 DNS",
+      "evt": "计划：net-family / dns-save",
+      "func": "计划：主进程 DNS 解析"
+    },
+    {
+      "no": 38,
+      "ui": "计划：设置 › 下载 / 下载中心",
+      "evt": "计划：dl-save / dl-limit",
+      "func": "计划：下载器配置"
+    },
+    {
+      "no": 39,
+      "ui": "计划：设置 › 通知",
+      "evt": "计划：notify-save",
+      "func": "计划：主进程 Notification"
+    },
+    {
+      "no": 40,
+      "ui": "计划：设置 › 快捷键",
+      "evt": "计划：hotkey-set",
+      "func": "计划：globalShortcut"
+    },
+    {
+      "no": 41,
+      "ui": "计划：设置 › 输入 › 音量键归属",
+      "evt": "计划：volkey",
+      "func": "计划：kh_volkey"
+    },
+    {
+      "no": 42,
+      "ui": "计划：设置 › 外观 › 焦点框颜色",
+      "evt": "计划：focus-color",
+      "func": "计划：主题变量"
+    },
+    {
+      "no": 43,
+      "ui": "计划：设置 › 数据 › 历史保留",
+      "evt": "计划：hist-cap",
+      "func": "计划：kh_hist_cap"
+    },
+    {
+      "no": 44,
+      "ui": "计划：设置 › 备份 › 自动备份",
+      "evt": "计划：backup-auto",
+      "func": "计划：kh_backup_auto"
+    },
+    {
+      "no": 45,
+      "ui": "计划：设置 › 备份 › 导出格式",
+      "evt": "计划：export-fmt",
+      "func": "计划：备份导出"
+    },
+    {
+      "no": 46,
+      "ui": "设置 · 本机中枢 › 问题摘要自动上报",
+      "evt": "issue-toggle / issue-check / issue-remote-save / issue-remote-toggle",
+      "func": "kh_consent（已有开关，缺粒度）"
+    },
+    {
+      "no": 47,
+      "ui": "设置 · 本机中枢 › 问题摘要自动上报",
+      "evt": "计划：devid-reset",
+      "func": "kh_issue_devid（已有存储，缺重置入口）"
+    },
+    {
+      "no": 48,
+      "ui": "计划：设置 › 儿童与家长控制 / 首次进入 PIN",
+      "evt": "计划：kid-set / kid-pin",
+      "func": "计划：kh_kid"
+    },
+    {
+      "no": 49,
+      "ui": "计划：设置 › 外观 › 卡片密度",
+      "evt": "计划：density",
+      "func": "计划：kh_density"
+    },
+    {
+      "no": 50,
+      "ui": "计划：设置 › 外观 › 动效开关",
+      "evt": "计划：motion",
+      "func": "计划：kh_motion"
+    },
+    {
+      "no": 51,
+      "ui": "计划：设置 › 播放 › 默认打开方式",
+      "evt": "计划：open-mode",
+      "func": "计划：kh_open_mode"
+    },
+    {
+      "no": 52,
+      "ui": "计划：设置 › 播放 › 外部播放器",
+      "evt": "计划：ext-player-path",
+      "func": "计划：外部播放器桥"
+    },
+    {
+      "no": 53,
+      "ui": "计划：设置 › 窗口 / 右键菜单",
+      "evt": "计划：win-always / pip",
+      "func": "计划：kh_win_always / kh_pip"
+    },
+    {
+      "no": 54,
+      "ui": "计划：设置 › 窗口 › 关闭行为",
+      "evt": "计划：close-act",
+      "func": "计划：kh_close_act"
+    },
+    {
+      "no": 55,
+      "ui": "计划：设置 › 系统 › 单实例",
+      "evt": "计划：single-inst",
+      "func": "计划：主进程 requestSingleInstanceLock"
+    },
+    {
+      "no": 56,
+      "ui": "计划：网站视图 › 影视仓站点 › 并入开关",
+      "evt": "计划：wh-pref-group",
+      "func": "计划：kh_wh_pref"
+    },
+    {
+      "no": 57,
+      "ui": "计划：网站视图 › 影视仓站点 › 单条删/白",
+      "evt": "计划：wh-site-del / wh-site-pin",
+      "func": "计划：kh_wh_pref"
+    },
+    {
+      "no": 58,
+      "ui": "计划：首次启动 › 档案选择 / 设置 › 档案",
+      "evt": "计划：profile-switch / profile-add",
+      "func": "计划：kh_profiles"
+    },
+    {
+      "no": 59,
+      "ui": "计划：设置 › 内容 › 元数据来源",
+      "evt": "计划：meta-save",
+      "func": "计划：kh_meta_src"
+    },
+    {
+      "no": 60,
+      "ui": "计划：设置 › 内容 › 字幕与 AI",
+      "evt": "计划：sub-src-save / ai-key-save",
+      "func": "计划：kh_sub_src / kh_ai_key"
+    },
+    {
+      "no": 61,
+      "ui": "计划：设置 › 高级 › Webhook",
+      "evt": "计划：webhook-save / webhook-test",
+      "func": "计划：kh_webhook"
+    },
+    {
+      "no": 62,
+      "ui": "计划：设置 › 存储 › 目录与权限",
+      "evt": "计划：path-pick / path-revoke",
+      "func": "计划：主进程 dialog + 权限"
+    },
+    {
+      "no": 63,
+      "ui": "计划：设置 · 本机中枢（合并为统一配置中心）",
+      "evt": "计划：cfg-search / cfg-reset-group",
+      "func": "计划：重排现有 38 键"
+    },
+    {
+      "no": 64,
+      "ui": "计划：设置 › 备份 › 整机配置包",
+      "evt": "计划：cfg-export / cfg-import",
+      "func": "计划：kh-config.json"
+    },
+    {
+      "no": 65,
+      "ui": "计划：设置 › 备份 › 二维码分享",
+      "evt": "计划：cfg-qr",
+      "func": "计划：二维码编码"
+    },
+    {
+      "no": 66,
+      "ui": "计划：设置 › 备份 › 云同步",
+      "evt": "计划：sync-pull / sync-push",
+      "func": "计划：中枢接口"
+    },
+    {
+      "no": 67,
+      "ui": "计划：设置 › 备份 › 快照列表",
+      "evt": "计划：snap-list / snap-restore",
+      "func": "计划：kh_snapshots"
+    },
+    {
+      "no": 68,
+      "ui": "计划：设置 › 体检 / 影视仓区块 › 一键体检",
+      "evt": "计划：health-run",
+      "func": "计划：配置体检"
+    },
+    {
+      "no": 69,
+      "ui": "服务端后台（客户端无入口）",
+      "evt": "服务端 /api/config/defaults",
+      "func": "计划：本机覆盖层"
+    },
+    {
+      "no": 70,
+      "ui": "服务端后台（客户端无入口）",
+      "evt": "服务端 /api/config/flags",
+      "func": "计划：flag 求值"
+    },
+    {
+      "no": 71,
+      "ui": "客户端只读展示（锁定标记）",
+      "evt": "服务端下发 lock 列表",
+      "func": "计划：锁定项渲染"
+    },
+    {
+      "no": 72,
+      "ui": "无界面（改存储层）",
+      "evt": "—",
+      "func": "计划：localStorage → 配置文件"
+    },
+    {
+      "no": 73,
+      "ui": "计划：设置 › 备份 › 导入差异预览",
+      "evt": "计划：import-preview / import-apply",
+      "func": "计划：差异比对"
+    },
+    {
+      "no": 74,
+      "ui": "无界面（各键写入时静默生效）",
+      "evt": "—",
+      "func": "计划：容量守卫"
+    },
+    {
+      "no": 75,
+      "ui": "无界面（同步机制）",
+      "evt": "—",
+      "func": "计划：跨进程同步"
+    },
+    {
+      "no": 76,
+      "ui": "计划：首页推荐位 / 片单模板 / 榜单来源",
+      "evt": "计划：ops-set",
+      "func": "计划：服务端下发"
+    },
+    {
+      "no": 77,
+      "ui": "计划：首页顶部横幅 / 活动入口",
+      "evt": "计划：notice-set",
+      "func": "计划：服务端下发"
+    },
+    {
+      "no": 78,
+      "ui": "计划：设置 › 外观 › 主题包",
+      "evt": "计划：skin-install / skin-del",
+      "func": "计划：主题包目录"
+    }
+  ]
+}

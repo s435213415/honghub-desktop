@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>鸿汇影 · 发布与运维</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 22px; background: #0B1622; color: #E8F1FF;
+         font: 14px/1.65 "Microsoft YaHei", -apple-system, sans-serif; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  .sub { color: #8CA0BE; font-size: 12px; margin-bottom: 16px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(200px,1fr)); gap: 12px; margin-bottom: 16px; }
+  .card { background: #12233B; border: 1px solid #1E3450; border-radius: 10px; padding: 13px 15px; }
+  .card .k { color: #8CA0BE; font-size: 12px; margin-bottom: 6px; }
+  .card .v { font-size: 22px; font-weight: 700; }
+  .card .d { color: #7E93B4; font-size: 12px; margin-top: 5px; word-break: break-all; }
+  h2 { font-size: 15px; margin: 22px 0 10px; padding-top: 12px; border-top: 1px solid #1E3450; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid #17283C; vertical-align: top; }
+  th { color: #8CA0BE; font-weight: 600; }
+  .ok { color: #6BE3A0; } .bad { color: #FF9B9B; } .warn { color: #FFD48A; } .mut { color: #7E93B4; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; }
+  .p-ok { background: #14472F; color: #6BE3A0; } .p-bad { background: #4A1620; color: #FF9B9B; }
+  .p-warn { background: #453316; color: #FFD48A; } .p-cur { background: #123A63; color: #9CC5FF; }
+  button { background: #1C3555; color: #E8F1FF; border: 1px solid #2A4A72; border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+  button:hover { background: #23426A; }
+  button.danger { background: #4A1620; border-color: #7A2231; }
+  .gate { display: grid; grid-template-columns: repeat(auto-fit,minmax(320px,1fr)); gap: 14px; }
+  .gate .col { background: #12233B; border: 1px solid #1E3450; border-radius: 10px; padding: 12px 14px; }
+  .gate .col b { display: block; margin-bottom: 8px; }
+  .g-row { font-size: 12px; padding: 3px 0; border-bottom: 1px dashed #17283C; }
+  .logs { display: grid; grid-template-columns: 260px 1fr; gap: 14px; }
+  .loglist { background: #12233B; border: 1px solid #1E3450; border-radius: 10px; padding: 8px; max-height: 460px; overflow: auto; }
+  .loglist div { padding: 6px 8px; border-radius: 7px; cursor: pointer; font-size: 12px; }
+  .loglist div:hover { background: #1A2E47; }
+  .loglist div.sel { background: #1F6FEB; color: #fff; }
+  pre { background: #0E1B2B; border: 1px solid #1A2E45; border-radius: 8px; padding: 10px 12px;
+        font: 12px/1.55 Consolas, monospace; color: #AFC3DC; max-height: 460px; overflow: auto; white-space: pre-wrap; }
+  .empty { color: #7E93B4; font-size: 13px; }
+  input { background: #0E1B2B; border: 1px solid #24405F; border-radius: 7px; color: #E8F1FF; padding: 6px 10px; font-size: 12px; width: 80px; }
+</style>
+</head>
+<body>
+<h1>鸿汇影 · 发布与运维</h1>
+<div class="sub">发布历史与归档、发版闸门红绿、日志查看器、操作审计 —— 以前这四件事分别要靠 index.json、日志文件和接口。</div>
+
+<div class="cards">
+  <div class="card"><div class="k">已归档版本</div><div class="v" id="cVer">-</div><div class="d" id="dVer">加载中…</div></div>
+  <div class="card"><div class="k">当前下发版本</div><div class="v" id="cDlv">-</div><div class="d" id="dDlv">加载中…</div></div>
+  <div class="card"><div class="k">验收闸门</div><div class="v" id="cGate">-</div><div class="d" id="dGate">加载中…</div></div>
+  <div class="card"><div class="k">预检闸门</div><div class="v" id="cDoc">-</div><div class="d" id="dDoc">加载中…</div></div>
+</div>
+
+<h2>发布历史与归档</h2>
+<table><thead><tr><th style="width:12%">版本</th><th style="width:10%">发布号</th><th style="width:18%">发布时间</th><th style="width:8%">功能数</th><th style="width:16%">归档体积 / 文件</th><th>产物</th><th style="width:110px">操作</th></tr></thead>
+<tbody id="tbRel"><tr><td colspan="7" class="empty">加载中…</td></tr></tbody></table>
+
+<h2>文件级 diff（这一版到底换了哪些文件）</h2>
+<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+  <label class="sub" style="margin:0">从 <select id="dFrom"></select></label>
+  <label class="sub" style="margin:0">到 <select id="dTo"></select></label>
+  <button id="btnDiff">比对</button>
+  <span id="diffHint" class="sub" style="margin:0"></span>
+</div>
+<table><thead><tr><th style="width:90px">变化</th><th>文件</th><th style="width:150px">体积</th></tr></thead>
+<tbody id="tbDiff"><tr><td colspan="3" class="empty">默认对比最近两版</td></tr></tbody></table>
+
+<h2>发版闸门（红绿对照）</h2>
+<div class="gate">
+  <div class="col"><b>交付验收 <span id="vFile" class="mut" style="font-size:12px"></span></b><div id="vList" class="empty">加载中…</div></div>
+  <div class="col"><b>环境预检 <span id="dFile" class="mut" style="font-size:12px"></span></b><div id="dList" class="empty">加载中…</div></div>
+</div>
+
+<h2>日志查看器 <span class="mut" style="font-size:12px">（右侧只显示尾部，最多 2000 行 / 400KB）</span></h2>
+<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+  <button id="btnLogRefresh">⟳ 刷新列表</button>
+  <label class="sub" style="margin:0">尾部行数 <input id="fTail" type="number" min="20" max="2000" value="300"></label>
+  <label class="sub" style="margin:0"><input type="checkbox" id="fAuto" style="width:auto"> 每 10 秒自动刷新</label>
+  <span id="logHint" class="sub" style="margin:0"></span>
+</div>
+<div class="logs">
+  <div class="loglist" id="logList"><div class="empty">加载中…</div></div>
+  <pre id="logView" class="empty">从左侧选一份日志</pre>
+</div>
+
+<h2>操作审计（最近 60 条）</h2>
+<table><thead><tr><th style="width:20%">时间</th><th style="width:22%">动作</th><th style="width:14%">执行人</th><th style="width:10%">结果</th><th>对象 / 详情</th></tr></thead>
+<tbody id="tbAudit"><tr><td colspan="5" class="empty">加载中…</td></tr></tbody></table>
+
+<script>
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function ts(t){ if(!t) return '—'; return new Date(t).toLocaleString('zh-CN', {hour12:false}); }
+var curLog = '';
+
+function loadCenter(){
+  fetch('/api/release/center', {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(d){
+    if(!d || !d.ok){ return; }
+    var rel = d.releases, g = d.gates;
+    document.getElementById('cVer').textContent = rel.count + ' 个';
+    document.getElementById('dVer').textContent = '合计 ' + rel.totalMB + ' MB · 生成于 ' + ts(rel.generatedAt);
+    document.getElementById('cDlv').textContent = 'v' + (rel.deliveryVersion || '?');
+    document.getElementById('cDlv').className = 'v';
+    document.getElementById('dDlv').textContent = rel.latest ? ('最新归档 v' + rel.latest.versionName) : '无归档记录';
+
+    document.getElementById('cGate').textContent = g.verify.counts.ok + ' / ' + (g.verify.counts.ok + g.verify.counts.bad);
+    document.getElementById('cGate').className = 'v ' + (g.verify.allPassed ? 'ok' : (g.verify.items.length ? 'bad' : 'mut'));
+    document.getElementById('dGate').textContent = g.verify.file || '没有验收日志';
+    document.getElementById('cDoc').textContent = g.doctor.counts.err ? ('ERR ' + g.doctor.counts.err) : (g.doctor.summary || '无预检记录');
+    document.getElementById('cDoc').className = 'v ' + (g.doctor.counts.err ? 'bad' : (g.doctor.items.length ? 'ok' : 'mut'));
+    document.getElementById('dDoc').textContent = g.doctor.file || '没有流水线日志';
+
+    document.getElementById('tbRel').innerHTML = (rel.versions || []).map(function(v){
+      var tag = v.isRollbackTarget ? '<span class="pill p-cur">当前下发</span> ' : '';
+      var latest = v.isLatest ? '<span class="pill p-ok">最新</span> ' : '';
+      var arts = (v.stats.artifacts || []).map(function(a){ return esc(a.name) + ' (' + a.mb + 'MB)'; }).join('<br>') || '—';
+      return '<tr><td>' + latest + tag + 'v' + esc(v.versionName) + '</td><td>#' + esc(v.versionCode || '') + '</td><td>' + ts(v.publishedAt) +
+        '</td><td>' + v.features + '</td><td>' + v.stats.mb + ' MB / ' + v.stats.files + ' 个文件</td><td class="mut">' + arts + '</td>' +
+        '<td><button class="danger" onclick="rollback(\'' + esc(v.versionName) + '\')">回滚到此版</button></td></tr>';
+    }).join('') || '<tr><td colspan="7" class="empty">还没有归档版本（跑一次发版会自动归档）</td></tr>';
+
+    document.getElementById('vFile').textContent = g.verify.file ? '(' + g.verify.file + ')' : '';
+    document.getElementById('vList').innerHTML = (g.verify.items || []).map(function(x){
+      return '<div class="g-row">' + (x.ok ? '<span class="ok">✔</span>' : '<span class="bad">✘</span>') + ' ' + esc(x.text) + '</div>';
+    }).join('') || '<div class="empty">没有验收记录</div>';
+
+    document.getElementById('dFile').textContent = g.doctor.file ? '(' + g.doctor.file + ')' : '';
+    document.getElementById('dList').innerHTML = (g.doctor.items || []).map(function(x){
+      var m = x.level === 'OK' ? '<span class="ok">OK</span>' : (x.level === 'WARN' ? '<span class="warn">WARN</span>' : '<span class="bad">ERR</span>');
+      return '<div class="g-row">' + m + ' ' + esc(x.text) + '</div>';
+    }).join('') || '<div class="empty">没有预检记录</div>';
+  }).catch(function(){});
+}
+
+function loadLogs(){
+  fetch('/api/logs', {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(d){
+    var items = (d && d.logs) || [];
+    document.getElementById('logList').innerHTML = items.map(function(x){
+      return '<div class="' + (x.name === curLog ? 'sel' : '') + '" onclick="pickLog(\'' + esc(x.name) + '\')">' + esc(x.name) +
+        '<div class="mut" style="font-size:11px">' + x.kb + ' KB · ' + ts(x.mtime) + '</div></div>';
+    }).join('') || '<div class="empty">logs 目录是空的</div>';
+    if (curLog) pickLog(curLog, true);
+    else if (items[0]) pickLog(items[0].name);
+  }).catch(function(){});
+}
+
+function pickLog(name, quiet){
+  curLog = name;
+  var tail = Number(document.getElementById('fTail').value) || 300;
+  fetch('/api/logs/read?name=' + encodeURIComponent(name) + '&tail=' + tail, {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(d){
+    if(!d || !d.ok){ document.getElementById('logView').textContent = '读取失败：' + (d && d.error || ''); return; }
+    document.getElementById('logView').textContent = (d.truncated ? '…（已截断，仅显示尾部 ' + tail + ' 行）\n' : '') + d.text;
+    document.getElementById('logHint').textContent = d.name + ' · ' + d.kb + ' KB · ' + d.totalLines + ' 行 / 本次尾部';
+    if(!quiet) loadLogsMark();
+  });
+}
+
+function loadLogsMark(){
+  var nodes = document.querySelectorAll('#logList div');
+  for (var i = 0; i < nodes.length; i += 1) {
+    nodes[i].className = nodes[i].textContent.indexOf(curLog) === 0 ? 'sel' : '';
+  }
+}
+
+function loadAudit(){
+  fetch('/api/audit?limit=60', {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(d){
+    var arr = (d && d.entries) || [];
+    document.getElementById('tbAudit').innerHTML = arr.map(function(x){
+      return '<tr><td>' + ts(x.at) + '</td><td>' + esc(x.action) + '</td><td>' + esc(x.actor || 'local') +
+        '</td><td>' + (x.result === 'ok' || !x.result ? '<span class="ok">成功</span>' : '<span class="bad">' + esc(x.result) + '</span>') +
+        '</td><td class="mut">' + esc((x.target || '') + (x.detail ? ' · ' + x.detail : '')) + '</td></tr>';
+    }).join('') || '<tr><td colspan="5" class="empty">还没有审计记录</td></tr>';
+  }).catch(function(){});
+}
+
+function rollback(ver){
+  if(!confirm('确认把下发版本回滚到 v' + ver + '？设备端会看到更新提示。')) return;
+  fetch('/api/update/rollback/apply', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({version: ver})})
+    .then(function(r){ return r.json(); }).then(function(d){
+      document.getElementById('logHint').textContent = d.ok ? ('已回滚：下发版本切到 v' + d.version) : ('回滚失败：' + (d.error || ''));
+      loadCenter();
+    }).catch(function(e){ document.getElementById('logHint').textContent = '回滚失败：' + e.message; });
+}
+
+document.getElementById('btnLogRefresh').onclick = loadLogs;
+document.getElementById('fTail').onchange = function(){ if(curLog) pickLog(curLog, true); };
+var autoTimer = null;
+document.getElementById('fAuto').onchange = function(e){
+  if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+  if (e.target.checked) autoTimer = setInterval(function(){ loadCenter(); loadLogs(); loadAudit(); }, 10000);
+};
+
+function loadDiff(){
+  var from = document.getElementById('dFrom').value;
+  var to = document.getElementById('dTo').value;
+  var hint = document.getElementById('diffHint');
+  hint.textContent = '正在算哈希…';
+  var url = '/api/release/diff' + (from && to ? ('?from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to)) : '');
+  fetch(url, {cache:'no-store'}).then(function(r){ return r.json(); }).then(function(d){ renderDiff(d); })
+    .catch(function(e){ hint.textContent = '对比失败：' + e.message; });
+}
+function renderDiff(d){
+  var hint = document.getElementById('diffHint');
+  if(!d || !d.ok){
+    document.getElementById('tbDiff').innerHTML = '<tr><td colspan="3" class="bad">' + esc((d && d.error) || '对比失败') + '</td></tr>';
+    hint.textContent = ''; return;
+  }
+  if(!document.getElementById('dFrom').options.length && d.versions){
+    var opts = d.versions.map(function(v){ return '<option value="' + esc(v) + '">v' + esc(v) + '</option>'; }).join('');
+    document.getElementById('dFrom').innerHTML = opts;
+    document.getElementById('dTo').innerHTML = opts;
+    document.getElementById('dFrom').value = d.from;
+    document.getElementById('dTo').value = d.to;
+  }
+  hint.textContent = 'v' + d.from + ' → v' + d.to + '：新增 ' + d.totals.added + ' · 删除 ' + d.totals.removed +
+    ' · 内容变化 ' + d.totals.changed + ' · 未变 ' + d.totals.same;
+  var rows = [];
+  d.added.forEach(function(f){ rows.push('<tr><td class="ok">新增</td><td>' + esc(f.name) + '</td><td>' + f.mb + ' MB</td></tr>'); });
+  d.removed.forEach(function(f){ rows.push('<tr><td class="bad">删除</td><td>' + esc(f.name) + '</td><td>' + f.mb + ' MB</td></tr>'); });
+  d.changed.forEach(function(f){
+    rows.push('<tr><td class="warn">变化</td><td>' + esc(f.name) + '</td><td>' + f.fromMB + ' → ' + f.toMB + ' MB' +
+      (f.fromHash ? ' <span class="mut">' + esc(f.fromHash) + '… → ' + esc(f.toHash) + '…</span>' : '') + '</td></tr>');
+  });
+  d.same.forEach(function(f){ rows.push('<tr><td class="mut">未变</td><td class="mut">' + esc(f.name) + '</td><td class="mut">' + f.mb + ' MB</td></tr>'); });
+  document.getElementById('tbDiff').innerHTML = rows.join('') || '<tr><td colspan="3" class="empty">两版文件完全一致</td></tr>';
+}
+document.getElementById('btnDiff').onclick = function(){
+  if(!document.getElementById('dFrom').options.length){ loadDiff(); return; }
+  var f = document.getElementById('dFrom').value, t = document.getElementById('dTo').value;
+  fetch('/api/release/diff?from=' + encodeURIComponent(f) + '&to=' + encodeURIComponent(t), {cache:'no-store'})
+    .then(function(r){ return r.json(); }).then(function(d){
+      if(d && d.ok && d.versions && !document.getElementById('dFrom').options.length){
+        var opts = d.versions.map(function(v){ return '<option value="' + esc(v) + '">v' + esc(v) + '</option>'; }).join('');
+        document.getElementById('dFrom').innerHTML = opts;
+        document.getElementById('dTo').innerHTML = opts;
+      }
+      renderDiff(d);
+    }).catch(function(e){ document.getElementById('diffHint').textContent = '对比失败：' + e.message; });
+};
+
+loadCenter(); loadLogs(); loadAudit(); loadDiff();
+setInterval(function(){ loadCenter(); loadAudit(); }, 30000);
+</script>
+</body>
+</html>

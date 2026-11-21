@@ -13,6 +13,7 @@
          syncArtifacts     更新包别名 / SHA256 / release.json 自动重建
          rebuildHarmony    开鸿端适配标记缺失自动重生成
          autoHandleReports 高频错误自动归档（水位线，只报新增）
+         autoCodeFix       独立 .js/.py 源码语法错误自动补全闭合符 + 备份 + 复检
    复检：每轮修完立即重新扫描，最多 3 轮，直到归零；仍未清零的自动登记
          到 server/data/bugfix_queue.jsonl 由下一轮 / 下次出包继续自动处理。
    优化：按 bug 类型自动启用 / 补装对应内置功能，并重算功能快照。
@@ -39,14 +40,34 @@ const DIST = path.join(ROOT, 'dist');
 const UPDATES = path.join(ROOT, 'updates');
 const DESKTOP_DIR = path.join(os.homedir(), 'Desktop');
 const SNAP_DIR = path.join(__dirname, 'data', 'snapshots');
+const BROKEN_KEEP = Math.max(1, Number(process.env.KH_BROKEN_KEEP || 20));
 const WM = path.join(__dirname, 'data', 'bugfix_error_watermark.json');
 const HANDLED = path.join(__dirname, 'data', 'bugfix_handled_errors.jsonl');
 const QUEUE = path.join(__dirname, 'data', 'bugfix_queue.jsonl');
 const OUT = path.join(__dirname, 'data', 'latest_bugfix.json');
+const OUT_TXT = path.join(__dirname, 'data', '自愈报告.txt');   // 人类可读，桌面入口/记事本直接展示
 const PAGES = [{ key: 'app', path: APP }, { key: 'harmony', path: HARMONY }];
 const BUILD_HAP = path.join(ROOT, 'harmony', 'build_hap.py');
 const DEV_ENV = fs.existsSync(BUILD_HAP);   // 精简打包环境没有 harmony/ 与 dist/，相关检查自动跳过
 const MAX_ROUNDS = 3;
+/* 前端已模块化（1.7.72）：壳页只留 <script src>，脚本在 kh-*.js。
+   一切「读页面找脚本 / 找版本号 / 找功能标记」都必须走聚合视图，否则会误报。 */
+let FE = null;
+try { FE = require(path.join(ROOT, 'scripts', 'frontend-source.js')); } catch (e) { FE = null; }
+function pageText(p) {
+  try { if (FE) return FE.merged(p); } catch (e) {}
+  try { return fs.readFileSync(p, 'utf8'); } catch (e) { return ''; }
+}
+function pageModuleFiles(p) {
+  try { return FE ? FE.scriptsOfPage(p).map((s) => path.resolve(path.dirname(p), s)) : []; } catch (e) { return []; }
+}
+function harmonyText() { return pageText(HARMONY); }
+function pythonExe() {
+  const c = [process.env.KH_PYTHON, path.join(ROOT, '..', 'HongHubServer', 'runtime', 'python', 'python.exe'),
+    'C:\\Users\\admin\\HongHubServer\\runtime\\python\\python.exe'];
+  for (const x of c) { try { if (x && fs.existsSync(x)) return x; } catch (e) {} }
+  return process.platform === 'win32' ? 'python' : 'python3';
+}
 
 let running = false;
 let lastResult = null;
@@ -57,6 +78,20 @@ function readJsonl(p, max) {
     return fs.readFileSync(p, 'utf8').split('\n').filter(Boolean).slice(-max)
       .map((l) => { try { return JSON.parse(l); } catch (e) { return null; } }).filter(Boolean);
   } catch (e) { return []; }
+}
+/* 上报数据 = 本机 reports.jsonl + 公网隧道接收端 HongHubServer/data/reports.jsonl。
+   客户端远程上报落在隧道端，开发端体检时合并读取，才能形成「上报→自愈→改码→发版」闭环。 */
+const TUNNEL_REPORTS = path.join(os.homedir(), 'HongHubServer', 'data', 'reports.jsonl');
+function readReportsMerged(max) {
+  const a = readJsonl(REPORTS, max);
+  const b = readJsonl(TUNNEL_REPORTS, max);
+  const seen = new Set(), out = [];
+  for (const r of a.concat(b)) {
+    const k = String((r && (r.sig || r.deviceId)) || '') + '|' + String(r && r.receivedAt || '');
+    if (seen.has(k)) continue;
+    seen.add(k); out.push(r);
+  }
+  return out.sort((x, y) => Number(x.receivedAt || 0) - Number(y.receivedAt || 0)).slice(-max);
 }
 function shaOf(p) { return crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'); }
 function hashOf(v) { return crypto.createHash('sha256').update(JSON.stringify(v)).digest('hex'); }
@@ -128,7 +163,23 @@ function backupBroken(p) {
     if (!exists(p)) return;
     mkdir(SNAP_DIR);
     fs.writeFileSync(path.join(SNAP_DIR, 'broken-' + Date.now() + '-' + pageKey(p) + '.html'), fs.readFileSync(p));
+    pruneBroken();
   } catch (e) {}
+}
+/* 故障原文备份带时间戳、原先无上限；只保留最近 BROKEN_KEEP 份，超出删最旧。
+   仅作用于 broken-*.html，固定良好副本 app/harmony.html 与 src/ 源码备份目录不动。 */
+function pruneBroken() {
+  let files = [];
+  try {
+    files = fs.readdirSync(SNAP_DIR)
+      .filter((n) => n.indexOf('broken-') === 0 && n.endsWith('.html'))
+      .map((n) => { const p = path.join(SNAP_DIR, n); let mt = 0; try { mt = fs.statSync(p).mtimeMs; } catch (e) {} return { path: p, mt }; });
+  } catch (e) { return { ok: false, removed: 0 }; }
+  files.sort((a, b) => a.mt - b.mt);
+  const excess = files.slice(0, Math.max(0, files.length - BROKEN_KEEP));
+  let removed = 0;
+  excess.forEach((f) => { try { fs.unlinkSync(f.path); removed++; } catch (e) {} });
+  return { ok: true, kept: files.length - removed, removed: removed, keep: BROKEN_KEEP };
 }
 /* 快照 / 副本必须与当前发版版本一致，避免「修 Bug 时把页面回退到上一版」 */
 function versionMatches(html) {
@@ -180,6 +231,42 @@ function tryAutoClose(code) {
   for (let i = code.length - 1; i >= start; i--) {
     if (code.charAt(i) === ')' || code.charAt(i) === '}') list.push(code.slice(0, i) + '}' + code.slice(i));
   }
+  // 增强①：未闭合字符串引号 —— 末尾补 ' 或 "
+  list.push(code + "'", code + '"', code + '`');
+  // 增强②：根据括号栈反推缺失的闭合符（忽略字符串/注释内的括号，机械补全）
+  try {
+    let stack = '', quote = '', esc = false, lineComment = false, blockComment = false;
+    for (let i = 0; i < code.length; i++) {
+      const ch = code[i], nx = code[i + 1];
+      if (lineComment) { if (ch === '\n') lineComment = false; continue; }
+      if (blockComment) { if (ch === '*' && nx === '/') { blockComment = false; i++; } continue; }
+      if (quote) {
+        if (esc) { esc = false; continue; }
+        if (ch === '\\') { esc = true; continue; }
+        if (ch === quote) quote = '';
+        continue;
+      }
+      if (ch === '/' && nx === '/') { lineComment = true; i++; continue; }
+      if (ch === '/' && nx === '*') { blockComment = true; i++; continue; }
+      if (ch === "'" || ch === '"' || ch === '`') { quote = ch; continue; }
+      if (ch === '{') stack += '}';
+      else if (ch === '(') stack += ')';
+      else if (ch === '[') stack += ']';
+      else if (ch === '}' || ch === ')' || ch === ']') {
+        if (stack && stack[stack.length - 1] === ch) stack = stack.slice(0, -1);
+      }
+    }
+    if (stack) {
+      // 只追加缺失的闭合符；若还有未闭合引号，先补引号再补括号
+      let base = code;
+      if (quote) base += quote;
+      list.push(base + stack);
+      // 也尝试逆序（极端嵌套场景）
+      list.push(base + stack.split('').reverse().join(''));
+    }
+  } catch (e) {}
+  // 增强③：对象/数组尾随逗号导致的兼容语法问题（保守：只处理 }, 与 ], 前）
+  list.push(code.replace(/,(\s*[}\]])/g, '$1'));
   const seen = new Set();
   for (const c of list) {
     if (seen.has(c)) continue;
@@ -247,7 +334,7 @@ function linkOrCopy(src, dst) {
 /* ---------------- 1+2) 自动收集 + 自动提取 ---------------- */
 function scan() {
   const bugs = [], notes = [];
-  const reports = readJsonl(REPORTS, 300);
+  const reports = readReportsMerged(300);
   const feedbacks = readJsonl(FEEDBACK, 60);
   const manifest = readJson(MANIFEST, {});
   const latest = (manifest.release && manifest.release.latest) || {};
@@ -276,10 +363,18 @@ function scan() {
         path.basename(pg.path) + ' 第 ' + (e.index + 1) + ' 段：' + e.message,
         'autoFixScript', { _page: pg.path, _index: e.index }));
     });
-    const code = Number((s.match(/var KH_APP_CODE\s*=\s*(\d+)/) || [])[1] || 0);
+    pageModuleFiles(pg.path).forEach((f) => {
+      if (!exists(f)) bugs.push(bug('page-missing', 'high', '外链脚本缺失', path.basename(f), 'restorePage', { _page: pg.path }));
+      else if (!syntaxOk(fs.readFileSync(f, 'utf8'))) {
+        bugs.push(bug('script-syntax', 'critical', '前端脚本语法错误', path.basename(f), 'autoCodeFix',
+          { _codefixFile: f, _codefixLang: 'js' }));
+      }
+    });
+    const vt = pageText(pg.path);
+    const code = Number((vt.match(/var KH_APP_CODE\s*=\s*(\d+)/) || [])[1] || 0);
     let relCode = 0;
     try {
-      const mm = s.match(/<script id="kh-release" type="application\/json">([\s\S]*?)<\/script>/);
+      const mm = vt.match(/<script id="kh-release" type="application\/json">([\s\S]*?)<\/script>/);
       relCode = Number(JSON.parse(mm[1]).latest.versionCode) || 0;
     } catch (e) { /* 无内嵌清单 */ }
     if (code && relCode && code !== relCode) {
@@ -334,7 +429,7 @@ function scan() {
 
   // 2.5 开鸿端适配标记（精简环境无源码页面时不误报）
   if (exists(HARMONY)) {
-    const hapSrc = fs.readFileSync(HARMONY, 'utf8');
+    const hapSrc = harmonyText();
     [['KH_HARMONY', '深开鸿适配'], ['khDiscoverHub', '中枢自动发现'], ['/api/features/sync', '功能同步']]
       .forEach((pair) => {
         if (hapSrc.indexOf(pair[0]) < 0) bugs.push(bug('hap-mark', 'medium', '开鸿端缺少「' + pair[1] + '」', pair[0], 'rebuildHarmony'));
@@ -358,6 +453,20 @@ function scan() {
   if (topErrors.length) {
     bugs.push(bug('error-reports', 'medium', '近 24h 高频错误上报',
       topErrors.map((x) => x.kind + '×' + x.n).join('、'), 'autoHandleReports', { _topErrors: topErrors, _reports: reports }));
+  }
+
+  // 2.7 独立源码语法（.js/.py）：自动改码修复器。仅开发端(KH_DEV_MODE 或存在源码目录)启用。
+  if (process.env.KH_CODEFIX !== '0') {
+    try {
+      const cf = require('./auto-codefix');
+      const cs = cf.scan();
+      collected.push({ source: '独立源码(.js/.py)', count: cs.files.length });
+      cs.problems.forEach(function (p) {
+        bugs.push(bug('src-syntax', 'high', '源码语法错误',
+          path.basename(p.file) + '：' + p.error, 'autoCodeFix',
+          { _codefixFile: p.file, _codefixLang: p.lang }));
+      });
+    } catch (e) { notes.push('源码改码扫描跳过：' + (e && e.message || e)); }
   }
 
   return {
@@ -524,6 +633,25 @@ function autoFixScript(b) {
   return '已自动完成一轮修复尝试与备份，剩余问题登记自动重试队列（无需人工复核）';
 }
 
+/* 源码自动改码：只针对已知出问题的单个文件做安全修复（闭合符补全），
+   改前备份到 snapshots/src/，修完立即语法复检；PY 不猜业务逻辑，仅备份+登记。 */
+function autoCodeFix(b) {
+  try {
+    const cf = require('./auto-codefix');
+    const one = [{ file: b._codefixFile, lang: b._codefixLang, error: b.detail }];
+    const r = cf.fix(one);
+    if (r.fixed.length) {
+      const f = r.fixed[0];
+      return '已自动改码（' + f.how + '）· ' + path.basename(f.file) + ' · 备份 ' + (f.backup || '已留存');
+    }
+    const f = r.failed[0] || {};
+    append(QUEUE, { at: Date.now(), id: 'src-syntax', file: b._codefixFile, note: f.note, action: '下一轮 / 下次出包继续自动处理' });
+    return (f.note || '未能安全自动修复') + '（已备份，登记自动重试，无需人工复核）';
+  } catch (e) {
+    return '自动改码异常：' + (e && e.message) + '（已登记自动重试）';
+  }
+}
+
 const fixers = {
   syncPageVersion: (b) => syncPageVersion(b._page),
   autoFixScript: (b) => autoFixScript(b),
@@ -531,7 +659,8 @@ const fixers = {
   refreshStamp: (b, ctx) => refreshStamp(ctx),
   syncArtifacts: () => syncArtifacts(),
   rebuildHarmony: () => rebuildHarmony(),
-  autoHandleReports: (b) => autoHandleReports(b)
+  autoHandleReports: (b) => autoHandleReports(b),
+  autoCodeFix: (b) => autoCodeFix(b)
 };
 
 /* ---------------- 4) 自动优化功能 ---------------- */
@@ -627,13 +756,96 @@ function runInner() {
     }
   };
   try { mkdir(path.dirname(OUT)); fs.writeFileSync(OUT, JSON.stringify(result, null, 2)); } catch (e) {}
+  // 人类可读报告：每轮自动处置后刷新，双击桌面「自动修复」入口即可看到最近一次修了什么。
+  try {
+    const t = new Date(result.finishedAt || Date.now());
+    const lines = [];
+    lines.push('==================================================');
+    lines.push('  鸿汇影开发端 · 自动免费修复报告');
+    lines.push('==================================================');
+    lines.push('时间：' + t.toLocaleString('zh-CN'));
+    lines.push('模式：全自动 · 无需人工复核 · 零依赖免费');
+    lines.push('--------------------------------------------------');
+    lines.push('本轮发现：' + result.summary.total + ' 项');
+    lines.push('自动处置：' + result.summary.autoHandled + ' 项');
+    lines.push('需人工  ：' + result.summary.manual + ' 项');
+    lines.push('高危项  ：' + result.summary.high + ' 项');
+    lines.push('复检结果：' + (result.verification.verified ? '通过（问题已归零）' : '已自动排队，下一轮继续'));
+    lines.push('修复轮次：' + result.verification.rounds + ' 轮');
+    lines.push('--------------------------------------------------');
+    if (result.fixes && result.fixes.length) {
+      lines.push('处置明细：');
+      result.fixes.forEach(function (f, i) { lines.push('  ' + (i + 1) + '. [' + f.id + '] ' + f.title + ' → ' + f.result); });
+    } else {
+      lines.push('处置明细：本轮未发现问题，一切正常。');
+    }
+    if (result.autoNotes && result.autoNotes.length) {
+      lines.push('--------------------------------------------------');
+      lines.push('自动说明：');
+      result.autoNotes.forEach(function (n) { lines.push('  · ' + n); });
+    }
+    // 源码改码明细：把本轮 src-syntax 的改动单独列出，改了什么、备份在哪一目了然
+    const codeFixes = (result.fixes || []).filter(function (f) { return f.id === 'src-syntax'; });
+    lines.push('--------------------------------------------------');
+    lines.push('自动改码（独立 .js/.py 源码）：' + (codeFixes.length ? (codeFixes.length + ' 处') : '本轮无源码需修改'));
+    codeFixes.forEach(function (f, i) { lines.push('  #' + (i + 1) + ' ' + f.result); });
+    lines.push('改动前原文件备份在 server/data/snapshots/src/，可随时回滚。');
+    // 自动发版状态：改码修复是否触发了重新出包下发
+    lines.push('--------------------------------------------------');
+    lines.push('改码后自动发版：' + (result.autoRelease ? '已触发一键流水线重新出包下发' : '本轮无需发版（无源码改动或非发版源工程）'));
+    lines.push('客户端远程上报：合并本机 + 隧道接收端 reports，域名变化自动跟进。');
+    lines.push('==================================================');
+    lines.push('说明：本报告由开发端每次启动 / 每 30 分钟自动刷新。');
+    lines.push('      也可双击桌面「鸿汇影·自动修复」立即跑一轮。');
+    mkdir(path.dirname(OUT_TXT));
+    fs.writeFileSync(OUT_TXT, lines.join('\r\n') + '\r\n');
+  } catch (e) {}
   return result;
+}
+
+/* 自愈改码后自动重新发版：让修复真正到达客户/设备端。
+   仅在发版源工程（存在 oneclick-release.js）启用；运行目录无流水线会自然跳过。
+   防重复：信号文件 + 10 分钟冷却 + dist 锁空闲探测；spawn 独立进程不阻塞闭环。 */
+const REBUILD_SIGNAL = path.join(__dirname, 'data', 'rebuild-requested.json');
+const ONEClick = path.join(ROOT, 'scripts', 'oneclick-release.js');
+const REBUILD_COOLDOWN_MS = 10 * 60 * 1000;
+function maybeAutoRelease(result) {
+  if (process.env.KH_BUGFIX_AUTORELEASE === '0') return false;
+  if (!fs.existsSync(ONEClick)) return false;              // 精简运行目录无流水线，跳过
+  const s = result.summary || {};
+  if (!(s.fixed > 0 && result.verification && result.verification.verified)) return false;
+  try {
+    const prev = readJson(REBUILD_SIGNAL, null);
+    if (prev && prev.at && Date.now() - Number(prev.at) < REBUILD_COOLDOWN_MS) return false; // 冷却中
+    // dist 锁空闲才触发，避免与手工出包/watcher 并发写 dist
+    try {
+      const lock = require(path.join(ROOT, 'scripts', 'lib', 'dist-lock.js'));
+      const st = lock.check();
+      if (st && st.held) return false;
+    } catch (e) { /* 锁模块异常不阻断，oneclick 内部会兜底申请 */ }
+    mkdir(path.dirname(REBUILD_SIGNAL));
+    fs.writeFileSync(REBUILD_SIGNAL, JSON.stringify({
+      at: Date.now(), reason: 'auto-bugfix 自动修复 ' + s.fixed + ' 项', mode: 'handoff',
+      note: '交棒给自动发版守候进程统一出包；此处不再另起一条 --bump 流水线'
+    }, null, 2) + '\n');
+    /* 不再自己 spawn oneclick --bump：
+       ① 它会和守候进程 / 手工出包抢 dist 锁，两条流水线并行出包；
+       ② 版本会一次抬两级（手工 1.7.56 + 自愈 1.7.57），验收时出现
+          「产物 1.7.56 / 中枢 1.7.57」错位（2026-11-19 实测 8 项失败）。
+       改为只落请求标记：自愈改动的文件已在守候的监听范围内，由它唯一的路径 bump 发版。 */
+    console.log('[自愈] 已落地 ' + s.fixed + ' 项修复，发版请求已交棒给自动发版守候进程');
+    return true;
+  } catch (e) { return false; }
 }
 
 function run() {
   if (running) return lastResult || { ok: true, skipped: true, reason: 'running', summary: { total: 0, fixed: 0, manual: 0, high: 0, unresolved: 0, verified: true, rounds: 0 } };
   running = true;
-  try { lastResult = runInner(); return lastResult; }
+  try {
+    lastResult = runInner();
+    lastResult.autoRelease = maybeAutoRelease(lastResult);   // 修完代码 → 自动重新发版
+    return lastResult;
+  }
   finally { running = false; }
 }
 

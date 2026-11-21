@@ -235,16 +235,19 @@ function deliver() {
   /* 桌面根只交付「开发端安装版」，客户硬锁版只进「客户成品」夹：
      同名两份 Setup 摆在桌面，最容易把硬锁版误发给客户 / 把开发端当成客户版。 */
   const DEV_SETUP = path.join(DIST, '鸿汇影桌面版 开发端 ' + pkgVersion() + '.exe');
-  const SETUP = path.join(DIST, '鸿汇影桌面版 Setup ' + pkgVersion() + '.exe');
-  const source = fs.existsSync(DEV_SETUP) ? DEV_SETUP : SETUP;
+  /* 只交付真·开发端安装版。绝不回退拿 dist 的 Setup 别名充数：
+     此刻别名还是未净化的开发端构建，复制进开发端夹会留下「Setup=开发端包」的
+     误导命名（1.7.45/1.7.46 实测踩坑）；开发端 exe 由 build-client 留存后
+     经 auto-release 统一交付，这里缺失就等下游，不造假名字。 */
+  const source = DEV_SETUP;
   if (fs.existsSync(source)) {
     // 桌面已按「开发端夹 / 客户成品夹」归拢时，安装包直接进开发端夹，桌面根不再堆平铺文件
     const devDir = path.join(desktop, '鸿汇影·开发端_v' + pkgVersion());
     fs.mkdirSync(devDir, { recursive: true }); // 新版本首次交付自动建夹，避免平铺到桌面根
     const target = path.join(devDir, path.basename(source));
     fs.copyFileSync(source, target);
-    console.log('  ' + target + ' (' + fs.statSync(target).size + ' B)' + (source === DEV_SETUP ? ' · 开发端版' : ' · 客户版（未找到开发端安装版）'));
-  } else console.warn('  安装包不存在，跳过');
+    console.log('  ' + target + ' (' + fs.statSync(target).size + ' B) · 开发端版');
+  } else console.log('  开发端安装版尚未生成（由客户版打包步留存后自动交付），跳过');
   const hap = path.join(DIST, 'honghub-harmony.hap');
   if (fs.existsSync(hap)) {
     const cliDir = path.join(desktop, '鸿汇影·客户成品_v' + pkgVersion());
@@ -285,4 +288,10 @@ step('5.7/6 依赖审计与 SBOM', path.join(__dirname, 'sbom.js'));
 step('5.8/6 公网分发（未配置凭证时自动跳过）', path.join(__dirname, 'publish-remote.js'));
 step('5.9/6 开发端交付脚本（turn flag / BOM-free 启动 / 桌面快捷方式）', path.join(__dirname, 'build-dev-package.js'));
 deliver();
+/* 终版归档刷新（非致命）：交付后 exe 字节已定型，把回滚归档对准最终成品；
+   5.6 步的归档可能抓到中间产物，这里兜底重刷一次 */
+(function(){
+  const r = spawnSync(process.execPath, [path.join(__dirname, 'archive-release.js')], { cwd: ROOT, stdio: 'inherit', env: ENV });
+  if (r.status !== 0) console.error('⚠ 终版归档刷新失败（不影响构建产物，交付前请手动 npm run archive）');
+})();
 console.log('\n构建完成');

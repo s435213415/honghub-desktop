@@ -236,7 +236,10 @@ function parseBaseline(notePath) {
   const idxHtml = [
     '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width,initial-scale=1">',
-    '<title>鸿汇影 · 客户下载中心</title><style>',
+    '<title>鸿汇影 · 客户下载中心</title>',
+    /* 站点图标内联为 SVG data URI：不新增静态文件，避免破坏 public 目录「仅客户成品文件」的纯净性约束 */
+    '<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns=\'http://www.w3.org/2000/svg\'%20viewBox=\'0%200%2064%2064\'%3E%3Crect%20width=\'64\'%20height=\'64\'%20rx=\'14\'%20fill=\'%23FF4D5E\'/%3E%3Cpath%20d=\'M25%2017L46%2032L25%2047Z\'%20fill=\'%23fff\'/%3E%3C/svg%3E">',
+    '<style>',
     ':root{color-scheme:dark}*{box-sizing:border-box}',
     'body{margin:0;font-family:-apple-system,"Microsoft YaHei","Segoe UI",sans-serif;background:#0e1116;color:#e6ebf2;line-height:1.7}',
     '.wrap{max-width:880px;margin:0 auto;padding:48px 20px 72px}h1{font-size:26px;margin:0 0 6px}',

@@ -14,10 +14,12 @@ const ROOT = path.join(__dirname, '..');
 const APP = path.join(ROOT, 'app', 'index.html');
 const HAP = path.join(ROOT, 'harmony', 'entry', 'src', 'main', 'resources', 'rawfile', 'www', 'index.html');
 const MAN = path.join(ROOT, 'features', 'manifest.json');
+/* 前端模块化后，实现体在 app/kh-*.js：用聚合视图做接线检查，避免扫壳页得到「全部未实现 / 全部假绿」。 */
+const fe = require('./frontend-source');
 
 const raw = JSON.parse(fs.readFileSync(MAN, 'utf8'));
 const list = Array.isArray(raw) ? raw : (raw.features || []);
-const app = fs.readFileSync(APP, 'utf8');
+const app = fe.merged(APP);
 const hap = fs.existsSync(HAP) ? fs.readFileSync(HAP, 'utf8') : '';
 
 const devReSrc = (app.match(/var KH_DEV_ACTION = (\/[^\n]*\/);/) || [])[1];

@@ -187,13 +187,21 @@ async function hunt(opts) {
   const cat = readJson(CATALOG, { items: [] });
   const catItems = cat.items || [];
 
+  const includeWeak = opts.includeWeak !== false;
   const bad = catItems.filter(function (it) {
-    return it.type === 'channel' && (it.status === 'dead' || it.status === 'blocked' || it.status === 'degraded');
+    if (it.type !== 'channel') return false;
+    const st = String(it.status || '');
+    if (st === 'dead' || st === 'blocked' || st === 'degraded') return true;
+    if (!includeWeak) return false;
+    // 单线路 / 慢速 / 受限的频道也纳入补源：它们一旦掉线就没有备胎
+    const n = Number(it.sourceCount || (Array.isArray(it.sources) ? it.sources.length : 0));
+    return n <= 1 || st === 'slow' || st === 'limited';
   }).slice(0, max);
 
   const { pool, cached, lists } = await loadPool();
   const probe = catalogProbe();
   const added = [];
+  const missed = [];
   const tried = {};
 
   for (const it of bad) {
@@ -213,7 +221,13 @@ async function hunt(opts) {
       tried[r.c.url] = true;
       if (await testUrl(probe, r.c.url, probeMs)) { picked = r.c; break; }
     }
-    if (!picked) continue;
+    if (!picked) {
+      missed.push({
+        id: it.id, name: it.name,
+        reason: ranked.length ? ('候选 ' + ranked.length + ' 条全部探测不通') : '源池里没有同名候选'
+      });
+      continue;
+    }
     hit.sources = (hit.sources || []).concat([{
       label: '自动补源 ' + iso().slice(0, 10),
       url: picked.url,
@@ -252,13 +266,14 @@ async function hunt(opts) {
     pool: { cached: cached, total: pool.length, lists: lists },
     checkedChannels: bad.length,
     added: added,
-    note: added.length ? '已把实测可用的线路写回清单，客户端热更新后即生效' : '本轮没有找到可用替源（候选都不通或频道名对不上）'
+    missed: missed,
+    note: added.length ? '已把实测可用的线路写回清单，客户端热更新后即生效' : (missed.length ? ('本轮 ' + missed.length + ' 个频道没补上：' + missed.slice(0, 3).map(function (m) { return m.name + '（' + m.reason + '）'; }).join('；')) : '本轮没有需要补源的频道')
   };
   writeJson(REPORT, report);
   return report;
 }
 
-module.exports = { hunt, loadPool, parseM3U, norm };
+module.exports = { hunt, loadPool, parseM3U, norm, scoreWithAlias };
 
 /* 直接命令行运行：node server/source-hunter.js [--max=12] */
 if (require.main === module) {

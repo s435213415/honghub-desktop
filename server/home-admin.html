@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>鸿汇影 · 开发端总目录</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 22px; background: #0B1622; color: #E8F1FF;
+         font: 14px/1.65 "Microsoft YaHei", -apple-system, sans-serif; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  .sub { color: #8CA0BE; font-size: 12px; margin-bottom: 18px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(290px,1fr)); gap: 14px; }
+  .tile { display: block; background: #12233B; border: 1px solid #1E3450; border-radius: 12px;
+          padding: 16px 18px; color: inherit; text-decoration: none; transition: border-color .15s, transform .15s; }
+  .tile:hover { border-color: #2F5C92; transform: translateY(-1px); }
+  .tile .t { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+  .tile .d { color: #7E93B4; font-size: 12px; min-height: 34px; }
+  .tile .s { margin-top: 8px; font-size: 12.5px; }
+  h2 { font-size: 15px; margin: 26px 0 10px; padding-top: 12px; border-top: 1px solid #1E3450; }
+  .ok { color: #6BE3A0; } .bad { color: #FF9B9B; } .warn { color: #FFD48A; } .mut { color: #7E93B4; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid #17283C; vertical-align: top; }
+  th { color: #8CA0BE; font-weight: 600; }
+  button { background: #1C3555; color: #E8F1FF; border: 1px solid #2A4A72; border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+  button:hover { background: #23426A; }
+  button.primary { background: #1F6FEB; border-color: #3B82F6; }
+  code { background: #0E1B2B; border: 1px solid #24405F; border-radius: 6px; padding: 1px 6px; font-size: 12px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<h1>鸿汇影 · 开发端总目录</h1>
+<div class="sub">开发端现在有 11 个面板，这里一处全部列出来，并带上各自的实时状态。</div>
+
+<div class="grid">
+  <a class="tile" href="/admin"><div class="t">🗂 运维看板</div><div class="d">发布 / 灰度 / 自愈 / 治理 / 资源探测 / 回滚的原有入口</div><div class="s" id="sBoard">—</div></a>
+  <a class="tile" href="/admin/build"><div class="t">🚀 发版流水线</div><div class="d">版本四源一致性、产物哈希实测、最近几次流水线步骤与失败项、界面触发发版</div><div class="s" id="sBuild">—</div></a>
+  <a class="tile" href="/admin/release"><div class="t">📦 发布与运维</div><div class="d">发布历史与归档、发版闸门红绿、日志查看器、操作审计</div><div class="s" id="sRelease">—</div></a>
+  <a class="tile" href="/admin/metrics"><div class="t">📈 数据与体积</div><div class="d">播放回传、14 天趋势、失效源、选源评分、SBOM、dist 体积</div><div class="s" id="sMetrics">—</div></a>
+  <a class="tile" href="/admin/alerts"><div class="t">🔔 告警中心</div><div class="d">分级展示与去重、Webhook 外发、发送测试、外发留痕</div><div class="s" id="sAlerts">—</div></a>
+  <a class="tile" href="/admin/quality"><div class="t">✅ 质量门禁</div><div class="d">静态门禁 102 项、UI 冒烟、HAP 冒烟、开发端面板连通性，一键跑并留原始日志</div><div class="s" id="sQuality">—</div></a>
+  <a class="tile" href="/admin/extras"><div class="t">🧩 开关台</div><div class="d">远程功能开关、儿童时段、升级遥测、双指标选源、聚合搜索、双端接力</div><div class="s" id="sExtras">—</div></a>
+  <a class="tile" href="/admin/features"><div class="t">🧩 功能追踪</div><div class="d">每版功能清单、与上一版/线上差异、历史记录</div><div class="s" id="sFeatures">—</div></a>
+  <a class="tile" href="/admin/sites"><div class="t">🌐 平台条目</div><div class="d">平台/频道清单、写回基线、改分类改名删除</div><div class="s" id="sSites">—</div></a>
+  <a class="tile" href="/admin/devices"><div class="t">📱 设备能力表</div><div class="d">设备列表、OS 版本/形态、caps 六键</div><div class="s" id="sDevices">—</div></a>
+  <a class="tile" href="/admin/insights"><div class="t">📊 维护决策</div><div class="d">失效源 TOP（该先修哪条线）</div><div class="s" id="sInsights">—</div></a>
+</div>
+
+<h2>访问口令</h2>
+<div class="row">
+  <code id="tokVal">读取中…</code>
+  <button id="btnTokShow">显示 / 隐藏</button>
+  <button id="btnTokCopy">复制</button>
+  <button class="primary" id="btnTokReset">重置口令</button>
+  <span class="sub" style="margin:0" id="tokHint"></span>
+</div>
+<div class="sub" style="margin-top:6px">只有本机能查看口令；局域网设备访问中枢要带这个口令。重置后旧口令立即失效，需要重新分发给设备。</div>
+
+<h2>变更日志（由归档索引自动对比生成）</h2>
+<div class="row" style="margin-bottom:10px">
+  <button id="btnGenMd">生成 / 刷新 CHANGELOG.md</button>
+  <span class="sub" style="margin:0" id="mdHint"></span>
+</div>
+<table><thead><tr><th style="width:16%">版本</th><th style="width:16%">发布时间</th><th style="width:8%">功能数</th><th>新增 / 移除</th></tr></thead>
+<tbody id="tbCl"><tr><td colspan="4" class="empty">加载中…</td></tr></tbody></table>
+
+<script>
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function ts(t){ if(!t) return '—'; return new Date(t).toLocaleString('zh-CN', {hour12:false}); }
+function get(u, cb){ fetch(u, {cache:'no-store'}).then(function(r){ return r.json(); }).then(cb).catch(function(){ cb(null); }); }
+function set(id, html, cls){ var e = document.getElementById(id); if(e){ e.innerHTML = html; if(cls) e.className = 's ' + cls; } }
+
+function loadBoard(){
+  get('/api/build/status', function(d){
+    if(!d || !d.ok) return set('sBuild', '<span class="bad">读取失败</span>');
+    var v = d.versions;
+    set('sBuild', (v.consistent ? '<span class="ok">四源一致 v' + esc(v.versionName) + '</span>' : '<span class="bad">四源不一致</span>') +
+      ' · ' + (d.pipelines[0] ? (d.pipelines[0].passed ? '<span class="ok">上次发版通过</span>' : '<span class="bad">上次未通过</span>') : '无记录') +
+      ' · 自动发版 ' + (d.autopublish.paused ? '<span class="warn">已暂停</span>' : (d.autopublish.watcherAlive ? '<span class="ok">守候中</span>' : '<span class="bad">未运行</span>')));
+  });
+  get('/api/release/center', function(d){
+    if(!d || !d.ok) return set('sRelease', '<span class="bad">读取失败</span>');
+    set('sRelease', '归档 ' + d.releases.count + ' 版 · 闸门 ' + (d.gates.healthy ? '<span class="ok">全绿</span>' : '<span class="bad">有红项</span>') +
+      ' · 预检 ' + (d.gates.doctor.summary || '无记录'));
+    set('sMetrics', '体积 <span class="' + (d.releases.totalMB > 300 ? 'bad' : 'ok') + '">' + d.releases.totalMB + ' MB 归档</span>');
+  });
+  get('/api/alerts/center', function(d){
+    if(!d || !d.ok) return set('sAlerts', '<span class="bad">读取失败</span>');
+    var t = d.totals;
+    set('sAlerts', (t.critical ? '<span class="bad">严重 ' + t.critical + '</span>' : '<span class="ok">无严重</span>') +
+      ' · 警告 ' + t.warn + ' · 通道 ' + (d.config.enabled ? '<span class="ok">已启用</span>' : '<span class="warn">未启用</span>'));
+  });
+  get('/api/sources/health', function(d){
+    if(!d) return;
+    var t = (d.totals || {});
+    set('sSites', '条目 ' + (t.items || 0) + ' · 可用 ' + (t.ok || 0) + ' · 失效 ' + (t.dead || 0));
+  });
+  get('/api/devices', function(d){
+    var n = (d && (d.devices || d.list)) ? (d.devices || d.list).length : 0;
+    set('sDevices', '设备 ' + n + ' 台');
+  });
+  get('/api/stats/fail-top?limit=1', function(d){
+    if(!d) return;
+    var f = (d.totals || {}).failedItems || 0;
+    set('sInsights', f ? '<span class="bad">' + f + ' 条失效源</span>' : '<span class="ok">无失效源</span>');
+  });
+  set('sBoard', '发布 / 灰度 / 自愈 / 治理入口');
+  get('/api/quality/status', function(d){
+    if(!d || !d.ok || !d.items) return set('sQuality', '<span class="bad">读取失败</span>');
+    var bad = d.items.filter(function(x){ return x.ok === false; }).length;
+    var none = d.items.filter(function(x){ return x.ok === null && !x.running; }).length;
+    set('sQuality', bad ? '<span class="bad">' + bad + ' 项未通过</span>' : (none === d.items.length ? '<span class="mut">还没跑过</span>' : '<span class="ok">全部通过</span>'));
+  });
+  set('sExtras', '远程开关与实验能力');
+  set('sFeatures', '版本功能增删对比');
+}
+
+var token = '', shown = false;
+function loadToken(){
+  get('/api/dev/access-token', function(d){
+    if(!d || !d.ok){ document.getElementById('tokVal').textContent = (d && d.error) || '读取失败'; return; }
+    token = d.token || '';
+    renderToken();
+    document.getElementById('tokHint').textContent = d.lanMode ? '局域网模式：设备需要口令' : '仅回环访问：口令可为空';
+  });
+}
+function renderToken(){
+  if(!token){ document.getElementById('tokVal').textContent = '（当前无口令 / 仅回环）'; return; }
+  document.getElementById('tokVal').textContent = shown ? token : token.slice(0, 4) + '••••••••' + token.slice(-2);
+}
+document.getElementById('btnTokShow').onclick = function(){ shown = !shown; renderToken(); };
+document.getElementById('btnTokCopy').onclick = function(){
+  if(!token){ document.getElementById('tokHint').textContent = '当前没有口令可复制'; return; }
+  navigator.clipboard.writeText(token).then(function(){ document.getElementById('tokHint').textContent = '已复制'; })
+    .catch(function(){ document.getElementById('tokHint').textContent = '复制失败，请手动选择'; });
+};
+document.getElementById('btnTokReset').onclick = function(){
+  if(!confirm('重置口令后旧口令立即失效，局域网设备需要重新输入。继续？')) return;
+  fetch('/api/dev/access-token', {method:'POST'}).then(function(r){ return r.json(); }).then(function(d){
+    if(d && d.ok){ token = d.token; shown = true; renderToken(); document.getElementById('tokHint').textContent = '已重置，请重新分发给设备'; }
+    else document.getElementById('tokHint').textContent = '重置失败：' + ((d && d.error) || '');
+  }).catch(function(e){ document.getElementById('tokHint').textContent = '重置失败：' + e.message; });
+};
+
+function loadChangelog(){
+  get('/api/changelog', function(d){
+    if(!d || !d.ok) return;
+    document.getElementById('tbCl').innerHTML = (d.entries || []).map(function(e){
+      var inner = e.compared
+        ? ((e.added.length ? '<span class="ok">+' + e.added.length + ' ' + esc(e.added.join('、')) + '</span><br>' : '') +
+           (e.removed.length ? '<span class="bad">-' + e.removed.length + ' ' + esc(e.removed.join('、')) + '</span>' : '') ||
+           '<span class="mut">功能无增删</span>')
+        : '<span class="mut">' + esc(e.reason || '无法逐项对比') + '，本版 ' + e.count + ' 项</span>';
+      return '<tr><td><b>v' + esc(e.versionName) + '</b>' + (e.versionCode ? '<br><span class="mut">#' + esc(e.versionCode) + '</span>' : '') +
+        '</td><td class="mut">' + ts(e.publishedAt) + '</td><td>' + e.count + '</td><td>' + inner + '</td></tr>';
+    }).join('') || '<tr><td colspan="4" class="empty">没有归档索引</td></tr>';
+  });
+}
+
+document.getElementById('btnGenMd').onclick = function(){
+  var b = this; b.disabled = true;
+  fetch('/api/changelog/write', {method:'POST'}).then(function(r){ return r.json(); }).then(function(d){
+    document.getElementById('mdHint').textContent = d && d.ok ? ('已写入 CHANGELOG.md（' + d.bytes + ' 字节，' + d.entries + ' 个版本）') : ('失败：' + ((d && d.error) || ''));
+    b.disabled = false;
+  }).catch(function(e){ document.getElementById('mdHint').textContent = '失败：' + e.message; b.disabled = false; });
+};
+
+loadBoard(); loadToken(); loadChangelog();
+setInterval(loadBoard, 30000);
+</script>
+</body>
+</html>

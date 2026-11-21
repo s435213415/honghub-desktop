@@ -29,6 +29,8 @@ const ISSUE_LOG = path.join(DATA_DIR, 'issues-log.jsonl');
 const WEEKLY_FILE = path.join(DATA_DIR, 'weekly.json');
 const LAST_CYCLE = path.join(DATA_DIR, 'catalog-cycle.json');
 const KEEP_PLAY = 20000;
+const SNAP_PREFIX = 'catalog-snapshot-';
+const SNAP_KEEP = Math.max(1, Number(process.env.KH_SNAPSHOT_KEEP || 30));
 
 let devops = null;
 try { devops = require('./devops'); } catch (e) { devops = null; }
@@ -53,6 +55,23 @@ function tail(file, n) {
 }
 function auditOk(a) { try { if (devops) devops.audit('catalog.' + a); } catch (e) {} }
 function metric(type, fields) { try { if (devops) devops.metric(type, fields); } catch (e) {} }
+
+/* 内容快照按 hash 去重累积，无上限会越攒越多；只保留最近 SNAP_KEEP 份，超出删最旧。
+   仅作用于 catalog-snapshot-*.json，不碰当前 catalog.json、catalog-cycle.json 与 backups 目录；
+   被删的旧版本在 diff 时由「无该版本快照」兜底提示。 */
+function pruneSnapshots() {
+  let files = [];
+  try {
+    files = fs.readdirSync(DATA_DIR)
+      .filter(function (n) { return n.indexOf(SNAP_PREFIX) === 0 && n.endsWith('.json'); })
+      .map(function (n) { const p = path.join(DATA_DIR, n); let mt = 0; try { mt = fs.statSync(p).mtimeMs; } catch (e) {} return { name: n, path: p, mt: mt }; });
+  } catch (e) { return { ok: false, removed: 0, error: String(e && e.message || e) }; }
+  files.sort(function (a, b) { return a.mt - b.mt; });
+  const excess = files.slice(0, Math.max(0, files.length - SNAP_KEEP));
+  let removed = 0;
+  excess.forEach(function (f) { try { fs.unlinkSync(f.path); removed++; } catch (e) {} });
+  return { ok: true, kept: files.length - removed, removed: removed, keep: SNAP_KEEP };
+}
 
 /* ---------------- 目录构建 ---------------- */
 function readManifest() { return readJson(MANIFEST_FILE, { sources: { channels: [], sites: [] }, release: {} }); }
@@ -398,6 +417,7 @@ async function runCycle(opts) {
   };
   writeJson(CATALOG_FILE, catalog);
   writeJson(path.join(DATA_DIR, 'catalog-snapshot-' + String(version).slice(0, 24) + '.json'), catalog);
+  pruneSnapshots();
   saveIssues(d);
   writeJson(LAST_CYCLE, summary);
   metric('catalog', { items: totals.items, ok: totals.ok, dead: totals.dead, open: summary.issues.open, fixed: summary.issues.autoFixedThisRun });
@@ -585,6 +605,7 @@ module.exports = {
   snapshot: function (ver) {
     const cur = readJson(CATALOG_FILE, null);
     if (cur && ver) writeJson(path.join(DATA_DIR, 'catalog-snapshot-' + String(ver).slice(0, 24) + '.json'), cur);
+    pruneSnapshots();
     return true;
   },
   playStats: aggregatePlay,

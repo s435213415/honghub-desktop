@@ -39,7 +39,15 @@ function syncPage(p, latest) {
     });
   }
   s = s.replace(/var KH_APP_CODE\s*=\s*\d+\s*;/, 'var KH_APP_CODE = ' + latest.versionCode + ';');
+  /* 同时注入版本名窗口变量：升级失败横幅要按版本名比较归档，老归档没有 versionCode */
   s = s.replace(/appCode:\s*\d+/, 'appCode: ' + latest.versionCode);
+  if (s.indexOf('window.KH_APP_VERSION =') < 0) {
+    s = s.replace(/var KH_APP_CODE\s*=\s*\d+\s*;/,
+      'var KH_APP_CODE = ' + latest.versionCode + ';\nwindow.KH_APP_VERSION = window.KH_APP_VERSION || \'' + latest.versionName + '\';');
+  } else {
+    s = s.replace(/window\.KH_APP_VERSION\s*=\s*window\.KH_APP_VERSION\s*\|\|\s*'[^']*'/,
+      "window.KH_APP_VERSION = window.KH_APP_VERSION || '" + latest.versionName + "'");
+  }
   s = s.replace(/appVersion:\s*'[^']*-desktop'/, "appVersion: '" + latest.versionName + "-desktop'");
   fs.writeFileSync(p, s);
   return true;

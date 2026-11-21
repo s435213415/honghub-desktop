@@ -49,9 +49,15 @@ const packedPkg = j(path.join(DIST, 'win-unpacked', 'resources', 'app', 'package
 if (!packedPkg) bad('包内 package.json 缺失（应用目录未生成）');
 else if (packedPkg.version !== V) bad('包内 package.json.version = ' + packedPkg.version + ' ≠ ' + V);
 else ok('包内应用版本与发版一致（v' + V + '）');
+/* 前端已模块化（1.7.72）：版本号在 app/kh-app.js / www/kh-app.js，不在壳页；用聚合视图读取。 */
+const fe = require('./frontend-source');
 for (const p of ['app/index.html', 'harmony/entry/src/main/resources/rawfile/www/index.html']) {
-  const s = fs.readFileSync(at(p), 'utf8');
-  const code = Number((s.match(/var KH_APP_CODE\s*=\s*(\d+)/) || [])[1] || 0);
+  let s = '';
+  try { s = fe.merged(at(p)); } catch (e) { note('聚合视图读取失败：' + p + '（' + e.message + '）'); }
+  /* 兜底：直接扫同目录的 kh-app.js（聚合视图内联失败时也能取到真实值） */
+  try { s += '\n' + fs.readFileSync(path.join(at(p), '..', 'kh-app.js'), 'utf8'); } catch (e) { /* 页面在旧结构下没有模块文件 */ }
+  const m = s.match(/var KH_APP_CODE\s*=\s*(\d+)/);
+  const code = Number((m || [])[1] || 0);
   if (code !== C) bad(p + ' KH_APP_CODE=' + code + ' ≠ ' + C + '（新装用户会误报更新）');
   else ok(p + ' 版本基线一致');
 }
@@ -114,12 +120,16 @@ else {
   if (!fs.existsSync(hp) || sha(hp) !== hapStamp.sha256) bad('HAP 与本次构建指纹不一致（疑似旧包混入）');
   else {
     try {
-      let html = null;
-      for (const entry of ['resources/rawfile/www/index.html', 'resources/rawfile/movie-site/index.html']) {
-        try { html = zipRead.readText(hp, entry); break; } catch (e) {}
+      /* 模块化后版本号在 kh-app.js：把包内前端各文件拼成一段再匹配。 */
+      const parts = [];
+      for (const entry of ['resources/rawfile/www/index.html', 'resources/rawfile/movie-site/index.html',
+                           'resources/rawfile/www/kh-app.js', 'resources/rawfile/www/kh-config.js']) {
+        try { parts.push(zipRead.readText(hp, entry)); } catch (e) { /* 尝试下一个 */ }
       }
-      if (!html) throw new Error('包内缺少前端入口（www/index.html 与 movie-site/index.html 都不存在）');
-      const m = html.match(/var KH_APP_CODE\s*=\s*(\d+)/);
+      try { for (const n of zipRead.listText ? zipRead.listText(hp) : []) parts.push(n); } catch (e) { /* 可选 API */ }
+      if (!parts.length) throw new Error('包内缺少前端入口（www/index.html 与 movie-site/index.html 都不存在）');
+      const text = parts.join('\n');
+      const m = text.match(/var KH_APP_CODE\s*=\s*(\d+)/);
       if (!m || Number(m[1]) !== C) bad('HAP 包内前端版本与发版不一致');
       else ok('HAP 新鲜度通过：包内前端 #' + C + ' 与本次构建指纹一致');
     } catch (e) { bad('HAP 包内读取失败：' + e.message); }
@@ -142,11 +152,13 @@ const srv = spawn(process.execPath, [at('server', 'server.js')], {
   }),
   stdio: 'ignore'
 });
-function req(pathname, method, body, extraHeaders) {
+function req(pathname, method, body, extraHeaders, timeoutMs) {
   return new Promise((resolve) => {
     const base = body ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } : {};
     const headers = Object.assign(base, extraHeaders || {});
-    const r = http.request({ host: '127.0.0.1', port: PORT, path: pathname, method: method || 'GET', timeout: 4000, headers }, (res) => {
+    /* 轻接口 4 秒够用；自动修 Bug / 自治这类真干活的接口要几十秒，按调用方传的超时走，
+       否则会把「在跑」误判成 HTTP 0（实测 5.2s / 6.1s 被打成失败）。 */
+    const r = http.request({ host: '127.0.0.1', port: PORT, path: pathname, method: method || 'GET', timeout: timeoutMs || 4000, headers }, (res) => {
       let b = '';
       res.on('data', (d) => { if (b.length < 2 * 1024 * 1024) b += d; });
       res.on('end', () => resolve({ code: res.statusCode, body: b, len: res.headers['content-length'], headers: res.headers }));
@@ -205,7 +217,7 @@ function req(pathname, method, body, extraHeaders) {
     const fsy = JSON.parse((await req('/api/features/sync')).body);
     if (!fsy.ok || !fsy.version || Number(fsy.version.versionCode) !== C) bad('/api/features/sync 版本不同步');
     else ok('功能接口版本 #' + C + ' 与发版一致（' + (fsy.features || []).length + ' 项）');
-    const bf = await req('/api/bugfix/run', 'POST');
+    const bf = await req('/api/bugfix/run', 'POST', null, null, 60000);
     let s = null;
     try { s = (JSON.parse(bf.body).result || {}).summary; } catch (e) { /* 下方报错 */ }
     if (bf.code !== 200 || !s) bad('/api/bugfix/run 返回异常（HTTP ' + bf.code + '）');
@@ -217,7 +229,7 @@ function req(pathname, method, body, extraHeaders) {
       ' 第 ' + s.rounds + ' 轮复检归零 · 无需人工复核');
     // 治理循环不得制造假更新
     const before = C;
-    const gov = await req('/api/govern/run', 'POST');
+    const gov = await req('/api/govern/run', 'POST', null, null, 60000);
     await new Promise((r) => setTimeout(r, 600));
     const after = Number(((j(at('server', 'manifest.json'), {}).release || {}).latest || {}).versionCode);
     if (gov.code !== 200) bad('/api/govern/run HTTP ' + gov.code);
@@ -286,6 +298,22 @@ function req(pathname, method, body, extraHeaders) {
     } catch (e) { bad('下发 / 自动更新验收异常：' + e.message); }
   }
   try { srv.kill(); } catch (e) { /* 已退出 */ }
+
+  // 5) 页面运行时冒烟：白屏 / 模板缺失 / 脚本异常靠这一步挡（静态语法门禁看不出来）
+  try {
+    const smoke = j(path.join(DIST, 'ui-smoke.json'), null);
+    const r = await new Promise((resolve) => {
+      const p = spawn(process.execPath, [at('scripts', 'smoke-ui.js')], { cwd: ROOT, stdio: 'ignore' });
+      const timer = setTimeout(() => { try { p.kill(); } catch (e) {} resolve(-1); }, 150000);
+      p.on('exit', (code) => { clearTimeout(timer); resolve(code); });
+      p.on('error', () => { clearTimeout(timer); resolve(-1); });
+    });
+    const rep = j(path.join(DIST, 'ui-smoke.json'), null) || smoke;
+    if (r !== 0) bad('页面运行时冒烟未通过（白屏 / 控件缺失 / 脚本异常），见 dist/ui-smoke.json');
+    else if (!rep || !rep.ok) bad('页面运行时冒烟报告不达标');
+    else ok('页面运行时冒烟通过（' + rep.mode + ' · data-act ' + rep.dataActs + ' · 正文 ' + (rep.dom ? rep.dom.text : '-') + ' 字）');
+  } catch (e) { bad('页面冒烟执行异常：' + e.message); }
+
   console.log('\n' + (errs.length ? '交付验收未通过（' + errs.length + ' 项）' : '交付验收全部通过'));
   process.exit(errs.length ? 1 : 0);
 })();

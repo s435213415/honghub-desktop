@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>鸿汇影 · 开发端自更新</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0B1220; color: #D7E3F4; font: 14px/1.7 "Microsoft YaHei", system-ui, sans-serif; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 20px 18px 48px; }
+  h1 { font-size: 20px; margin: 6px 0 4px; }
+  .sub { color: #7D8FA8; font-size: 13px; margin-bottom: 16px; }
+  .card { background: #121C2E; border: 1px solid #1E2C45; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  .row { display: flex; gap: 18px; flex-wrap: wrap; }
+  .kv { min-width: 220px; }
+  .k { color: #7D8FA8; font-size: 12px; }
+  .v { font-size: 14px; word-break: break-all; }
+  .ok { color: #7BE0A3; }
+  .bad { color: #FF9B9B; }
+  .warn { color: #FFD58A; }
+  button { background: #1F6FEB; color: #fff; border: 0; border-radius: 8px; padding: 9px 16px; font-size: 14px; cursor: pointer; }
+  button:hover { background: #2B7FF5; }
+  button.ghost { background: #1B3A5B; border: 1px solid #2A4E77; }
+  pre { background: #0A1322; border: 1px solid #1B2A44; border-radius: 8px; padding: 10px 12px; overflow: auto; max-height: 420px; font-size: 12px; line-height: 1.6; }
+  a { color: #8FC0FF; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🔄 开发端自更新</h1>
+  <div class="sub">只升级开发端安装包（dev-setup / 「鸿汇影桌面版 开发端 X.exe」），绝不安装客户版。检查间隔默认 360 分钟，可用 <code>KH_UPDATE_INTERVAL_MIN</code> 调整。</div>
+
+  <div class="card">
+    <div class="row">
+      <div class="kv"><div class="k">当前程序目录</div><div class="v" id="vRoot">—</div></div>
+      <div class="kv"><div class="k">当前版本</div><div class="v" id="vCur">—</div></div>
+      <div class="kv"><div class="k">上次检查</div><div class="v" id="vAt">—</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div class="kv"><div class="k">找到的开发端安装包</div><div class="v" id="vFound">—</div></div>
+      <div class="kv"><div class="k">结论</div><div class="v" id="vMsg">—</div></div>
+    </div>
+    <div style="margin-top:12px" class="k">已扫描目录</div>
+    <div class="v" id="vDirs" style="font-size:12px;color:#9FB4CF">—</div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button id="btnCheck">立即检查</button>
+      <button class="ghost" id="btnOpen">打开程序目录</button>
+      <button class="ghost" id="btnBoard">← 回运维看板</button>
+      <span class="k" id="tip" style="margin-left:4px"></span>
+    </div>
+    <div class="k" style="margin-top:10px">说明：点「立即检查」会在程序目录写一个触发文件，自更新模块 20 秒内响应；也可用托盘菜单「立即检查更新」。</div>
+  </div>
+
+  <div class="card">
+    <div class="k" style="margin-bottom:6px">最近日志（server\data\dev-auto-update.log）</div>
+    <pre id="vLog">读取中…</pre>
+  </div>
+</div>
+<script>
+(function () {
+  function q(id) { return document.getElementById(id); }
+  function set(id, text, cls) { var el = q(id); if (!el) return; el.textContent = text || '—'; el.className = cls ? ('v ' + cls) : 'v'; }
+  function load() {
+    fetch('/api/dev/selfupdate', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j || !j.ok) { set('vMsg', (j && j.error) || '读取失败', 'bad'); return; }
+      var s = j.status || {};
+      set('vRoot', s.root || '—');
+      set('vCur', 'v' + (s.current || '?'));
+      set('vAt', s.checkedAt || '尚未检查');
+      if (s.foundPath) {
+        set('vFound', 'v' + (s.foundVersion || '?') + '  ' + s.foundPath, 'ok');
+      } else {
+        set('vFound', '没找到（把开发端安装包放进交付夹或程序目录\\dist，或用 KH_DEV_SETUP_DIR 指定）', 'warn');
+      }
+      set('vMsg', s.lastMsg || '—', /失败|没找到/.test(s.lastMsg || '') ? 'warn' : '');
+      set('vDirs', (s.searched || []).join('\n'));
+      q('vDirs').style.whiteSpace = 'pre-wrap';
+      q('vLog').textContent = j.logTail || '（暂无日志）';
+    }).catch(function (e) { set('vMsg', '读取失败：' + e.message, 'bad'); });
+  }
+  q('btnCheck').onclick = function () {
+    q('tip').textContent = '已提交触发，20 秒内生效…';
+    fetch('/api/dev/selfupdate', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (j) {
+      q('tip').textContent = (j && j.ok) ? '已写入触发文件，稍后刷新本页看结果' : ((j && j.error) || '提交失败');
+      setTimeout(load, 25000);
+    }).catch(function (e) { q('tip').textContent = '提交失败：' + e.message; });
+  };
+  q('btnOpen').onclick = function () {
+    fetch('/api/dev/selfupdate/open', { method: 'POST' }).catch(function () {});
+    q('tip').textContent = '已请求打开程序目录（桌面端由主进程处理；此处可能无动作）';
+  };
+  q('btnBoard').onclick = function () { location.href = '/admin'; };
+  load();
+  setInterval(load, 60000);
+})();
+</script>
+</body>
+</html>

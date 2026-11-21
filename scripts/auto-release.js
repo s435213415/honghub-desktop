@@ -268,7 +268,8 @@ if (!NO_DESKTOP) {
     '三、系统适配',
     '  HAP 最低 API 11（KaihongOS / OpenHarmony 4.0 起可装），目标 API 26；',
     '  前端读系统版本自动切换安全区、手势返回与全屏策略，新老系统同一套包；',
-    '  证书自 v1.7.8 固化，覆盖安装不需要先卸载。',
+    '  自 v1.7.46 起改用 OpenHarmony 官方证书链（与开鸿设备端同一套）；',
+    '  装过 v1.7.45 及更早自签版本的设备需先卸载旧版再装本版，之后覆盖安装不需卸载。',
     '',
     '四、出问题怎么反馈',
     '  发「频道 / 大概时间 / 报错原文」，服务端按播放回传自动建单换源，修好的源随清单热更新。'
@@ -283,6 +284,21 @@ if (!NO_DESKTOP) {
     } catch (e) { log('  镜像站说明同步失败：' + e.message); }
   }
 }
+
+/* 3.1) 桌面资料文档自动刷新：三份说明里的版本块随本版重写，人工段落不动 */
+if (!NO_DESKTOP) {
+  try {
+    require(path.join(__dirname, 'desktop-docs.js')).refresh({ desktop: DESKTOP, dist: DIST, version: VER, versionCode: M.versionCode, dry: DRY });
+  } catch (e) { log('  ⚠ 桌面资料刷新失败：' + e.message); }
+}
+
+/* 4.1) 终版归档刷新：流水线后段（签名/重出包/交付）可能改写 exe 字节，
+   交付前把回滚归档与索引对准最终成品，避免回滚装到中间产物 */
+try {
+  const ar = require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'archive-release.js')], { cwd: ROOT, encoding: 'utf8' });
+  if (ar.status === 0) log('  归档索引已对准终版成品');
+  else log('  ⚠ 终版归档刷新失败：' + String(ar.stderr || ar.stdout || '').trim().slice(0, 160));
+} catch (e) { log('  ⚠ 终版归档刷新异常：' + e.message); }
 
 log('[4/4] 完成');
 log('  版本 v' + VER + ' · exe ' + nf(bytes.exe) + ' B · hap ' + nf(bytes.hap) + ' B · bin ' + nf(bytes.bin) + ' B');

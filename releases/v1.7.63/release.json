@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "versionName": "1.7.63",
+  "versionCode": 1000177,
+  "publishedAt": "2026-11-19T10:47:15.602Z",
+  "buildAt": "2026-11-19T10:47:40.640Z",
+  "artifacts": {
+    "desktop": {
+      "file": "desktop-setup.exe",
+      "size": 80299844,
+      "sha256": "d927fd089e7a4bc1ada8b811167ce5f161456800db0a3823af6a2bc42a4e175a"
+    },
+    "hap": {
+      "file": "honghub-harmony.hap",
+      "size": 986715,
+      "sha256": "43d25b3ac2a45d232a28c6b521baa7d284080d433de4d74210eda7467e653fc6"
+    }
+  },
+  "features": {
+    "versionName": "1.7.63",
+    "versionCode": 1000177,
+    "count": 38,
+    "hash": "78c545d7ffe9ce9c",
+    "ids": [
+      "board",
+      "report",
+      "sourcespeed",
+      "fix",
+      "updatepublish",
+      "automation",
+      "updatecheck",
+      "govern",
+      "preset-open-dashboard",
+      "preset-dingtalk",
+      "preset-wecom",
+      "preset-feishu",
+      "preset-backup",
+      "preset-broadcast",
+      "feature-mine",
+      "auto-batch",
+      "arch-adaptive",
+      "play-smooth",
+      "mem-adaptive",
+      "auto-update",
+      "os-follow",
+      "ops-audit",
+      "ops-trend",
+      "ops-rollout",
+      "ops-publish",
+      "ops-smoke",
+      "ops-alerts",
+      "ops-catalog",
+      "ops-play",
+      "ops-issues",
+      "stats-heat",
+      "fail-top",
+      "kid-mode",
+      "handoff",
+      "handoff-take",
+      "search-all",
+      "rank-sources",
+      "upgrade-telemetry"
+    ]
+  }
+}

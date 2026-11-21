@@ -14,6 +14,13 @@ import { KhBridgeStore } from '../common/KhBridgeStore';
 export default class EntryAbility extends UIAbility {
   private win: window.Window | null = null;
   private capsJson: string = '';
+  /* 深开鸿桌面版（x86 / 2in1）与平板、TV 的窗口策略不同：
+     桌面版保留系统标题栏并最大化，不能铺满全屏、更不能隐藏系统栏，
+     否则窗口没有关闭/拖动入口，用户只能靠任务管理器退出。 */
+  private isDesktop: boolean = (function () {
+    let t: string = String(deviceInfo.deviceType || '').toLowerCase();
+    return t === '2in1' || t === 'pc' || t === 'default';
+  })();
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'HongHub', '%{public}s', 'HongHub-Harmony onCreate');
@@ -42,28 +49,44 @@ export default class EntryAbility extends UIAbility {
       'hideBars': '0',
       'avoidArea': '0',
       'orientation': '0',
-      'backKey': '1'
+      'backKey': '1',
+      'desktop': this.isDesktop ? '1' : '0',
+      'maximize': '0'
     };
     try {
       let w: window.Window = windowStage.getMainWindowSync();
       this.win = w;
-      // 1) 全屏布局：没有这个方法就保持系统默认布局，不阻断启动
-      try {
-        w.setWindowLayoutFullScreen(true);
-        caps['fullscreen'] = '1';
-      } catch (e) {
-        hilog.warn(0x0000, 'HongHub', 'setWindowLayoutFullScreen unavailable: %{public}s', JSON.stringify(e));
-      }
-      // 2) 隐藏系统栏：部分旧系统不支持空数组，失败就退回只隐藏导航栏
-      try {
-        w.setWindowSystemBarEnable([]);
-        caps['hideBars'] = '1';
-      } catch (e) {
+      caps['desktop'] = this.isDesktop ? '1' : '0';
+      if (this.isDesktop) {
+        /* 桌面形态（KaihongOS 桌面版 x86）：最大化但保留系统标题栏 / 系统栏，
+           不做布局全屏、不隐藏系统栏，保证窗口可拖动、可关闭。 */
+        caps['fullscreen'] = '0';
+        caps['hideBars'] = '0';
         try {
-          w.setWindowSystemBarEnable(['navigation']);
+          w.maximize();
+          caps['maximize'] = '1';
+        } catch (e) {
+          hilog.warn(0x0000, 'HongHub', 'maximize unavailable: %{public}s', JSON.stringify(e));
+        }
+      } else {
+        // 1) 全屏布局：没有这个方法就保持系统默认布局，不阻断启动
+        try {
+          w.setWindowLayoutFullScreen(true);
+          caps['fullscreen'] = '1';
+        } catch (e) {
+          hilog.warn(0x0000, 'HongHub', 'setWindowLayoutFullScreen unavailable: %{public}s', JSON.stringify(e));
+        }
+        // 2) 隐藏系统栏：部分旧系统不支持空数组，失败就退回只隐藏导航栏
+        try {
+          w.setWindowSystemBarEnable([]);
           caps['hideBars'] = '1';
-        } catch (e2) {
-          hilog.warn(0x0000, 'HongHub', 'setWindowSystemBarEnable unavailable');
+        } catch (e) {
+          try {
+            w.setWindowSystemBarEnable(['navigation']);
+            caps['hideBars'] = '1';
+          } catch (e2) {
+            hilog.warn(0x0000, 'HongHub', 'setWindowSystemBarEnable unavailable');
+          }
         }
       }
       // 3) 安全区监听：拿得到就实时推，拿不到由网页用 CSS env() 兜底
@@ -77,12 +100,16 @@ export default class EntryAbility extends UIAbility {
       } catch (e) {
         hilog.warn(0x0000, 'HongHub', 'avoidArea unavailable, 网页将用 env(safe-area-inset) 兜底');
       }
-      // 4) 方向：能设才设，设不了就跟随系统
-      try {
-        w.setPreferredOrientation(window.Orientation.LANDSCAPE);
-        caps['orientation'] = '1';
-      } catch (e) {
-        hilog.warn(0x0000, 'HongHub', 'setPreferredOrientation unavailable');
+      // 4) 方向：桌面窗口跟随系统自由缩放，不锁横屏；平板 / TV 能设才设，设不了就跟随系统
+      if (this.isDesktop) {
+        caps['orientation'] = '0';
+      } else {
+        try {
+          w.setPreferredOrientation(window.Orientation.LANDSCAPE);
+          caps['orientation'] = '1';
+        } catch (e) {
+          hilog.warn(0x0000, 'HongHub', 'setPreferredOrientation unavailable');
+        }
       }
       this.context.eventHub.on('khSetOrientation', (mode: string) => {
         this.applyOrientation(String(mode));
@@ -119,6 +146,10 @@ export default class EntryAbility extends UIAbility {
 
   private applyOrientation(mode: string): void {
     if (!this.win) {
+      return;
+    }
+    // 桌面窗口由用户自由缩放，不响应横竖屏锁定请求
+    if (this.isDesktop) {
       return;
     }
     let target: window.Orientation = window.Orientation.UNSPECIFIED;

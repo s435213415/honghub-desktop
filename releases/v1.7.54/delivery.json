@@ -1,0 +1,484 @@
+{
+  "schema": 1,
+  "auto": true,
+  "noReview": true,
+  "versionName": "1.7.54",
+  "versionCode": 1000168,
+  "generatedAt": "2026-11-19T04:50:31.898Z",
+  "guarantee": "所有包不限设备、不限内存：任意系统 / 架构 / 内存都有可用成品，未知设备与低内存自动保底走免安装在线影站；Windows 各架构走原生包、深开鸿走轻量 HAP；播放缓冲与码率按内存档设硬上限；三条通道随发版自动更新，无需人工",
+  "devicePolicy": {
+    "unrestricted": true,
+    "anyDevice": true,
+    "anyMemory": true,
+    "devices": [
+      "windows-x64",
+      "windows-ia32",
+      "windows-arm64",
+      "kaihongos",
+      "openharmony",
+      "macos",
+      "linux",
+      "android",
+      "ios",
+      "unknown"
+    ],
+    "fallbackChannel": "lite",
+    "note": "所有包不限设备：未识别 / 非 Windows 设备与低内存设备自动保底走免安装在线版，永不提示装不了的包"
+  },
+  "autoUpdate": {
+    "auto": true,
+    "noReview": true,
+    "contentAlwaysLatest": true,
+    "policy": "两端启动与定时轮询自动比对 versionCode；功能 / 源清单 / 播放档位自动同步；安装包与 HAP 仅提示并校验 SHA256，由用户确认安装",
+    "note": "内容发布不抬高应用版本，治理循环不制造假更新"
+  },
+  "memoryTiers": {
+    "tiny": {
+      "key": "tiny",
+      "recommendedChannel": "lite",
+      "label": "极小内存（≤1GB）",
+      "maxMemGB": 1,
+      "maxBufferLength": 4,
+      "maxMaxBufferLength": 8,
+      "maxBufferSizeMB": 6,
+      "backBufferLength": 5,
+      "startLevel": 0,
+      "enableWorker": false,
+      "capLevel": 0,
+      "abrEwmaDefaultEstimate": 300000,
+      "abrBandWidthFactor": 0.7,
+      "fragmentTimeoutMs": 10000,
+      "guardIntervalMs": 30000,
+      "playback": {
+        "enableWorker": false,
+        "lowLatencyMode": false,
+        "backBufferLength": 5,
+        "maxBufferLength": 4,
+        "maxMaxBufferLength": 8,
+        "maxBufferSize": 6000000,
+        "capLevelToPlayerSize": true,
+        "startLevel": 0,
+        "autoLevelCapping": 0,
+        "abrEwmaDefaultEstimate": 300000,
+        "abrBandWidthFactor": 0.7,
+        "abrBandWidthUpFactor": 0.5,
+        "maxLoadingDelay": 2,
+        "fragLoadingMaxRetry": 3,
+        "manifestLoadingMaxRetry": 2,
+        "levelLoadingMaxRetry": 3,
+        "fragLoadingTimeOut": 10000,
+        "manifestLoadingTimeOut": 8000,
+        "levelLoadingTimeOut": 8000
+      }
+    },
+    "low": {
+      "key": "low",
+      "recommendedChannel": "lite",
+      "label": "低内存（≤2GB）",
+      "maxMemGB": 2,
+      "maxBufferLength": 6,
+      "maxMaxBufferLength": 12,
+      "maxBufferSizeMB": 10,
+      "backBufferLength": 10,
+      "startLevel": 0,
+      "enableWorker": false,
+      "capLevel": 1,
+      "abrEwmaDefaultEstimate": 450000,
+      "abrBandWidthFactor": 0.8,
+      "fragmentTimeoutMs": 12000,
+      "guardIntervalMs": 25000,
+      "playback": {
+        "enableWorker": false,
+        "lowLatencyMode": false,
+        "backBufferLength": 10,
+        "maxBufferLength": 6,
+        "maxMaxBufferLength": 12,
+        "maxBufferSize": 10000000,
+        "capLevelToPlayerSize": true,
+        "startLevel": 0,
+        "autoLevelCapping": 1,
+        "abrEwmaDefaultEstimate": 450000,
+        "abrBandWidthFactor": 0.8,
+        "abrBandWidthUpFactor": 0.7,
+        "maxLoadingDelay": 3,
+        "fragLoadingMaxRetry": 3,
+        "manifestLoadingMaxRetry": 2,
+        "levelLoadingMaxRetry": 3,
+        "fragLoadingTimeOut": 12000,
+        "manifestLoadingTimeOut": 10000,
+        "levelLoadingTimeOut": 10000
+      }
+    },
+    "medium": {
+      "key": "medium",
+      "recommendedChannel": "full",
+      "label": "常规内存（≤4GB）",
+      "maxMemGB": 4,
+      "maxBufferLength": 12,
+      "maxMaxBufferLength": 24,
+      "maxBufferSizeMB": 24,
+      "backBufferLength": 20,
+      "startLevel": -1,
+      "enableWorker": true,
+      "capLevel": -1,
+      "abrEwmaDefaultEstimate": 800000,
+      "abrBandWidthFactor": 0.9,
+      "fragmentTimeoutMs": 18000,
+      "guardIntervalMs": 20000,
+      "playback": {
+        "enableWorker": true,
+        "lowLatencyMode": false,
+        "backBufferLength": 20,
+        "maxBufferLength": 12,
+        "maxMaxBufferLength": 24,
+        "maxBufferSize": 24000000,
+        "capLevelToPlayerSize": true,
+        "startLevel": -1,
+        "autoLevelCapping": -1,
+        "abrEwmaDefaultEstimate": 800000,
+        "abrBandWidthFactor": 0.9,
+        "abrBandWidthUpFactor": 0.7,
+        "maxLoadingDelay": 6,
+        "fragLoadingMaxRetry": 3,
+        "manifestLoadingMaxRetry": 2,
+        "levelLoadingMaxRetry": 3,
+        "fragLoadingTimeOut": 18000,
+        "manifestLoadingTimeOut": 16000,
+        "levelLoadingTimeOut": 16000
+      }
+    },
+    "high": {
+      "key": "high",
+      "recommendedChannel": "full",
+      "label": "充足内存（>4GB）",
+      "maxMemGB": null,
+      "maxBufferLength": 30,
+      "maxMaxBufferLength": 60,
+      "maxBufferSizeMB": 60,
+      "backBufferLength": 30,
+      "startLevel": -1,
+      "enableWorker": true,
+      "capLevel": -1,
+      "abrEwmaDefaultEstimate": 1200000,
+      "abrBandWidthFactor": 0.95,
+      "fragmentTimeoutMs": 20000,
+      "guardIntervalMs": 20000,
+      "playback": {
+        "enableWorker": true,
+        "lowLatencyMode": false,
+        "backBufferLength": 30,
+        "maxBufferLength": 30,
+        "maxMaxBufferLength": 60,
+        "maxBufferSize": 60000000,
+        "capLevelToPlayerSize": true,
+        "startLevel": -1,
+        "autoLevelCapping": -1,
+        "abrEwmaDefaultEstimate": 1200000,
+        "abrBandWidthFactor": 0.95,
+        "abrBandWidthUpFactor": 0.7,
+        "maxLoadingDelay": 15,
+        "fragLoadingMaxRetry": 3,
+        "manifestLoadingMaxRetry": 2,
+        "levelLoadingMaxRetry": 3,
+        "fragLoadingTimeOut": 20000,
+        "manifestLoadingTimeOut": 18000,
+        "levelLoadingTimeOut": 18000
+      }
+    }
+  },
+  "recommendedByTier": {
+    "tiny": "lite",
+    "low": "lite",
+    "medium": "full",
+    "high": "full"
+  },
+  "channels": {
+    "lite": {
+      "install": false,
+      "anyDevice": true,
+      "minMemoryMB": 0,
+      "url": "/",
+      "size": null,
+      "note": "免安装在线影站：任意设备 / 任意内存打开网址即看，HLS 分片流式加载、缓冲按内存档设硬上限，永远随服务端最新"
+    },
+    "hap": {
+      "install": true,
+      "minMemoryMB": 0,
+      "anyDevice": false,
+      "os": [
+        "kaihongos",
+        "openharmony"
+      ],
+      "note": "深开鸿 / OpenHarmony 设备端轻量签名包",
+      "status": "ready",
+      "file": "honghub-harmony.hap",
+      "size": 962138,
+      "sha256": "a734e1bfcd441a8f801dad613c0315f984d231fda920f170980ad300beaf22db",
+      "url": "/download/honghub-harmony.hap"
+    },
+    "full": {
+      "install": true,
+      "minMemoryMB": 2048,
+      "os": [
+        "windows"
+      ],
+      "archs": {
+        "x64": {
+          "status": "ready",
+          "file": "desktop-setup.exe",
+          "size": 79926784,
+          "sha256": "d6bfb6ce1e04260d4982b2c5c91b511e96d7356f4880c6745eb540e0e4103694",
+          "url": "/download/desktop-setup.exe",
+          "native": false
+        },
+        "ia32": {
+          "status": "fallback",
+          "file": "鸿汇影桌面版 Setup 1.7.54-ia32.exe",
+          "url": "/download/desktop-setup.exe",
+          "fallbackTo": "x64",
+          "note": "无原生包，自动回退 x64 通用包（ARM64 Windows 可经系统模拟运行）"
+        },
+        "arm64": {
+          "status": "fallback",
+          "file": "鸿汇影桌面版 Setup 1.7.54-arm64.exe",
+          "url": "/download/desktop-setup.exe",
+          "fallbackTo": "x64",
+          "note": "无原生包，自动回退 x64 通用包（ARM64 Windows 可经系统模拟运行）"
+        }
+      },
+      "note": "完整安装包：按架构自动选包，无原生包回退 x64 通用包；内存低于 2GB 或非 Windows 设备自动改走免安装通道"
+    }
+  },
+  "archs": {
+    "x64": {
+      "status": "ready",
+      "file": "desktop-setup.exe",
+      "size": 79926784,
+      "sha256": "d6bfb6ce1e04260d4982b2c5c91b511e96d7356f4880c6745eb540e0e4103694",
+      "url": "/download/desktop-setup.exe",
+      "native": false
+    },
+    "ia32": {
+      "status": "fallback",
+      "file": "鸿汇影桌面版 Setup 1.7.54-ia32.exe",
+      "url": "/download/desktop-setup.exe",
+      "fallbackTo": "x64",
+      "note": "无原生包，自动回退 x64 通用包（ARM64 Windows 可经系统模拟运行）"
+    },
+    "arm64": {
+      "status": "fallback",
+      "file": "鸿汇影桌面版 Setup 1.7.54-arm64.exe",
+      "url": "/download/desktop-setup.exe",
+      "fallbackTo": "x64",
+      "note": "无原生包，自动回退 x64 通用包（ARM64 Windows 可经系统模拟运行）"
+    }
+  },
+  "hap": {
+    "status": "ready",
+    "file": "honghub-harmony.hap",
+    "size": 962138,
+    "sha256": "a734e1bfcd441a8f801dad613c0315f984d231fda920f170980ad300beaf22db",
+    "url": "/download/honghub-harmony.hap"
+  },
+  "features": {
+    "count": 38,
+    "hash": "78c545d7ffe9ce9c",
+    "ids": [
+      "board",
+      "report",
+      "sourcespeed",
+      "fix",
+      "updatepublish",
+      "automation",
+      "updatecheck",
+      "govern",
+      "preset-open-dashboard",
+      "preset-dingtalk",
+      "preset-wecom",
+      "preset-feishu",
+      "preset-backup",
+      "preset-broadcast",
+      "feature-mine",
+      "auto-batch",
+      "arch-adaptive",
+      "play-smooth",
+      "mem-adaptive",
+      "auto-update",
+      "os-follow",
+      "ops-audit",
+      "ops-trend",
+      "ops-rollout",
+      "ops-publish",
+      "ops-smoke",
+      "ops-alerts",
+      "ops-catalog",
+      "ops-play",
+      "ops-issues",
+      "stats-heat",
+      "fail-top",
+      "kid-mode",
+      "handoff",
+      "handoff-take",
+      "search-all",
+      "rank-sources",
+      "upgrade-telemetry"
+    ]
+  },
+  "osProfiles": {
+    "generatedAt": "2026-11-19T04:50:31.893Z",
+    "followAllOSVersions": true,
+    "families": {
+      "windows": {
+        "label": "Windows",
+        "versions": [
+          "10.0",
+          "6.1",
+          "6.3",
+          "11.0"
+        ],
+        "devices": 49,
+        "baseline": true
+      },
+      "kaihongos": {
+        "label": "深开鸿 KaihongOS / OpenHarmony",
+        "versions": [
+          "4.0",
+          "5.0",
+          "6.0",
+          "12",
+          "20",
+          "26"
+        ],
+        "devices": 6,
+        "baseline": true
+      },
+      "macos": {
+        "label": "macOS",
+        "versions": [
+          "10.15",
+          "13.0",
+          "14.0"
+        ],
+        "devices": 3,
+        "baseline": true
+      },
+      "linux": {
+        "label": "Linux",
+        "versions": [
+          "5.0",
+          "6.0"
+        ],
+        "devices": 2,
+        "baseline": true
+      },
+      "android": {
+        "label": "Android",
+        "versions": [
+          "10.0",
+          "13.0",
+          "14.0"
+        ],
+        "devices": 3,
+        "baseline": true
+      },
+      "ios": {
+        "label": "iOS / iPadOS",
+        "versions": [
+          "15.0",
+          "17.0"
+        ],
+        "devices": 2,
+        "baseline": true
+      },
+      "unknown": {
+        "label": "未识别系统",
+        "versions": [
+          "unknown"
+        ],
+        "devices": 1,
+        "baseline": true
+      }
+    },
+    "summary": {
+      "devices": 66,
+      "realReports": 45,
+      "families": 7,
+      "osVersions": 21,
+      "fixesApplied": 51,
+      "manual": 0,
+      "unresolved": 0
+    }
+  },
+  "deviceOptimization": {
+    "auto": true,
+    "noReview": true,
+    "endpoint": "/api/device/report",
+    "syncEndpoint": "/api/device/optimization",
+    "note": "检测 OS 版本 → 回传 → 自动优化 → 自动修复 → 自动下发同步更新，全程无需人工"
+  },
+  "release": {
+    "schema": 1,
+    "versionName": "1.7.54",
+    "versionCode": 1000168,
+    "publishedAt": "2026-11-19T04:49:56.876Z",
+    "buildAt": "2026-11-19T04:50:31.414Z",
+    "artifacts": {
+      "desktop": {
+        "file": "desktop-setup.exe",
+        "size": 79926784,
+        "sha256": "d6bfb6ce1e04260d4982b2c5c91b511e96d7356f4880c6745eb540e0e4103694"
+      },
+      "hap": {
+        "file": "honghub-harmony.hap",
+        "size": 962138,
+        "sha256": "a734e1bfcd441a8f801dad613c0315f984d231fda920f170980ad300beaf22db"
+      }
+    },
+    "features": {
+      "versionName": "1.7.54",
+      "versionCode": 1000168,
+      "count": 38,
+      "hash": "78c545d7ffe9ce9c",
+      "ids": [
+        "board",
+        "report",
+        "sourcespeed",
+        "fix",
+        "updatepublish",
+        "automation",
+        "updatecheck",
+        "govern",
+        "preset-open-dashboard",
+        "preset-dingtalk",
+        "preset-wecom",
+        "preset-feishu",
+        "preset-backup",
+        "preset-broadcast",
+        "feature-mine",
+        "auto-batch",
+        "arch-adaptive",
+        "play-smooth",
+        "mem-adaptive",
+        "auto-update",
+        "os-follow",
+        "ops-audit",
+        "ops-trend",
+        "ops-rollout",
+        "ops-publish",
+        "ops-smoke",
+        "ops-alerts",
+        "ops-catalog",
+        "ops-play",
+        "ops-issues",
+        "stats-heat",
+        "fail-top",
+        "kid-mode",
+        "handoff",
+        "handoff-take",
+        "search-all",
+        "rank-sources",
+        "upgrade-telemetry"
+      ]
+    }
+  }
+}

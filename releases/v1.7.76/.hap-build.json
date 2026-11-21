@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "size": 423570,
+  "sha256": "627dd2309508dbf002b1bf6c76e547dc46a7d1ba8d16422ed6dac161dc6a38c5",
+  "versionName": "1.7.76",
+  "versionCode": 1000190,
+  "variant": "client",
+  "chain": "official-openharmony",
+  "chainOwner": "sdk-public",
+  "shell": "entry-default-unsigned.hap",
+  "shellSha256": "2bb8cafebe31776afb11d0e1ad7702a142298cdda588b612a05d8ce607238646",
+  "targetApi": 14,
+  "compatVersion": 11,
+  "builtAt": "2026-11-21T03:40:23.300487+08:00",
+  "source": "harmony/signing（壳包注入 + official-openharmony 签名）"
+}

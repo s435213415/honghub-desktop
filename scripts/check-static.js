@@ -34,7 +34,7 @@ function run(label, bin, args, env) {
 console.log('=== 静态门禁 ===');
 
 // 1) 所有 JS 语法（排除产物目录与第三方）
-const js = ['electron-main.js'].concat(walk(path.join(ROOT, 'scripts'), ['.js'], []))
+const js = ['electron-main.js', 'preload.js'].concat(walk(path.join(ROOT, 'scripts'), ['.js'], []))
   .concat(walk(path.join(ROOT, 'server'), ['.js'], []))
   .filter(p => fs.existsSync(p));
 for (const f of js) run(path.relative(ROOT, f), process.execPath, ['--check', f]);
@@ -52,6 +52,9 @@ run('打包前自检（静态模式）', process.execPath, [path.join(__dirname,
 // 4) 自动修 Bug / 功能流回归自检
 run('自动修 Bug 故障注入回归', process.execPath, [path.join(__dirname, 'selftest-bugfix.js')]);
 run('反馈→新功能→下发闭环回归', process.execPath, [path.join(__dirname, 'selftest-feature-flow.js')]);
+
+// 5) 直播清单静态自检（坏链 / 主备重复阻断，跨频道同址告警）
+run('直播清单静态自检', process.execPath, [path.join(__dirname, 'check-live-sources.js')]);
 
 console.log('\n静态门禁：' + checks + ' 项，失败 ' + errs.length + ' 项');
 if (errs.length) {

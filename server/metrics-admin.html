@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>鸿汇影 · 数据与体积</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 22px; background: #0B1622; color: #E8F1FF;
+         font: 14px/1.65 "Microsoft YaHei", -apple-system, sans-serif; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  .sub { color: #8CA0BE; font-size: 12px; margin-bottom: 16px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); gap: 12px; margin-bottom: 16px; }
+  .card { background: #12233B; border: 1px solid #1E3450; border-radius: 10px; padding: 13px 15px; }
+  .card .k { color: #8CA0BE; font-size: 12px; margin-bottom: 6px; }
+  .card .v { font-size: 22px; font-weight: 700; }
+  .card .d { color: #7E93B4; font-size: 12px; margin-top: 5px; word-break: break-all; }
+  h2 { font-size: 15px; margin: 22px 0 10px; padding-top: 12px; border-top: 1px solid #1E3450; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #17283C; vertical-align: top; }
+  th { color: #8CA0BE; font-weight: 600; }
+  .ok { color: #6BE3A0; } .bad { color: #FF9B9B; } .warn { color: #FFD48A; } .mut { color: #7E93B4; }
+  .empty { color: #7E93B4; font-size: 13px; }
+  .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+  button { background: #1C3555; color: #E8F1FF; border: 1px solid #2A4A72; border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+  button:hover { background: #23426A; }
+  .meter { height: 6px; background: #17283C; border-radius: 4px; overflow: hidden; margin-top: 4px; }
+  .meter > i { display: block; height: 6px; background: #3B82F6; }
+</style>
+</head>
+<body>
+<h1>鸿汇影 · 数据与体积</h1>
+<div class="sub">播放回传、14 天趋势、失效源、选源评分、SBOM 依赖、dist 体积 —— 这六类数据以前分散在接口和文件里。</div>
+
+<div class="bar">
+  <button onclick="loadAll()">⟳ 全部刷新</button>
+  <span class="sub" style="margin:0" id="hint"></span>
+</div>
+
+<div class="cards">
+  <div class="card"><div class="k">近 7 天播放</div><div class="v" id="cPlay">-</div><div class="d" id="dPlay">加载中…</div></div>
+  <div class="card"><div class="k">失效源</div><div class="v" id="cFail">-</div><div class="d" id="dFail">加载中…</div></div>
+  <div class="card"><div class="k">SBOM 依赖</div><div class="v" id="cSbom">-</div><div class="d" id="dSbom">加载中…</div></div>
+  <div class="card"><div class="k">dist 体积</div><div class="v" id="cSize">-</div><div class="d" id="dSize">加载中…</div></div>
+</div>
+
+<h2>播放回传（近 7 天）</h2>
+<table><thead><tr><th style="width:26%">条目</th><th style="width:14%">种类</th><th style="width:14%">播放次数</th><th>失败</th></tr></thead>
+<tbody id="tbPlay"><tr><td colspan="4" class="empty">加载中…</td></tr></tbody></table>
+
+<h2>14 天趋势（设备 / 升级 / 成功率）</h2>
+<table><thead><tr><th style="width:14%">日期</th><th style="width:12%">在线设备</th><th style="width:12%">升级成功</th><th style="width:12%">升级失败</th><th style="width:12%">成功率</th><th>系统族</th></tr></thead>
+<tbody id="tbTrend"><tr><td colspan="6" class="empty">加载中…</td></tr></tbody></table>
+
+<h2>失效源 TOP（该先修哪条线）</h2>
+<div id="failTotals" class="sub" style="margin:0 0 8px"></div>
+<table><thead><tr><th style="width:16%">频道</th><th style="width:12%">分组</th><th style="width:10%">错误</th><th style="width:8%">耗时</th><th style="width:16%">检测时间</th><th>地址</th></tr></thead>
+<tbody id="tbFail"><tr><td colspan="6" class="empty">加载中…</td></tr></tbody></table>
+
+<h2>选源评分 TOP</h2>
+<table><thead><tr><th style="width:22%">条目</th><th style="width:12%">评分</th><th style="width:12%">成功率</th><th style="width:12%">时延</th><th>备注</th></tr></thead>
+<tbody id="tbRank"><tr><td colspan="5" class="empty">加载中…</td></tr></tbody></table>
+
+<h2>SBOM 依赖清单</h2>
+<div id="sbomMeta" class="sub" style="margin:0 0 8px"></div>
+<table><thead><tr><th style="width:16%">类型</th><th style="width:30%">名称</th><th style="width:14%">版本</th><th style="width:12%">范围</th><th>purl</th></tr></thead>
+<tbody id="tbSbom"><tr><td colspan="5" class="empty">加载中…</td></tr></tbody></table>
+
+<h2>dist 体积分布（治理入口：先归档哪些）</h2>
+<div id="sizeMeta" class="sub" style="margin:0 0 8px"></div>
+<table><thead><tr><th style="width:34%">目录 / 文件</th><th style="width:12%">体积</th><th style="width:10%">占比</th><th>占比条</th></tr></thead>
+<tbody id="tbSize"><tr><td colspan="4" class="empty">加载中…</td></tr></tbody></table>
+
+<h2>一键归档清理（保最近 N 版）</h2>
+<div class="sub" style="margin:0 0 8px">
+  只清 <b>dist/_archive_public_versions</b> 与 <b>dist/_历史版本_1.7.36前</b> 里的归档副本；<b>_public_internal</b> 站点内部根目录永不自动清。
+  先出计划，确认后才真删；每次执行都会在 <b>logs/dist-cleanup-*.csv</b> 落一份逐文件清单。
+</div>
+<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+  <label style="font-size:13px;color:#9FB3D0">保留最近
+    <input id="keepV" value="5" style="width:52px;background:#0F1E30;color:#DCE9FF;border:1px solid #1E3450;border-radius:6px;padding:4px 6px"> 个版本归档</label>
+  <label style="font-size:13px;color:#9FB3D0">保留最近
+    <input id="keepZ" value="5" style="width:52px;background:#0F1E30;color:#DCE9FF;border:1px solid #1E3450;border-radius:6px;padding:4px 6px"> 个旧安装包</label>
+  <label style="font-size:13px;color:#9FB3D0">保留最近
+    <input id="keepC" value="2" style="width:52px;background:#0F1E30;color:#DCE9FF;border:1px solid #1E3450;border-radius:6px;padding:4px 6px"> 个客户版包</label>
+  <button onclick="cleanupPlan()" style="background:#1E3450;color:#DCE9FF;border:0;border-radius:8px;padding:6px 14px;cursor:pointer;font:13px system-ui">先看计划</button>
+  <button onclick="cleanupRun()" style="background:#7A2B2B;color:#FFE0E0;border:0;border-radius:8px;padding:6px 14px;cursor:pointer;font:13px system-ui">确认执行清理</button>
+</div>
+<div id="cleanMeta" class="sub" style="margin:0 0 8px"></div>
+<table><thead><tr><th style="width:12%">类别</th><th style="width:46%">名称</th><th style="width:12%">体积</th><th>状态</th></tr></thead>
+<tbody id="tbClean"><tr><td colspan="4" class="empty">点「先看计划」生成清理清单</td></tr></tbody></table>
+
+<script>
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function ts(t){ if(!t) return '—'; return new Date(t).toLocaleString('zh-CN', {hour12:false}); }
+function get(u, cb){ fetch(u, {cache:'no-store'}).then(function(r){ return r.json(); }).then(cb).catch(function(e){ document.getElementById('hint').textContent = '读取失败：' + e.message; }); }
+function pick(o, keys){ for (var i = 0; i < keys.length; i += 1) { if (o && o[keys[i]] !== undefined && o[keys[i]] !== null) return o[keys[i]]; } return ''; }
+
+function loadPlay(){
+  get('/api/play/stats?days=7', function(d){
+    var rows = d.topFailing && d.topFailing.length ? d.topFailing : [];
+    document.getElementById('cPlay').textContent = (d.total || 0) + ' 次';
+    document.getElementById('dPlay').textContent = (d.total || 0)
+      ? ('覆盖 ' + (d.items || 0) + ' 个条目 · 失败条目 ' + rows.length)
+      : '暂无上报：客户端首次播放/失败会回传，采到数据这里才有值（不是坏了）';
+    document.getElementById('tbPlay').innerHTML = rows.map(function(x){
+      return '<tr><td>' + esc(pick(x, ['name','itemName','id','itemId'])) + '</td><td>' + esc(pick(x, ['type','kind'])) +
+        '</td><td>' + esc(pick(x, ['plays','count','total'])) + '</td><td>' + esc(pick(x, ['fails','failed','error'])) + '</td></tr>';
+    }).join('') || '<tr><td colspan="4" class="empty">近 7 天没有播放失败记录</td></tr>';
+  });
+}
+
+function loadTrend(){
+  get('/api/metrics/trend?days=14', function(d){
+    var s = d.series || [];
+    document.getElementById('tbTrend').innerHTML = s.slice(-14).map(function(x){
+      return '<tr><td>' + esc(x.date) + '</td><td>' + (x.devices || 0) + '</td><td>' + (x.updateOk || 0) +
+        '</td><td>' + (x.updateFail || 0) + '</td><td>' + (x.okRate == null ? '<span class="mut">—</span>' : (x.okRate + '%')) +
+        '</td><td class="mut">' + esc(x.families || '') + '</td></tr>';
+    }).join('') || '<tr><td colspan="6" class="empty">没有趋势数据</td></tr>';
+  });
+}
+
+function loadFail(){
+  get('/api/stats/fail-top?limit=25', function(d){
+    var t = d.totals || {};
+    document.getElementById('cFail').textContent = (t.failedItems || t.failed || 0) + ' 个';
+    document.getElementById('dFail').textContent = '共 ' + (t.items || 0) + ' 条目 / ' + (t.sources || 0) + ' 线路';
+    var byErr = d.byError ? Object.keys(d.byError).map(function(k){ return k + ' ×' + d.byError[k]; }).join('，') : '';
+    document.getElementById('failTotals').textContent = '统计时间 ' + ts(d.at) + (byErr ? ' · 错误分布：' + byErr : '');
+    document.getElementById('tbFail').innerHTML = (d.rows || []).map(function(x){
+      return '<tr><td>' + esc(x.itemName || x.itemId) + '</td><td>' + esc(x.group) + '</td><td class="bad">' + esc(x.error || x.code) +
+        '</td><td>' + (x.ms || 0) + ' ms</td><td class="mut">' + ts(x.checkedAt) + '</td><td class="mut" style="word-break:break-all">' + esc((x.url || '').slice(0, 90)) + '</td></tr>';
+    }).join('') || '<tr><td colspan="6" class="empty">当前没有失效源</td></tr>';
+  });
+}
+
+function loadRank(){
+  get('/api/stats/source-rank?limit=20', function(d){
+    var rows = d.rows || d.list || [];
+    document.getElementById('tbRank').innerHTML = rows.map(function(x){
+      var score = pick(x, ['score','rank','rate']);
+      return '<tr><td>' + esc(pick(x, ['name','itemName','title','url'])) + '</td><td>' + esc(score) + '</td><td>' +
+        esc(pick(x, ['okRate','success','succ'])) + '</td><td>' + esc(pick(x, ['latency','ms','delay'])) + '</td><td class="mut">' +
+        esc(pick(x, ['note','label','group'])) + '</td></tr>';
+    }).join('') || '<tr><td colspan="5" class="empty">还没有评分数据</td></tr>';
+  });
+}
+
+function loadSbom(){
+  get('/api/sbom', function(d){
+    if(!d || !d.ok){ document.getElementById('cSbom').textContent = '无'; document.getElementById('sbomMeta').textContent = (d && d.error) || ''; return; }
+    document.getElementById('cSbom').textContent = d.count + ' 个';
+    document.getElementById('cSbom').className = 'v ok';
+    var types = Object.keys(d.byType || {}).map(function(k){ return k + ' ' + d.byType[k]; }).join(' · ');
+    document.getElementById('dSbom').textContent = types;
+    document.getElementById('sbomMeta').textContent = '工具 ' + (d.meta.tool || '—') + ' · 生成 ' + ts(d.meta.at) + ' · serial ' + (d.meta.serial || '—');
+    document.getElementById('tbSbom').innerHTML = (d.sample || []).map(function(c){
+      return '<tr><td>' + esc(c.type) + '</td><td>' + esc(c.name) + '</td><td>' + esc(c.version) + '</td><td>' + esc(c.scope) +
+        '</td><td class="mut" style="word-break:break-all">' + esc((c.purl || '').slice(0, 80)) + '</td></tr>';
+    }).join('');
+  });
+}
+
+function loadSize(){
+  get('/api/dist-size', function(d){
+    if(!d || !d.ok){ document.getElementById('cSize').textContent = '读不到'; document.getElementById('sizeMeta').textContent = (d && d.error) || ''; return; }
+    document.getElementById('cSize').textContent = d.totalMB + ' MB';
+    document.getElementById('cSize').className = 'v ' + (d.totalMB > 600 ? 'bad' : (d.totalMB > 300 ? 'warn' : 'ok'));
+    document.getElementById('dSize').textContent = '归档目录占 ' + d.archiveMB + ' MB';
+    document.getElementById('sizeMeta').textContent = '统计于 ' + ts(d.at) + '（' + d.cacheAge + '）· 先把 _ 开头的归档目录清出去最有效';
+    document.getElementById('tbSize').innerHTML = (d.top || []).map(function(x){
+      var pct = d.totalMB ? Math.round(x.mb / d.totalMB * 100) : 0;
+      return '<tr><td>' + esc(x.name) + '</td><td>' + x.mb + ' MB</td><td>' + pct + '%</td><td><div class="meter"><i style="width:' + Math.min(100, pct) + '%"></i></div></td></tr>';
+    }).join('');
+  });
+}
+
+function cleanOpts(){ return { keepVersions: Number(document.getElementById('keepV').value) || 5, keepZips: Number(document.getElementById('keepZ').value) || 5, keepClients: Number(document.getElementById('keepC').value) || 2 }; }
+function renderClean(p, executed){
+  var rows = [];
+  (p.versionArchives.drop || []).forEach(function(x){ rows.push(['版本归档', x.name, x.mb + ' MB', '<span style="color:#FF9A9A">待清理</span>']); });
+  ((p.legacyInstalls && p.legacyInstalls.drop) || []).forEach(function(x){ rows.push(['旧安装包', x.name + '（' + x.files + ' 个文件）', x.mb + ' MB', '<span style="color:#FF9A9A">待清理</span>']); });
+  ((p.clientPackages && p.clientPackages.drop) || []).forEach(function(x){ rows.push(['客户版包', x.name + '（' + x.files + ' 个文件）', x.mb + ' MB', '<span style="color:#FF9A9A">待清理</span>']); });
+  (p.versionArchives.keep || []).forEach(function(x){ rows.push(['版本归档', x, '', '<span style="color:#7BE0A6">保留</span>']); });
+  ((p.legacyInstalls && p.legacyInstalls.keep) || []).forEach(function(x){ rows.push(['旧安装包', x, '', '<span style="color:#7BE0A6">保留</span>']); });
+  ((p.clientPackages && p.clientPackages.keep) || []).forEach(function(x){ rows.push(['客户版包', x, '', '<span style="color:#7BE0A6">保留</span>']); });
+  document.getElementById('tbClean').innerHTML = rows.length ? rows.map(function(r){
+    return '<tr><td>' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td><td>' + esc(r[2]) + '</td><td>' + r[3] + '</td></tr>';
+  }).join('') : '<tr><td colspan="4" class="empty">没有可清理的归档</td></tr>';
+  document.getElementById('cleanMeta').textContent = (executed ? '已执行 · ' : '计划生成于 ') + ts(p.at || new Date().toISOString()) +
+    ' · 可释放 ' + p.reclaimMB + ' MB · 将清理 ' + p.willDropCount + ' 项 · 保留 ' + p.keepMB + ' MB';
+}
+function cleanupPlan(){
+  var o = cleanOpts();
+  document.getElementById('cleanMeta').textContent = '统计中…（要扫 13 GB，约十几秒）';
+  fetch('/api/dist/cleanup/plan?keepVersions=' + o.keepVersions + '&keepZips=' + o.keepZips + '&keepClients=' + o.keepClients, {cache:'no-store'})
+    .then(function(r){ return r.json(); }).then(function(p){ renderClean(p, false); })
+    .catch(function(e){ document.getElementById('cleanMeta').textContent = '生成计划失败：' + e.message; });
+}
+function cleanupRun(){
+  var o = cleanOpts();
+  if(!confirm('确认清理 dist 里的旧版本归档？保留最近 ' + o.keepVersions + ' 个版本归档 + ' + o.keepZips + ' 个旧 zip，其余删除，删掉不可恢复（清单会写进 logs/dist-cleanup-*.csv）。')) return;
+  document.getElementById('cleanMeta').textContent = '执行中…';
+  fetch('/api/dist/cleanup/run', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({keepVersions:o.keepVersions, keepZips:o.keepZips, keepClients:o.keepClients, dryRun:false})})
+    .then(function(r){ return r.json(); }).then(function(d){
+      if(!d.ok && d.error){ document.getElementById('cleanMeta').textContent = '清理失败：' + d.error; return; }
+      document.getElementById('cleanMeta').textContent = '已释放 ' + d.freedMB + ' MB（' + d.freedCount + ' 项）· 清单 ' + d.manifestCSV + (d.failed && d.failed.length ? ' · 失败 ' + d.failed.length + ' 项' : '');
+      if(d.after) renderClean(d.after, true);
+      loadSize();
+    }).catch(function(e){ document.getElementById('cleanMeta').textContent = '清理失败：' + e.message; });
+}
+
+function loadAll(){ document.getElementById('hint').textContent = ''; loadPlay(); loadTrend(); loadFail(); loadRank(); loadSbom(); loadSize(); }
+loadAll();
+setInterval(loadAll, 60000);
+</script>
+</body>
+</html>
