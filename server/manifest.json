@@ -1438,11 +1438,11 @@
   },
   "release": {
     "schema": 1,
-    "generatedAt": "2026-11-21T13:47:35.132Z",
+    "generatedAt": "2026-11-21T14:02:32.873Z",
     "latest": {
       "versionName": "1.7.85",
       "versionCode": 1000199,
-      "publishedAt": "2026-11-21T13:47:35.132Z",
+      "publishedAt": "2026-11-21T14:02:32.873Z",
       "minApi": 12,
       "targetApi": 26,
       "compatibleSdk": "5.0.0(12)",
@@ -1497,8 +1497,8 @@
       "hapAutoInstall": false,
       "hapUrl": "/download/honghub-harmony.hap",
       "downloadUrl": "/download/desktop-setup.exe",
-      "generatedAt": "2026-11-20T10:18:08.888Z",
-      "contentVersion": 57
+      "generatedAt": "2026-11-21T13:51:30.931Z",
+      "contentVersion": 60
     },
     "beta": null,
     "betaNote": "内测清单未配置：当前归档仅有稳定包；配置真实内测包前，内测设备回退稳定清单，此处不提供内测下载链接"

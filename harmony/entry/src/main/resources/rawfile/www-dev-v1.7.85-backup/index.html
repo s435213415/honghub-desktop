@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>鸿汇影 · 点击即播</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%23FF4D5E'/%3E%3Cpath%20d='M25%2017L46%2032L25%2047Z'%20fill='%23fff'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0C0E16; --card:#171A26; --card2:#1E2230; --line:#262B3B;
+  --text:#F2F4FA; --muted:#8A8FA3; --brand:#FF4D5E; --brand2:#FF7A86;
+  --ok:#4ADE80; --radius:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--text); display:flex; flex-direction:column;
+  font-family:"Noto Sans CJK SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased; overflow:hidden;
+}
+button,input,textarea{font-family:inherit;outline:none}
+button{cursor:pointer;border:none;background:none;color:inherit}
+:focus-visible{outline:2px solid var(--brand2);outline-offset:2px;border-radius:6px}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:#2E3448;border-radius:8px}
+
+/* 顶栏 */
+.topbar{
+  flex:0 0 auto; min-height:64px; display:flex; align-items:center; gap:18px; padding:0 22px;
+  background:rgba(12,14,22,.96); border-bottom:1px solid var(--line); z-index:5;
+}
+.brand{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+.brand-mark{
+  width:34px;height:34px;border-radius:10px;
+  background:linear-gradient(135deg,var(--brand),#FF9A66);
+  display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#fff;
+}
+.brand-name{font-size:17px;font-weight:800;letter-spacing:1px}
+.brand-sub{font-size:10px;color:var(--muted);margin-top:1px}
+.search{
+  flex:1 1 auto;max-width:420px;display:flex;align-items:center;gap:8px;
+  background:var(--card2);border:1px solid var(--line);border-radius:22px;padding:0 12px 0 14px;height:38px;
+  transition:border-color .15s,box-shadow .15s;
+}
+.search:focus-within{border-color:var(--brand);box-shadow:0 0 0 3px rgba(255,77,94,.12)}
+.search input{flex:1;min-width:0;background:none;border:none;color:var(--text);font-size:13px}
+.search input::placeholder{color:#6C7288}
+.search-clear{display:none;font-size:14px;color:var(--muted);width:20px;height:20px;line-height:18px;text-align:center;border-radius:50%;background:#2A3042}
+.search-clear.show{display:block}
+.search-clear:hover{color:#fff}
+.nav{display:flex;align-items:center;gap:4px;flex:0 0 auto;flex-wrap:wrap}
+.nav button{font-size:13px;color:var(--muted);padding:8px 13px;border-radius:8px;transition:.15s;white-space:nowrap}
+.nav button:hover{color:var(--text);background:var(--card2)}
+.nav button.on{color:#fff;background:var(--brand);font-weight:700}
+.status{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);flex:0 0 auto;white-space:nowrap}
+.status .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.status.busy .dot{background:#FFD166;box-shadow:0 0 8px #FFD166}
+
+/* 主区：flex 自适应，不再硬算顶栏高度 */
+#main{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;padding:22px 26px 60px;scroll-behavior:smooth}
+.hero{
+  position:relative;border-radius:16px;overflow:hidden;min-height:230px;
+  display:flex;align-items:flex-end;padding:30px;
+  background:linear-gradient(110deg,#243B6B 0%,#1B2340 55%,#0C0E16 100%);
+  border:1px solid var(--line);margin-bottom:26px;
+}
+.hero::after{
+  content:"";position:absolute;inset:0;
+  background:radial-gradient(circle at 78% 28%,rgba(108,138,228,.45),transparent 45%);pointer-events:none;
+}
+.hero-inner{position:relative;z-index:1;max-width:600px}
+.hero-tag{font-size:11px;color:#FFD166;font-weight:700;letter-spacing:2px}
+.hero h1{font-size:34px;margin:10px 0 8px;letter-spacing:1px}
+.hero p{font-size:13px;color:#C9CEDC;line-height:1.7;margin-bottom:16px}
+.btn-primary{background:var(--brand);color:#fff;font-size:13px;font-weight:700;padding:10px 22px;border-radius:22px;transition:.15s}
+.btn-primary:hover{background:var(--brand2);transform:translateY(-1px)}
+.btn-ghost{border:1px solid #444B60;color:#D6DAE6;font-size:12px;padding:8px 16px;border-radius:20px;transition:.15s}
+.btn-ghost:hover{border-color:var(--brand);color:#fff}
+
+.section-head{display:flex;align-items:baseline;gap:10px;margin:24px 0 12px}
+.section-head h2{font-size:17px;font-weight:800}
+.section-head span{font-size:11px;color:var(--muted)}
+.row{display:flex;gap:14px;overflow-x:auto;padding-bottom:8px;scrollbar-width:thin}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:16px}
+.card{flex:0 0 158px;cursor:pointer;transition:transform .18s,opacity .3s;animation:fadeUp .34s both}
+/* 触感反馈：点按时轻微缩放；尊重系统减弱动效设置 */
+.card:active{transform:scale(.97)}
+.ch-card:active{transform:scale(.985)}
+.main-fade{animation:mainFade .2s ease}
+@keyframes mainFade{from{opacity:.35;transform:translateY(5px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){
+  .main-fade{animation:none}
+  .card:active,.ch-card:active{transform:none}
+}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.card:hover{transform:translateY(-4px)}
+.card:focus-visible{outline-offset:4px}
+.poster{
+  position:relative;width:100%;aspect-ratio:2/3;border-radius:var(--radius);
+  overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;
+  padding:12px;border:1px solid rgba(255,255,255,.07);
+}
+.poster::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 72% 22%,rgba(255,255,255,.16),transparent 55%)}
+.poster-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
+.poster.has-cover::after{content:"";position:absolute;left:0;right:0;bottom:0;height:58%;background:linear-gradient(to top,rgba(0,0,0,.74),rgba(0,0,0,0));z-index:1;pointer-events:none}
+.poster .badge,.poster .play-badge{z-index:2}
+.poster .ptitle{position:relative;z-index:1;font-size:17px;font-weight:800;line-height:1.35;text-shadow:0 2px 8px rgba(0,0,0,.5)}
+.poster .psub{position:relative;z-index:1;font-size:10px;color:rgba(255,255,255,.72);margin-top:5px;line-height:1.4}
+.poster mark{background:rgba(255,209,102,.28);color:#FFD166;border-radius:3px;padding:0 2px}
+.badge{position:absolute;top:9px;left:9px;background:rgba(0,0,0,.55);color:#FFD166;font-size:10px;font-weight:700;padding:3px 7px;border-radius:6px}
+.badge-fav{left:auto;right:8px;background:rgba(192,57,43,.88);color:#fff}
+.play-badge{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) scale(.85);
+  width:46px;height:46px;border-radius:50%;background:rgba(255,77,94,.92);
+  display:flex;align-items:center;justify-content:center;font-size:19px;color:#fff;
+  opacity:0;transition:.18s;box-shadow:0 6px 20px rgba(255,77,94,.45);
+}
+.card:hover .play-badge,.card:focus-visible .play-badge{opacity:1;transform:translate(-50%,-50%) scale(1)}
+.card-meta{margin-top:8px}
+.card-meta .t{font-size:12px;font-weight:700;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.35}
+.card-meta .s{font-size:10px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-tip{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:6px;padding:12px;background:rgba(8,11,20,.94);opacity:0;transition:opacity .18s;pointer-events:none;border-radius:var(--radius)}
+.card:hover .card-tip,.card:focus-visible .card-tip{opacity:1}
+.ct-desc{font-size:11px;line-height:1.55;color:#E7ECF5;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden}
+.ct-cast{font-size:10px;color:#9AA6C4}
+@media (prefers-reduced-motion:reduce){.card-tip{transition:none}}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 18px}
+.chip{font-size:12px;color:var(--muted);background:var(--card2);padding:7px 15px;border-radius:18px;border:1px solid var(--line)}
+.chip.on{background:var(--brand);color:#fff;border-color:var(--brand);font-weight:700}
+.tip{font-size:11px;color:var(--muted);line-height:1.8;margin-top:26px;border-top:1px solid var(--line);padding-top:14px}
+.empty{text-align:center;color:var(--muted);padding:64px 0;font-size:13px;line-height:2}
+.empty .ico{display:block;font-size:34px;opacity:.5;margin-bottom:10px}
+#khSuggest{position:fixed;z-index:40;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.45);overflow:hidden}
+#khSuggest .sg-row{padding:9px 12px;cursor:pointer;font-size:13.5px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px}
+#khSuggest .sg-row:last-child{border-bottom:none}
+#khSuggest .sg-row.sg-on{background:var(--card2)}
+#khSuggest .sg-clear{padding:7px 12px;font-size:11px;color:var(--muted);text-align:right;border-bottom:1px solid var(--line)}
+#khSuggest .sg-clear:hover{color:var(--brand)}
+kbd{display:inline-block;background:#252A3A;border:1px solid #3A4156;border-bottom-width:2px;border-radius:5px;padding:1px 6px;font-size:10px;color:#C9CEDC;margin:0 2px}
+
+/* 网址播放卡片 */
+.urlcard{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:20px}
+.urlcard h3{font-size:14px;margin-bottom:6px}
+.urlcard p{font-size:11px;color:var(--muted);line-height:1.8;margin-bottom:12px}
+.urlrow{display:flex;gap:10px;flex-wrap:wrap}
+.urlrow input{flex:1 1 300px;min-width:0;background:#0F111B;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:10px 12px;font-size:12px}
+.urlrow input:focus{border-color:var(--brand)}
+.quick{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;align-items:center}
+.quick .lb{font-size:11px;color:var(--muted)}
+.qbtn{font-size:11px;color:#C9CEDC;background:var(--card2);border:1px solid var(--line);padding:6px 12px;border-radius:16px;transition:.15s}
+.qbtn:hover{border-color:var(--brand);color:#fff}
+.keytip{font-size:11px;color:var(--muted);line-height:2;margin-top:14px}
+
+/* 我的网站 */
+.sitebox{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:18px}
+.sitebox h3{font-size:14px;margin-bottom:6px}
+.sitebox p{font-size:11px;color:var(--muted);line-height:1.8;margin-bottom:12px}
+.siteform{display:flex;gap:10px;flex-wrap:wrap}
+.siteform input{background:#0F111B;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:10px 12px;font-size:12px}
+.siteform .n{flex:0 0 160px}
+.siteform .u{flex:1 1 260px}
+.siteform input:focus{border-color:var(--brand)}
+/* 统一表单焦点环：边框跟随主色 + 3px 低透明度环，与搜索框焦点口径一致 */
+.urlrow input:focus,.siteform input:focus,.siteform select:focus,.backupbox textarea:focus,.live-form input:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(255,77,94,.12)}
+.siteform select{background:#0F111B;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:10px 12px;font-size:12px;flex:0 0 110px}
+.siteform .w{flex:1 1 100%;min-width:0}
+.rescat{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 16px}
+.sitetools{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;align-items:center}
+.sitelist{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:12px}
+.siteitem{display:flex;align-items:center;gap:10px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:12px;transition:border-color .15s}
+.siteitem:hover{border-color:#3A4156}
+.siteico{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;flex:0 0 auto}
+.sitemeta{flex:1;min-width:0}
+.sitemeta .n{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sitemeta .u{font-size:10px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.siteopen{font-size:11px;font-weight:700;color:#fff;background:var(--brand);padding:7px 12px;border-radius:16px;flex:0 0 auto}
+.siteopen:hover{background:var(--brand2)}
+.mini{font-size:11px;color:var(--muted);padding:5px 6px;border-radius:6px;flex:0 0 auto}
+.mini:hover{color:#fff;background:#333A4E}
+.sitedel{font-size:12px;color:var(--muted);padding:6px;flex:0 0 auto}
+.sitedel:hover{color:var(--brand)}
+.builtin{font-size:10px;color:#7C8296;background:#252A3A;padding:2px 7px;border-radius:8px;margin-left:6px}
+.pmode{font-size:10px;padding:2px 7px;border-radius:8px;margin-left:6px;white-space:nowrap}
+.pmode.wap{color:#4ADE80;background:rgba(74,222,128,.13);border:1px solid rgba(74,222,128,.3)}
+.pmode.pc{color:#8AB4F8;background:rgba(138,180,248,.12);border:1px solid rgba(138,180,248,.28)}
+.pmode.warn{color:#F5C542;background:rgba(245,197,66,.12);border:1px solid rgba(245,197,66,.3)}
+.platnote{font-size:12px;line-height:1.6;color:var(--muted);margin:8px 0 0}
+.platnote b{color:#C9CEDC}
+/* 平台实时巡检状态点 */
+.pdot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.pdot.ok{background:#22C55E;box-shadow:0 0 6px rgba(34,197,94,.55)}
+.pdot.down{background:#EF4444;box-shadow:0 0 6px rgba(239,68,68,.55)}
+.pdot.ping{background:#F5C542;animation:livePulse 1.2s infinite}
+/* 远程同步状态行 */
+.syncstat{font-size:12px;color:var(--muted);margin-left:8px}
+.syncstat.ok{color:#22C55E}
+.syncstat.err{color:#FF7A85}
+.backupbox{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
+.backupbox textarea{width:100%;height:66px;resize:vertical;background:#0F111B;border:1px solid var(--line);border-radius:8px;color:#C9CEDC;padding:8px 10px;font-size:11px;font-family:ui-monospace,monospace}
+.confirmbar{margin-top:12px;background:rgba(255,77,94,.12);border:1px solid rgba(255,77,94,.4);border-radius:8px;padding:10px 12px;font-size:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+/* 播放器：静态分层，控制条不再遮挡画面 */
+#playerLayer{position:fixed;inset:0;z-index:20;background:#000;display:none;flex-direction:column}
+#playerLayer.show{display:flex}
+.player-top{
+  flex:0 0 auto;height:52px;display:flex;align-items:center;gap:14px;padding:0 20px;
+  background:#0B0D14;border-bottom:1px solid #1B2030;
+}
+.back,.fav-btn{font-size:12px;color:#fff;background:#262B3B;padding:7px 14px;border-radius:18px;white-space:nowrap}
+.back:hover,.fav-btn:hover{background:#39415A}
+.player-title{font-size:14px;font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.video-wrap{position:relative;flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center;background:#000;overflow:hidden}
+#video{width:100%;height:100%;max-height:100%;object-fit:contain;background:#000;cursor:pointer}
+.tap-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--brand);color:#fff;font-size:15px;font-weight:700;padding:14px 30px;border-radius:28px;box-shadow:0 10px 30px rgba(255,77,94,.45);display:none;z-index:3}
+.tap-play.show{display:block}
+.buffering{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#FFD166;font-size:12px;background:rgba(0,0,0,.65);padding:8px 16px;border-radius:16px;display:none;z-index:2}
+.buffering.show{display:block}
+.player-ctrl{flex:0 0 auto;background:#0B0D14;padding:10px 22px 6px;border-top:1px solid #1B2030}
+.seek-row{display:flex;align-items:center;gap:12px}
+.timetext{font-size:11px;color:#A8AEBC;font-variant-numeric:tabular-nums;white-space:nowrap;min-width:96px;text-align:right}
+.ctrl-row{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
+.cbtn{font-size:12px;color:#E6E9F2;background:#22283A;border:1px solid #2E3448;padding:6px 11px;border-radius:8px;min-width:40px;transition:.15s;white-space:nowrap}
+.cbtn:hover{background:#333B54;border-color:#4A5472}
+.cbtn.on{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:700}
+.cbtn.play{background:var(--brand);border-color:var(--brand);font-weight:700}
+.cbtn.play:hover{background:var(--brand2)}
+.volbox{display:flex;align-items:center;gap:7px;font-size:11px;color:#A8AEBC}
+.spacer{flex:1 1 auto}
+input[type=range]{-webkit-appearance:none;appearance:none;background:transparent;height:18px;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:4px;background:#333A50}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:13px;height:13px;border-radius:50%;background:var(--brand);margin-top:-4.5px;box-shadow:0 0 0 3px rgba(255,77,94,.18)}
+input[type=range]:focus-visible{outline-offset:4px}
+#seek{flex:1 1 auto;min-width:80px}
+#vol{width:82px}
+.player-extra{flex:0 0 auto;max-height:118px;overflow-y:auto;background:#0B0D14;padding:6px 22px 16px}
+/* 播放页右栏推荐（窄屏隐藏，≥1024px 双栏布局时显示） */
+.player-aside{display:none}
+.aside-head{font-size:13px;font-weight:800;margin:4px 0 10px}
+.aside-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:10px}
+.aside-item{cursor:pointer;border-radius:10px;overflow:hidden;background:var(--card2);border:1px solid var(--line);transition:transform .15s,border-color .15s}
+.aside-item:hover{transform:translateY(-2px);border-color:var(--brand)}
+.aside-item:active{transform:scale(.97)}
+.aside-poster{aspect-ratio:2/3;display:flex;align-items:flex-end;padding:8px;font-size:11px;font-weight:800;color:#fff;line-height:1.35;text-shadow:0 1px 6px rgba(0,0,0,.55)}
+.aside-meta{font-size:10px;color:var(--muted);padding:5px 7px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.srcbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.src-label{font-size:11px;color:#FFD166;background:rgba(255,209,102,.14);padding:4px 10px;border-radius:12px}
+.src-btn{font-size:11px;color:#C9CEDC;background:rgba(255,255,255,.12);padding:4px 11px;border-radius:12px}
+.src-btn.on{background:var(--brand);color:#fff;font-weight:700}
+.src-btn.failed{text-decoration:line-through;opacity:.5}
+.player-info{font-size:11px;color:#A8AEBC;line-height:1.7;margin-top:8px;max-width:900px}
+.player-msg{font-size:12px;color:#FFD166;margin-top:6px;min-height:16px}
+
+/* ---------------- 电视直播 ---------------- */
+.live-hero{
+  position:relative;border-radius:16px;overflow:hidden;padding:24px 28px;margin-bottom:20px;
+  background:linear-gradient(110deg,#3B1D2A 0%,#241A32 55%,#0C0E16 100%);
+  border:1px solid var(--line);display:flex;align-items:center;gap:24px;flex-wrap:wrap;
+}
+.live-hero::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 82% 24%,rgba(224,49,49,.35),transparent 46%);pointer-events:none}
+.live-hero-in{position:relative;z-index:1;flex:1 1 300px}
+.live-hero .lh-tag{font-size:11px;color:#FF8A8A;font-weight:800;letter-spacing:2px}
+.live-hero h1{font-size:28px;margin:8px 0 7px}
+.live-hero p{font-size:12px;color:#C9CEDC;line-height:1.8;max-width:620px}
+.live-clock{flex:0 0 auto;text-align:right;position:relative;z-index:1}
+.live-clock .t{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:2px}
+.live-clock .d{font-size:11px;color:var(--muted);margin-top:3px}
+.live-stats{display:flex;gap:18px;margin-top:14px;flex-wrap:wrap}
+.live-stats span{font-size:11px;color:#C9CEDC}
+.live-stats b{color:#FF8A8A;font-size:15px;margin-right:4px}
+.live-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(238px,1fr));gap:13px}
+.ch-card{
+  background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;cursor:pointer;
+  transition:transform .18s,border-color .18s;animation:fadeUp .34s both;
+  /* 性能：跳过视口外频道的布局与绘制，155 频道全量渲染实测 ~34ms → ~8ms；旧内核自动降级无副作用 */
+  content-visibility:auto;contain-intrinsic-size:auto 132px;
+}
+.ch-card:hover{transform:translateY(-3px);border-color:#4A5472}
+.ch-card:focus-visible{outline-offset:3px}
+.ch-card.on{border-color:var(--brand);box-shadow:0 0 0 2px rgba(255,77,94,.18)}
+.ch-card.off{opacity:.62;cursor:default}
+.ch-card.off .ch-logo{filter:grayscale(.6)}
+.off-badge{font-size:9px;font-weight:800;letter-spacing:.5px;color:#fff;background:#8A93A6;padding:2px 6px;border-radius:4px;flex:0 0 auto}
+.ch-top{display:flex;align-items:center;gap:11px}
+.ch-logo{
+  width:44px;height:44px;border-radius:11px;flex:0 0 auto;display:flex;align-items:center;
+  justify-content:center;font-size:18px;font-weight:800;color:#fff;letter-spacing:1px;
+}
+.ch-meta{flex:1;min-width:0}
+.ch-name{font-size:14px;font-weight:800;display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.live-dot{font-size:9px;font-weight:800;letter-spacing:1px;color:#fff;background:#E03131;padding:2px 6px;border-radius:4px;flex:0 0 auto}
+.live-dot::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:#fff;margin-right:4px;vertical-align:1px;animation:livePulse 1.3s infinite}
+@keyframes livePulse{0%,100%{opacity:1}50%{opacity:.25}}
+.ch-sub{font-size:10px;color:var(--muted);margin-top:4px}
+.ch-fav{font-size:17px;color:#6C7288;padding:4px;flex:0 0 auto}
+.ch-fav:hover,.ch-fav.on{color:#FFD166}
+.ch-epg{margin-top:12px;padding-top:11px;border-top:1px dashed var(--line);font-size:11px;line-height:1.9}
+.epg-now{color:#E6E9F2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.epg-now b{color:#FFD166;font-weight:700}
+.epg-track{height:3px;background:#2E3448;border-radius:3px;margin:7px 0 6px;overflow:hidden}
+.epg-track i{display:block;height:100%;background:linear-gradient(90deg,var(--brand),#FF9A66);border-radius:3px}
+.epg-next{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch-tools{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 18px;align-items:center}
+.ch-tools .lb{font-size:11px;color:var(--muted)}
+.live-form input.g{flex:0 0 150px}
+.live-note{font-size:11px;color:var(--muted);line-height:1.9;margin-top:14px;background:rgba(255,209,102,.06);border:1px solid rgba(255,209,102,.18);border-radius:8px;padding:10px 12px}
+
+/* 播放器直播态：隐藏进度/倍速/快进退，显示切台条 */
+.livebar{display:none;align-items:center;gap:9px;flex-wrap:wrap;padding:2px 0 8px}
+.livebar.show{display:flex}
+.live-mode .seek-row{display:none}
+.live-mode [data-ctrl="back10"],.live-mode [data-ctrl="fwd10"],.live-mode [data-ctrl="rate"]{display:none}
+.live-searchbox{display:flex;align-items:center;gap:8px;margin:0 0 16px;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+.live-searchbox span{color:#7C8296;font-size:13px}
+.live-searchbox input{flex:1;min-width:0;background:transparent;border:0;outline:0;color:#E8EBF2;font-size:13px}
+.net-badge{font-size:9px;margin-left:6px;padding:2px 6px;border-radius:8px;background:rgba(230,126,34,.18);color:#F0A35A;border:1px solid rgba(230,126,34,.4);vertical-align:middle;white-space:nowrap}
+.lb-live{font-size:10px;font-weight:800;letter-spacing:1px;color:#fff;background:#E03131;padding:5px 9px;border-radius:6px;white-space:nowrap}
+.lb-ch{font-size:13px;font-weight:800;color:#F2F4FA;white-space:nowrap}
+.lb-epg{font-size:11px;color:#FFD166;flex:1 1 180px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lb-clock{font-size:11px;color:#A8AEBC;font-variant-numeric:tabular-nums;white-space:nowrap}
+@media (max-width:520px){
+  .live-hero{padding:18px}.live-hero h1{font-size:22px}.live-clock{text-align:left}
+  .live-hero-in{flex:1 1 100%;min-width:0}
+  .live-hero p{max-width:100%}
+  .live-stats{gap:10px 14px}
+  .live-grid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr))}
+  .live-form input.g{flex-basis:100%}
+}
+@media (prefers-reduced-motion:reduce){.live-dot::before{animation:none}}
+
+/* 通用 */
+.toast{
+  position:fixed;left:50%;bottom:96px;transform:translateX(-50%);
+  background:rgba(30,34,48,.97);border:1px solid var(--line);color:#fff;
+  font-size:12px;padding:9px 14px;border-radius:20px;z-index:30;
+  opacity:0;pointer-events:none;transition:.25s;display:flex;align-items:center;gap:12px;white-space:nowrap;
+}
+.toast.show{opacity:1;pointer-events:auto}
+.toast button{font-size:11px;font-weight:700;color:#FFD166;background:rgba(255,209,102,.14);padding:4px 10px;border-radius:12px}
+.toast button:hover{background:rgba(255,209,102,.28)}
+/* 手势提示 HUD（#122）：滑动调音量/亮度、长按倍速时居中短暂显示 */
+.kh-gesture-hud{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:45;background:rgba(12,15,22,.86);border:1px solid var(--line);color:#fff;font-size:14px;font-weight:600;padding:10px 16px;border-radius:12px;opacity:0;pointer-events:none;transition:opacity .18s;white-space:nowrap}
+.kh-gesture-hud.show{opacity:1}
+/* 导入备份冲突策略选择浮层（#121） */
+.kh-ask-mask{position:fixed;inset:0;z-index:70;background:rgba(8,10,16,.62);display:flex;align-items:center;justify-content:center;padding:20px}
+.kh-ask{width:min(460px,94vw);max-height:86vh;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 18px 46px rgba(0,0,0,.55);padding:18px 18px 14px}
+.kh-ask h3{font-size:15px;margin:0 0 6px;color:var(--text)}
+.kh-ask .kh-ask-sub{font-size:12px;line-height:1.7;color:var(--muted);margin:0 0 12px}
+.kh-ask .kh-ask-btn{display:block;width:100%;text-align:left;margin:0 0 8px;padding:11px 13px;background:var(--card2);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:13px;line-height:1.5;cursor:pointer}
+.kh-ask .kh-ask-btn:hover,.kh-ask .kh-ask-btn:focus-visible{border-color:var(--accent);outline:none}
+.kh-ask .kh-ask-btn b{display:block;font-size:13px;margin-bottom:2px}
+.kh-ask .kh-ask-btn span{font-size:11.5px;color:var(--muted)}
+.kh-ask .kh-ask-cancel{background:transparent;text-align:center;color:var(--muted);margin-top:2px}
+/* 设备端备份导出 / 粘贴导入（#130）：长文本区与按钮行 */
+.kh-exp-area{width:100%;box-sizing:border-box;height:150px;resize:vertical;background:var(--card2);border:1px solid var(--line);border-radius:9px;color:var(--text);font-size:11.5px;line-height:1.6;padding:9px 10px;font-family:ui-monospace,Menlo,Consolas,monospace}
+.kh-exp-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
+.kh-exp-btns .qbtn{min-width:84px}
+.kh-shot-row{display:flex;flex-direction:column;gap:2px;padding:8px 10px;margin-bottom:6px;background:var(--card2);border:1px solid var(--line);border-radius:9px}
+.kh-shot-row b{font-size:12.5px;color:var(--text)}
+.kh-shot-row span{font-size:11px;color:var(--muted)}
+/* 卡片 / 频道右键上下文菜单 */
+.ctx-menu{position:fixed;z-index:60;min-width:168px;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 14px 36px rgba(0,0,0,.5);padding:6px;display:none}
+.ctx-menu.show{display:block}
+.ctx-menu .cm-item{display:flex;align-items:center;gap:9px;padding:9px 12px;font-size:13px;color:var(--text);border-radius:8px;cursor:pointer;white-space:nowrap}
+.ctx-menu .cm-item:hover{background:var(--card2)}
+.ctx-menu .cm-item.cm-on{background:var(--card2)}
+.ctx-menu .cm-item.cm-off{color:var(--muted);cursor:default}
+.ctx-menu .cm-item.cm-off:hover{background:transparent}
+.ctx-menu .cm-sep{height:1px;background:var(--line);margin:5px 8px}
+#toTop{
+  position:fixed;right:24px;bottom:24px;z-index:8;width:38px;height:38px;border-radius:50%;
+  background:var(--card2);border:1px solid var(--line);color:#D6DAE6;font-size:16px;display:none;
+  box-shadow:0 6px 20px rgba(0,0,0,.4);
+}
+#toTop.show{display:block}
+#toTop:hover{border-color:var(--brand);color:#fff}
+#diag{display:none}
+
+/* 电脑端适配：≥1024px 限宽居中、卡片放大 */
+@media (min-width:1024px){
+  #main{max-width:1560px;align-self:center;width:100%;padding:26px 36px 64px}
+  /* 播放页双栏：左视频+控制条，右栏（片源/简介/相关推荐）固定 360px 可滚动 */
+  #playerLayer.show{
+    display:grid;
+    grid-template-columns:1fr 360px;
+    grid-template-rows:52px minmax(0,1fr) auto;
+    grid-template-areas:"top top" "video side" "ctrl side";
+  }
+  .player-top{grid-area:top}
+  .video-wrap{grid-area:video}
+  .player-ctrl{grid-area:ctrl}
+  .player-extra{grid-area:side;max-height:none;overflow-y:auto;border-left:1px solid #1B2030}
+  .player-aside{display:block}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(196px,1fr));gap:18px}
+  .row .card{flex-basis:196px}
+  .section-head h2{font-size:19px}
+  .sitelist{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+}
+/* 宽屏 / 高分屏：≥1600px 进一步放大版面 */
+@media (min-width:1600px){
+  #main{max-width:1760px;padding:30px 44px 72px}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(216px,1fr));gap:20px}
+  .row .card{flex-basis:216px}
+  .hero{min-height:290px;padding:36px}
+  .hero h1{font-size:42px}
+  .hero p{font-size:14px}
+  .section-head h2{font-size:20px}
+  .sitelist{grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
+  /* 2K/4K 超宽档：内容与控制栏限宽居中，海报更密 */
+  .player-ctrl .seek-row,.player-ctrl .ctrl-row,.player-extra .player-info{max-width:1500px;margin-left:auto;margin-right:auto}
+}
+/* 4K / 超宽显示器：≥2200px 最高密度档 */
+@media (min-width:2200px){
+  #main{max-width:1960px;padding:34px 52px 80px}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:22px}
+  .row .card{flex-basis:232px}
+  .sitelist{grid-template-columns:repeat(auto-fill,minmax(400px,1fr))}
+  .hero{min-height:320px}
+  .hero h1{font-size:46px}
+}
+/* 小笔记本 / 半屏窗口：矮视口压缩纵向占用（浏览器工具栏会吃掉 100~200px 高度） */
+@media (min-width:1024px) and (max-height:820px){
+  #main{padding-top:20px}
+  .hero{min-height:210px;padding:24px}
+  .hero h1{font-size:30px}
+  .hero p{margin-bottom:12px}
+}
+@media (min-width:1024px) and (max-height:680px){
+  .hero{min-height:170px;padding:18px}
+  .hero h1{font-size:25px}
+  .section-head{margin:18px 0 10px}
+}
+/* 901~1180 中间档：旧笔记本半屏 / 1024×768 横屏，收窄顶栏防换行 */
+@media (min-width:901px) and (max-width:1180px){
+  .topbar{gap:10px;padding:0 14px}
+  .brand-sub{display:none}
+  .nav button{padding:8px 9px;font-size:12px}
+  .status{max-width:150px;overflow:hidden;text-overflow:ellipsis}
+}
+/* 触屏笔记本：无悬停能力时关掉悬停位移，避免「粘住」 */
+@media (hover:none){
+  .card:hover{transform:none}
+}
+/* Firefox 桌面端滚动条 */
+html{scrollbar-width:thin;scrollbar-color:#2E3448 transparent}
+/* 电脑端：卡片行支持鼠标滚轮横向滚动（在行上滚动即横滚） */
+.row{scroll-behavior:smooth}
+
+@media (max-width:900px){
+  .topbar{flex-wrap:wrap;padding:10px 14px;gap:10px;min-height:0}
+  .status{display:none}
+  .search{max-width:none;order:3;flex-basis:100%}
+  #main{padding:16px 14px 50px}
+  .hero{min-height:190px;padding:20px}.hero h1{font-size:26px}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px}
+  .card{flex-basis:130px}.poster .ptitle{font-size:14px}
+  .nav button{padding:7px 10px;font-size:12px}
+  .player-ctrl,.player-extra{padding-left:14px;padding-right:14px}
+  .timetext{min-width:84px;font-size:10px}
+  #vol{width:60px}
+}
+@media (max-width:520px){
+  .brand-sub{display:none}
+  .nav{gap:2px}.nav button{padding:6px 8px;font-size:11px}
+  .ctrl-row{gap:5px}.cbtn{padding:5px 8px;min-width:34px;font-size:11px}
+  .siteform .n{flex-basis:100%}
+  .toast{white-space:normal;max-width:calc(100vw - 32px)}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}
+/* 夜间模式：由 khApplyDisplay 挂一层 fixed 暖色 multiply 遮罩（不用 filter，避免改变 fixed 定位包含块） */
+/* 浅色主题：覆盖同一套变量，整页跟随；遮罩式夜间模式与浅色互斥（khApplyDisplay 保证） */
+body.kh-light{
+  --bg:#F4F6FB; --card:#FFFFFF; --card2:#EDF1F8; --line:#DCE3EF;
+  --text:#16203A; --muted:#5C6780;
+}
+body.kh-light .topbar{background:#FFFFFF;border-bottom-color:#DCE3EF;}
+body.kh-light .player-layer,body.kh-light #playerLayer{background:#F4F6FB;color:#16203A;}
+/* 浅色主题：表单控件、标签与悬浮态跟随变量，避免深底深字 */
+body.kh-light .urlrow input,body.kh-light .siteform input,body.kh-light .siteform select,body.kh-light .backupbox textarea{background:var(--card);color:var(--text);border-color:var(--line);}
+body.kh-light .backupbox textarea{color:var(--text);}
+body.kh-light .search-clear{background:var(--card2);color:var(--muted);}
+body.kh-light kbd{background:var(--card2);border-color:var(--line);color:var(--muted);}
+body.kh-light .builtin{background:var(--card2);color:var(--muted);}
+body.kh-light .mini:hover{color:var(--text);background:var(--card2);}
+body.kh-light .siteitem:hover{border-color:var(--brand);}
+/* 多套深色皮肤：仅覆盖调色板变量，结构/字号/间距不变；与默认深色同属深底，控件硬编码深底不冲突 */
+body.kh-ocean{--bg:#0A1420;--card:#12202F;--card2:#182B3D;--line:#24384B;--text:#EDF3FA;--muted:#8BA1B5;--brand:#38BDF8;--brand2:#7DD3FC;}
+body.kh-forest{--bg:#0B1512;--card:#13221C;--card2:#1A2E25;--line:#274034;--text:#ECF5EF;--muted:#8CA89A;--brand:#34D399;--brand2:#6EE7B7;}
+body.kh-violet{--bg:#120F1E;--card:#1C1730;--card2:#251E3D;--line:#342A52;--text:#F1EEFB;--muted:#A296C4;--brand:#A78BFA;--brand2:#C4B5FD;}
+body.kh-mono{--bg:#111214;--card:#1A1C1F;--card2:#222529;--line:#30343A;--text:#F0F1F3;--muted:#969AA2;--brand:#8AA0C0;--brand2:#B6C6DE;}
+body.kh-sand{--bg:#17120C;--card:#221A12;--card2:#2C2218;--line:#3D2F20;--text:#F6F0E6;--muted:#B39E86;--brand:#F0A868;--brand2:#F7C394;}
+body.kh-rose{--bg:#1A0F14;--card:#27161D;--card2:#331E27;--line:#472A36;--text:#F8EEF1;--muted:#BC93A0;--brand:#FB7185;--brand2:#FDA4AF;}
+body.kh-slate{--bg:#0E1518;--card:#162125;--card2:#1E2C31;--line:#2C3E44;--text:#ECF3F4;--muted:#8FA6AB;--brand:#2DD4BF;--brand2:#5EEAD4;}
+/* 字幕层：贴在视频底部，本机渲染，不依赖片源 CORS；字号与高度来自设置（kh_sub_style） */
+.sub-layer{position:absolute;left:0;right:0;bottom:var(--sub-bottom,8%);z-index:6;pointer-events:none;text-align:center;padding:0 6%;}
+.sub-layer span{display:inline-block;background:rgba(0,0,0,.62);color:#fff;font-size:var(--sub-fs,20px);line-height:1.45;
+  padding:5px 12px;border-radius:8px;text-shadow:0 2px 4px rgba(0,0,0,.6);max-width:100%;white-space:pre-wrap;}
+.sub-layer .kh-sub-tr{margin-top:4px;background:rgba(20,28,48,.72);color:#FFD166;font-size:calc(var(--sub-fs,20px) - 3px);}
+body.kh-senior .sub-layer span{font-size:calc(var(--sub-fs,20px) + 6px);}
+/* 长辈模式：加大按钮与卡片文字（字号 zoom 由 khApplyDisplay 同步提到 130%） */
+body.kh-senior .chip,body.kh-senior .qbtn,body.kh-senior .btn-primary,body.kh-senior .btn-ghost{padding:12px 18px;font-size:16px;}
+body.kh-senior .card-meta .t{font-size:17px;}
+body.kh-senior .card-meta .s{font-size:13.5px;}
+body.kh-senior .ptitle{font-size:18px;}
+body.kh-senior .cbtn{padding:10px 14px;font-size:15px;min-height:40px;}
+body.kh-senior .card:focus,body.kh-senior .chip:focus,body.kh-senior .cbtn:focus{outline-width:4px;}
+/* TV / 方向键导航：焦点高亮，遥控/键盘都能看清当前落点 */
+.card:focus,.chip:focus,.qbtn:focus,.btn-primary:focus,.btn-ghost:focus{outline:3px solid var(--brand2);outline-offset:2px;}
+
+/* 动效总开关：场景预设写入 kh_motion=0 时 body 带 no-motion */
+body.no-motion *,body.no-motion *::before,body.no-motion *::after{transition-duration:0s!important;animation-duration:0s!important;animation-iteration-count:1!important}
+</style>
+  <script id="kh-sources" type="application/json">{"v":41,"updatedAt":"2026-11-21T13:51:26.680Z","count":31,"channels":[{"id":"cn001","name":"CCTV-1 综合","group":"央视频道","sources":[{"label":"直播主源","url":"http://124.165.251.82:85/tsfile/live/0001_1.m3u8?key=txiptv&playlive=1&authid=0"}]},{"id":"cn002","name":"CCTV-2 财经","group":"央视频道","sources":[{"label":"直播主源","url":"http://124.165.251.82:85/tsfile/live/0002_1.m3u8?key=txiptv&playlive=1&authid=0"}]},{"id":"cn003","name":"CCTV-3 综艺","group":"央视频道","sources":[{"label":"直播主源","url":"http://124.165.251.82:85/tsfile/live/0003_1.m3u8?key=txiptv&playlive=1&authid=0"}]},{"id":"cn004","name":"CCTV-4 中文国际","group":"央视频道","sources":[{"label":"自动补源 2026-11-19","url":"https://dash2.antik.sk/live/test_cctv_tizen/playlist.m3u8","status":"ok"},{"label":"直播主源","url":"http://124.165.251.82:85/tsfile/live/0004_1.m3u8?key=txiptv&playlive=1&authid=0"}]},{"id":"cn005","name":"CCTV-5 体育","group":"央视频道","sources":[{"label":"直播主源","url":"http://124.165.251.82:85/tsfile/live/0005_1.m3u8?key=txiptv&playlive=1&authid=0"}]},{"id":"cn006","name":"CCTV-5+ 体育赛事","group":"央视频道","sources":[{"label":"直播主源","url":"http://124.165.251.82:85/tsfile/live/0006_1.m3u8?key=txiptv&playlive=1&authid=0"}]},{"id":"cn008","name":"CCTV-7 国防军事","group":"央视频道","sources":[{"label":"直播主源","url":"http://124.165.251.82:85/tsfile/live/0007_1.m3u8?key=txiptv&playlive=1&authid=0"}]},{"id":"cn009","name":"CCTV-8 电视剧","group":"央视频道","sources":[{"label":"直播主源","url":"http://124.165.251.82:85/tsfile/live/0008_1.m3u8?key=txiptv&playlive=1&authid=0"}]},{"id":"cn010","name":"CCTV-9 纪录","group":"央视频道","sources":[{"label":"自动补源 2026-11-19","url":"https://xykt-fix.github.io/Y77.m3u8","status":"ok"},{"label":"直播主源","url":"http://124.165.251.82:85/tsfile/live/0009_1.m3u8?key=txiptv&playlive=1&authid=0"}]},{"id":"cn011","name":"CCTV-10 科教","group":"央视频道","sources":[{"label":"自动补源 2026-11-19","url":"https://mumbai-edge.smartplaytv.in/10TV/index.m3u8","status":"ok"},{"label":"直播主源","url":"http://124.165.251.82:85/tsfile/live/0010_1.m3u8?key=txiptv&playlive=1&authid=0"}]},{"id":"cn012","name":"CCTV-11 戏曲","group":"央视频道","sources":[{"label":"直播主源","url":"http://124.165.251.82:85/tsfile/live/0011_1.m3u8?key=txiptv&playlive=1&authid=0"}]},{"id":"cn013","name":"CCTV-12 社会与法","group":"央视频道","sources":[{"label":"直播主源","url":"http://124.165.251.82:85/tsfile/live/0012_1.m3u8?key=txiptv&playlive=1&authid=0"},{"label":"备用源 2","url":"http://74.91.26.218:82/live/cctv12hd.m3u8"}]},{"id":"cn014","name":"CCTV-13 新闻","group":"央视频道","sources":[{"label":"直播主源","url":"http://124.165.251.82:85/tsfile/live/0013_1.m3u8?key=txiptv&playlive=1&authid=0"},{"label":"备用源 2","url":"http://ali-m-l.cztv.com/channels/lantian/channel21/1080p.m3u8"}]},{"id":"cn015","name":"CCTV-14 少儿","group":"央视频道","sources":[{"label":"直播主源","url":"http://124.165.251.82:85/tsfile/live/0014_1.m3u8?key=txiptv&playlive=1&authid=0"}]},{"id":"cn016","name":"CCTV-15 音乐","group":"央视频道","sources":[{"label":"直播主源","url":"http://124.165.251.82:85/tsfile/live/0015_1.m3u8?key=txiptv&playlive=1&authid=0"},{"label":"备用源 2","url":"http://gmxw.7766.org:808/hls/102/index.m3u8"}]},{"id":"cn017","name":"CCTV-16 奥林匹克","group":"央视频道","sources":[{"label":"直播主源","url":"http://gmxw.7766.org:808/hls/169/index.m3u8"}]},{"id":"cn019","name":"CGTN 英语新闻","group":"央视频道","sources":[{"label":"直播主源","url":"https://0472.org/hls/cgtn.m3u8"}]},{"id":"cn020","name":"湖南卫视","group":"卫视频道","sources":[{"label":"直播主源","url":"https://hlsal-ldvt.qing.mgtv.com/nn_live/nn_x64/dWlwPTEyNy4wLjAuMSZ1aWQ9cWluZy1jbXMmbm5fdGltZXpvbmU9OCZjZG5leF9pZD1hbF9obHNfbGR2dCZ1dWlkPTliODY4NmU5ZTM2YzYwMmMmZT02OTE0NjA0JnY9MSZpZD1ITldTWkdTVCZzPTcwN2RiYTc2YzJjNmJmMTQ4MmUyZGYzOWU2NWM3YWFi/HNWSZGST.m3u8"},{"label":"备用源 2","url":"http://hlsal-ldvt.qing.mgtv.com/nn_live/nn_x64/dWlwPTEyNy4wLjAuMSZ1aWQ9cWluZy1jbXMmbm5fdGltZXpvbmU9OCZjZG5leF9pZD1hbF9obHNfbGR2dCZ1dWlkPTliODY4NmU5ZTM2YzYwMmMmZT02OTE0NjA0JnY9MSZpZD1ITldTWkdTVCZzPTcwN2RiYTc2YzJjNmJmMTQ4MmUyZGYzOWU2NWM3YWFi/HNWSZGST.m3u8"}]},{"id":"cn021","name":"浙江卫视","group":"卫视频道","sources":[{"label":"直播主源","url":"http://ali-m-l.cztv.com:80/channels/lantian/channel001/1080p.m3u8"},{"label":"备用源 2","url":"http://39.134.115.163:8080/PLTV/88888910/224/3221225703/index.m3u8"}]},{"id":"cn028","name":"安徽卫视","group":"卫视频道","sources":[{"label":"直播主源","url":"https://restream.pdtvhd.com/memfs/c1cd2ed0-3b2b-4c25-af98-a7fb0b1eb130.m3u8"},{"label":"备用源 2","url":"http://gmxw.7766.org:808/hls/40/index.m3u8"}]},{"id":"cn037","name":"河北卫视","group":"卫视频道","sources":[{"label":"直播主源","url":"https://event.pull.hebtv.com/live/live101.m3u8"}]},{"id":"cn040","name":"广西卫视","group":"卫视频道","sources":[{"label":"直播主源","url":"http://111.59.24.227:8181/tsfile/live/1001_1.m3u8?authid=0&key=txiptv&playlive=1"},{"label":"备用源 2","url":"https://cctvalih5ca.v.myalicdn.com/wstv/guangxi_2/index.m3u8"}]},{"id":"cn044","name":"甘肃卫视","group":"卫视频道","sources":[{"label":"直播主源","url":"http://218.13.170.98:9901/tsfile/live/0141_1.m3u8"},{"label":"备用源 2","url":"https://cctvalih5ca.v.myalicdn.com/wstv/gansu_2/index.m3u8"}]},{"id":"cn045","name":"内蒙古卫视","group":"卫视频道","sources":[{"label":"直播主源","url":"http://play1-qk.nmtv.cn/live/1769652018126032.m3u8"},{"label":"备用源 2","url":"https://cdn4.skygo.mn/live/disk1/NeigMGL/HLSv3-FTA/NeigMGL.m3u8"}]},{"id":"cn046","name":"山西卫视","group":"卫视频道","sources":[{"label":"直播主源","url":"http://m3u8.channel.wsrtv.com.cn/cms/videos/nmip-media/channellive/channel7/playlist.m3u8"},{"label":"备用源 2","url":"https://cctvalih5ca.v.myalicdn.com/wstv/shanxi_2/index.m3u8"}]},{"id":"cn050","name":"西藏卫视","group":"卫视频道","sources":[{"label":"直播主源","url":"https://pili-live-hls-zdzz-tv.zzxwcm.cn/zdzz-tv/nqzh.m3u8"},{"label":"备用源 2","url":"http://112.27.5.218:9901/tsfile/live/0111_1.m3u8?key=txiptv&playlive=1&authid=0"}]},{"id":"cn051","name":"新疆卫视","group":"卫视频道","sources":[{"label":"直播主源","url":"http://218.84.12.186:8001/hls/main/playlist.m3u8?zxinjd"},{"label":"备用源 2","url":"https://klmysjtzb.rcsxzx.com/hls/klmy2.m3u8"}]},{"id":"cn064","name":"五星体育","group":"体育竞技","sources":[{"label":"直播主源","url":"https://rnttwmjcin.turknet.ercdn.net/lcpmvefbyo/aspor/aspor.m3u8"}]},{"id":"cn091","name":"MTV 中文","group":"音乐娱乐","sources":[{"label":"直播主源","url":"https://7xshreeshyam.akamaized.net/7XPunjabi/index.m3u8"}]},{"id":"cn096","name":"第一财经","group":"财经生活","sources":[{"label":"直播主源","url":"https://streamw.m.ro/Aleph/ngrp:Alephbiz.stream_all/playlist.m3u8"},{"label":"备用源 2","url":"https://satellitepull.cnr.cn/live/wx32dycjgb/playlist.m3u8"},{"label":"备用源 3","url":"https://30a-tv.com/feeds/xodglobal/30atv.m3u8"}]},{"id":"net003","name":"Bread TV","group":"网络直播","sources":[{"label":"直播主源","url":"https://video.bread-tv.com:8091/hls-live24/online/index.m3u8"}]}],"sites":[{"name":"哔哩哔哩","url":"https://www.bilibili.com","color":"#FB7299","tag":"B","cat":"综合视频","mobile":"https://m.bilibili.com/","mode":"wap"},{"name":"腾讯视频","url":"https://v.qq.com","color":"#FF6A00","tag":"腾","cat":"综合视频","mobile":"https://m.v.qq.com/","mode":"wap"},{"name":"爱奇艺","url":"https://www.iqiyi.com","color":"#00BE06","tag":"爱","cat":"综合视频","mobile":"https://m.iqiyi.com/","mode":"wap"},{"name":"优酷","url":"https://www.youku.com","color":"#1E8FFF","tag":"优","cat":"综合视频","mobile":"https://m.youku.com/","mode":"wap"},{"name":"芒果TV","url":"https://www.mgtv.com","color":"#FF7A2F","tag":"芒","cat":"综合视频","mobile":"https://m.mgtv.com/","mode":"wap"},{"name":"西瓜视频","url":"https://www.ixigua.com","color":"#F04142","tag":"西","cat":"综合视频","mobile":"https://m.ixigua.com/","mode":"wap"},{"name":"咪咕视频","url":"https://www.miguvideo.com","color":"#E60012","tag":"咪","cat":"综合视频","mobile":"https://m.miguvideo.com/","mode":"wap"},{"name":"AcFun","url":"https://www.acfun.cn","color":"#FD4C5B","tag":"A","cat":"综合视频","mobile":"https://m.acfun.cn/","mode":"wap"},{"name":"搜狐视频","url":"https://tv.sohu.com","color":"#FF6600","tag":"搜","cat":"综合视频","mode":"pc"},{"name":"乐视视频","url":"https://www.le.com","color":"#D4237A","tag":"乐","cat":"综合视频","mobile":"https://m.le.com/","mode":"wap"},{"name":"PPTV 聚力","url":"https://www.pptv.com","color":"#1E8FFF","tag":"P","cat":"综合视频","mobile":"https://m.pptv.com/","mode":"wap"},{"name":"央视频","url":"https://www.yangshipin.cn","color":"#D2232A","tag":"央","cat":"综合视频","mode":"pc"},{"name":"风行网","url":"https://www.fun.tv","color":"#FF5000","tag":"风","cat":"综合视频","mode":"pc"},{"name":"好看视频","url":"https://haokan.baidu.com","color":"#2932E1","tag":"好","cat":"综合视频","mode":"pc"},{"name":"央视网","url":"https://tv.cctv.com","color":"#B01F24","tag":"视","cat":"综合视频","mode":"pc"},{"name":"中国蓝TV","url":"https://www.cztv.com","color":"#0057B8","tag":"蓝","cat":"广电官网","mode":"pc"},{"name":"荔枝网","url":"https://www.jstv.com","color":"#E8442E","tag":"荔","cat":"广电官网","mode":"pc"},{"name":"SMG上海台","url":"https://www.smg.cn","color":"#1E8FFF","tag":"上","cat":"广电官网","mode":"pc"},{"name":"抖音","url":"https://www.douyin.com","color":"#161823","tag":"抖","cat":"短视频/社区","mode":"pc"},{"name":"快手","url":"https://www.kuaishou.com","color":"#FF4906","tag":"快","cat":"短视频/社区","mode":"wap"},{"name":"梨视频","url":"https://www.pearvideo.com","color":"#FF6633","tag":"梨","cat":"短视频/社区","mode":"pc"},{"name":"腾讯微视","url":"https://weishi.qq.com","color":"#FF6A00","tag":"微","cat":"短视频/社区","mode":"wap"},{"name":"豆瓣电影","url":"https://movie.douban.com","color":"#2E963D","tag":"豆","cat":"影视资讯/数据库","mobile":"https://m.douban.com/movie/","mode":"wap"},{"name":"1905电影网","url":"https://www.1905.com","color":"#C8102E","tag":"19","cat":"影视资讯/数据库","mobile":"https://m.1905.com/","mode":"wap"},{"name":"猫眼电影","url":"https://www.maoyan.com","color":"#EE4D2D","tag":"猫","cat":"影视资讯/数据库","mobile":"https://m.maoyan.com/","mode":"wap"},{"name":"淘票票","url":"https://dianying.taobao.com","color":"#FF5000","tag":"淘","cat":"影视资讯/数据库","mobile":"https://m.taopiaopiao.com/","mode":"wap"},{"name":"斗鱼","url":"https://www.douyu.com","color":"#FF5C00","tag":"鱼","cat":"直播平台","mobile":"https://m.douyu.com/","mode":"pc"},{"name":"虎牙直播","url":"https://www.huya.com","color":"#FF8000","tag":"虎","cat":"直播平台","mobile":"https://m.huya.com/","mode":"wap"},{"name":"YY直播","url":"https://www.yy.com","color":"#FF6A00","tag":"Y","cat":"直播平台","mobile":"https://m.yy.com/","mode":"wap"},{"name":"IMDb","url":"https://www.imdb.com","color":"#F5C518","tag":"IM","cat":"海外官方","mode":"oversea"},{"name":"烂番茄","url":"https://www.rottentomatoes.com","color":"#FA320A","tag":"RT","cat":"海外官方","mode":"oversea"},{"name":"YouTube","url":"https://www.youtube.com","color":"#FF0000","tag":"YT","cat":"海外官方","mode":"oversea"},{"name":"Vimeo","url":"https://vimeo.com","color":"#1AB7EA","tag":"VM","cat":"海外官方","mode":"oversea"},{"name":"找剧AI","url":"https://zhaoju4.com/","color":"#7C5CFF","tag":"找","cat":"AI 搜剧","mode":"pc"},{"name":"红果短剧","url":"https://hongguoduanju.com/","color":"#FF4D4F","tag":"红","cat":"短剧平台","mode":"wap"},{"name":"hongguo-player","url":"https://git.hiwiki.org/zh-CN/repo/yangbin1322/hongguo-player","color":"#3B456B","tag":"H","cat":"第三方桌面端","mode":"project"},{"name":"华数TV","url":"https://www.wasu.com.cn","color":"#1E8FFF","tag":"华","cat":"综合视频","mode":"pc"},{"name":"网易视频","url":"https://v.163.com","color":"#E60012","tag":"易","cat":"综合视频","mode":"pc"},{"name":"凤凰视频","url":"https://v.ifeng.com","color":"#F5A623","tag":"凤","cat":"综合视频","mode":"pc"},{"name":"时光网","url":"https://www.mtime.com","color":"#2B6CB0","tag":"光","cat":"影视资讯/数据库","mode":"pc"},{"name":"网易CC直播","url":"https://live.163.com","color":"#E60012","tag":"C","cat":"直播平台","mode":"pc"},{"name":"龙珠直播","url":"https://www.longzhu.com","color":"#1E8FFF","tag":"珠","cat":"直播平台","mobile":"https://m.longzhu.com/","mode":"wap"},{"name":"六间房","url":"https://www.6.cn","color":"#FF4D4F","tag":"六","cat":"直播平台","mode":"pc"},{"name":"小红书","url":"https://www.xiaohongshu.com","color":"#FF2442","tag":"书","cat":"短视频/社区","mode":"pc"},{"name":"齐鲁网","url":"https://www.iqilu.com","color":"#0057B8","tag":"鲁","cat":"广电官网","mode":"pc"},{"name":"北京时间","url":"https://www.btime.com","color":"#D2232A","tag":"京","cat":"广电官网","mode":"pc"},{"name":"四川广电","url":"https://www.sctv.com","color":"#2E963D","tag":"川","cat":"广电官网","mode":"pc"},{"name":"河北广电","url":"https://www.hebtv.com","color":"#1E8FFF","tag":"冀","cat":"广电官网","mode":"pc"},{"name":"黑龙江广电","url":"https://www.hljtv.com","color":"#7C5CFF","tag":"黑","cat":"广电官网","mode":"pc"},{"name":"云南广电","url":"https://www.yntv.cn","color":"#1AB7EA","tag":"滇","cat":"广电官网","mode":"pc"},{"name":"广西广电","url":"https://www.gxtv.cn","color":"#FF7A2F","tag":"桂","cat":"广电官网","mode":"pc"},{"name":"内蒙古广电","url":"https://www.nmtv.cn","color":"#8B5E3C","tag":"蒙","cat":"广电官网","mode":"pc"},{"name":"山西广电","url":"https://www.sxrtv.com","color":"#C8102E","tag":"晋","cat":"广电官网","mode":"pc"},{"name":"河南广电","url":"https://www.hntv.tv","color":"#E8442E","tag":"豫","cat":"广电官网","mode":"pc"},{"name":"贵州广电","url":"https://www.gzstv.com","color":"#00BE06","tag":"黔","cat":"广电官网","mode":"pc"},{"name":"甘肃广电","url":"https://www.gstv.com.cn","color":"#B8860B","tag":"陇","cat":"广电官网","mode":"pc"},{"name":"吉林广电","url":"https://www.jlntv.cn","color":"#2932E1","tag":"吉","cat":"广电官网","mode":"pc"},{"name":"江西广电","url":"https://www.jxntv.cn","color":"#D4237A","tag":"赣","cat":"广电官网","mode":"pc"},{"name":"湖北广电","url":"https://www.hbtv.com.cn","color":"#00665A","tag":"鄂","cat":"广电官网","mode":"pc"},{"name":"天津北方网","url":"https://www.enorth.com.cn","color":"#D2232A","tag":"津","cat":"广电官网","mode":"pc"},{"name":"南方网","url":"https://www.southcn.com","color":"#0057B8","tag":"粤","cat":"广电官网","mode":"pc"},{"name":"安徽广电","url":"https://www.ahtv.cn","color":"#2E963D","tag":"皖","cat":"广电官网","mode":"pc"},{"name":"重庆广电","url":"https://www.cbg.cn","color":"#FF6A00","tag":"渝","cat":"广电官网","mode":"pc"},{"name":"南海网","url":"https://www.hinews.cn","color":"#1AB7EA","tag":"琼","cat":"广电官网","mode":"pc"},{"name":"新疆广电","url":"https://www.xjtvs.com.cn","color":"#7C5CFF","tag":"新","cat":"广电官网","mode":"pc"},{"name":"宁夏广电","url":"https://www.nxtv.cn","color":"#E60012","tag":"宁","cat":"广电官网","mode":"pc"},{"name":"陕西广电","url":"http://www.snrtv.com/","color":"#C8102E","tag":"陕","cat":"广电官网","mode":"pc"},{"name":"香港TVB","url":"https://www.tvb.com","color":"#3B456B","tag":"港","cat":"广电官网","mode":"pc"},{"name":"VEVO","url":"https://www.vevo.com","color":"#FF0000","tag":"VE","cat":"海外官方","mode":"oversea"},{"name":"腾讯动漫","url":"https://ac.qq.com","color":"#FF6A00","tag":"腾","cat":"动漫漫画","mode":"pc"},{"name":"B站漫画","url":"https://manga.bilibili.com","color":"#FB7299","tag":"漫","cat":"动漫漫画","mode":"pc"},{"name":"快看漫画","url":"https://www.kuaikanmanhua.com","color":"#FF5C8A","tag":"快","cat":"动漫漫画","mode":"pc"},{"name":"直播吧","url":"https://www.zhibo8.com","color":"#1E8FFF","tag":"直","cat":"体育视频","mode":"pc"},{"name":"懂球帝","url":"https://www.dongqiudi.com","color":"#00BE06","tag":"懂","cat":"体育视频","mode":"pc"},{"name":"虎扑","url":"https://www.hupu.com","color":"#FF8000","tag":"扑","cat":"体育视频","mode":"pc"},{"name":"腾讯体育","url":"https://sports.qq.com","color":"#FF6A00","tag":"体","cat":"体育视频","mode":"pc"},{"name":"央视体育","url":"https://sports.cctv.com","color":"#B01F24","tag":"视","cat":"体育视频","mode":"pc"},{"name":"微博","url":"https://weibo.com","color":"#E6162D","tag":"微","cat":"短视频/社区","mode":"pc"},{"name":"皮皮虾","url":"https://www.pipix.com","color":"#FF6633","tag":"皮","cat":"短视频/社区","mode":"pc"},{"name":"福建海博TV","url":"https://www.fjtv.net","color":"#0057B8","tag":"闽","cat":"广电官网","mode":"pc"},{"name":"青海长云网","url":"https://www.qhbtv.com.cn","color":"#2E963D","tag":"青","cat":"广电官网","mode":"pc"},{"name":"西藏之声","url":"http://www.vtibet.com","color":"#7C5CFF","tag":"藏","cat":"广电官网","mode":"pc"},{"name":"百视通BesTV","url":"https://www.bestv.com.cn","color":"#1E8FFF","tag":"百","cat":"综合视频","mode":"pc"},{"name":"网易云音乐","url":"https://music.163.com","color":"#C20C0C","tag":"云","cat":"音乐","mode":"pc"},{"name":"QQ音乐","url":"https://y.qq.com","color":"#31C27C","tag":"Q","cat":"音乐","mode":"pc"},{"name":"酷狗音乐","url":"https://www.kugou.com","color":"#2C9CF0","tag":"狗","cat":"音乐","mode":"pc"},{"name":"酷我音乐","url":"https://www.kuwo.cn","color":"#FFB800","tag":"酷","cat":"音乐","mode":"pc"},{"name":"咪咕音乐","url":"https://music.migu.cn","color":"#E60012","tag":"咪","cat":"音乐","mode":"pc"},{"name":"全民K歌","url":"https://kg.qq.com","color":"#FF4D4F","tag":"唱","cat":"音乐","mode":"pc"},{"name":"澎湃新闻","url":"https://www.thepaper.cn","color":"#1A1A1A","tag":"澎","cat":"资讯/门户","mode":"pc"},{"name":"观察者网","url":"https://www.guancha.cn","color":"#C8102E","tag":"观","cat":"资讯/门户","mode":"pc"},{"name":"36氪","url":"https://36kr.com","color":"#121212","tag":"36","cat":"资讯/门户","mode":"pc"},{"name":"人民网视频","url":"https://tv.people.com.cn","color":"#D2232A","tag":"人","cat":"资讯/门户","mode":"pc"},{"name":"新华网","url":"https://www.news.cn","color":"#E60012","tag":"新","cat":"资讯/门户","mode":"pc"},{"name":"中新网","url":"https://www.chinanews.com","color":"#0057B8","tag":"中","cat":"资讯/门户","mode":"pc"},{"name":"新浪体育","url":"https://sports.sina.com.cn","color":"#FF8200","tag":"浪","cat":"资讯/门户","mode":"pc"},{"name":"搜狐体育","url":"https://sports.sohu.com","color":"#FF6600","tag":"狐","cat":"资讯/门户","mode":"pc"},{"name":"懂车帝","url":"https://www.dongchedi.com","color":"#0066FF","tag":"车","cat":"汽车","mode":"pc"},{"name":"汽车之家","url":"https://www.autohome.com.cn","color":"#F47B2A","tag":"家","cat":"汽车","mode":"pc"},{"name":"游民星空","url":"https://www.gamersky.com","color":"#2E963D","tag":"游","cat":"游戏","mode":"pc"},{"name":"17173","url":"https://www.17173.com","color":"#E8442E","tag":"17","cat":"游戏","mode":"pc"},{"name":"4399","url":"https://www.4399.com","color":"#FF6600","tag":"43","cat":"游戏","mode":"pc"},{"name":"下厨房","url":"https://www.xiachufang.com","color":"#E23B3B","tag":"厨","cat":"生活/图文","mode":"pc"},{"name":"图虫","url":"https://tuchong.com","color":"#2932E1","tag":"图","cat":"生活/图文","mode":"pc"},{"name":"站酷","url":"https://www.zcool.com.cn","color":"#0099FF","tag":"站","cat":"生活/图文","mode":"pc"},{"name":"知乎","url":"https://www.zhihu.com","color":"#0066FF","tag":"知","cat":"生活/图文","mode":"pc"},{"name":"大众点评","url":"https://www.dianping.com","color":"#FF6633","tag":"评","cat":"生活/图文","mode":"pc"},{"name":"网易公开课","url":"https://open.163.com","color":"#E60012","tag":"课","cat":"教育","mode":"pc"},{"name":"腾讯课堂","url":"https://ke.qq.com","color":"#FF6A00","tag":"堂","cat":"教育","mode":"pc"},{"name":"喜马拉雅","url":"https://www.ximalaya.com","color":"#FF8200","tag":"喜","cat":"有声/播客","mode":"pc"},{"name":"小宇宙播客","url":"https://www.xiaoyuzhoufm.com","color":"#5B8DEF","tag":"宙","cat":"有声/播客","mode":"pc"},{"name":"蜻蜓FM","url":"https://www.qingting.fm","color":"#2E7D32","tag":"蜻","cat":"有声/播客","mode":"pc"},{"name":"花椒直播","url":"https://www.huajiao.com","color":"#FF5C00","tag":"椒","cat":"直播平台","mode":"pc"},{"name":"映客直播","url":"https://www.inke.cn","color":"#FF2442","tag":"映","cat":"直播平台","mode":"pc"},{"name":"酷狗直播","url":"https://fanxing.kugou.com","color":"#2C9CF0","tag":"星","cat":"直播平台","mode":"pc"},{"name":"淘宝直播","url":"https://live.taobao.com","color":"#FF5000","tag":"淘","cat":"电商直播","mode":"pc"},{"name":"京东直播","url":"https://zhibo.jd.com","color":"#E1251B","tag":"京","cat":"电商直播","mode":"pc"}],"searchTpl":{"哔哩哔哩":"https://search.bilibili.com/all?keyword={kw}","腾讯视频":"https://v.qq.com/x/search/?q={kw}","爱奇艺":"https://so.iqiyi.com/so/q_{kw}","优酷":"https://so.youku.com/search_video/q_{kw}","芒果TV":"https://www.mgtv.com/so/?keyword={kw}","西瓜视频":"https://www.ixigua.com/search/{kw}/","咪咕视频":"https://www.miguvideo.com/mgs/website/prd/search.html?keyword={kw}","AcFun":"https://www.acfun.cn/search?keyword={kw}","乐视视频":"https://so.le.com/s?wd={kw}","PPTV 聚力":"https://search.pptv.com/s_video?kw={kw}","央视网":"https://search.cctv.com/search.php?qtext={kw}&type=web","抖音":"https://www.douyin.com/search/{kw}","快手":"https://www.kuaishou.com/search/video?searchKey={kw}","腾讯微视":"https://weishi.qq.com/search?keyword={kw}","豆瓣电影":"https://search.douban.com/movie/subject_search?search_text={kw}","猫眼电影":"https://m.maoyan.com/apollo/search?query={kw}","斗鱼":"https://www.douyu.com/search?kw={kw}","虎牙直播":"https://www.huya.com/search?kw={kw}","找剧AI":"https://zhaoju4.com/search?keyword={kw}","红果短剧":"https://hongguoduanju.com/search?keyword={kw}"},"quick":{"hgHome":"https://hongguoduanju.com/","hgRank":"https://hongguoduanju.com/rank/hot-drama","hgDetail":"https://hongguoduanju.com/detail?series_id=7705741128217152574","zjHome":"https://zhaoju4.com/","zjSearch":"https://zhaoju4.com/search"},"remoteUrl":"","siteCount":117,"verifiedAt":"2026-11-21","missing":[],"note":"频道线路逐条实测（m3u8 解析 + 首切片拉取），只保留可播线路；无可用线路的频道记录在 missing"}</script>
+  <script id="kh-release" type="application/json">{"schema":1,"generatedAt":"2026-11-21T13:51:30.931Z","latest":{"versionName":"1.7.85","versionCode":1000199,"publishedAt":"2026-11-21T13:51:30.931Z","minApi":12,"targetApi":26,"compatibleSdk":"5.0.0(12)","targetSdk":"26.0.1","abi":["any"],"deviceTypes":["default","tablet","tv","2in1"],"osCompat":[{"name":"KaihongOS","min":"4.0","apiMin":12,"note":"API 12 起可安装；系统升级后自动沿用最新兼容策略"},{"name":"OpenHarmony","min":"4.0","apiMin":12,"note":"纯 ArkTS 字节码，无 native so，跨 x86_64 / arm64 通用"}],"variants":{"low":{"watchdogMs":9000,"concurrency":2,"lazyPx":1000,"columns":2},"mid":{"watchdogMs":7500,"concurrency":4,"lazyPx":1800,"columns":3},"high":{"watchdogMs":6500,"concurrency":6,"lazyPx":2600,"columns":4}},"notes":"自动更新：发现新版本后下载更新包 → 核对 SHA256 → 由用户在安装向导 / 系统安装器确认安装（应用内不静默安装）","downloadPage":"https://www.workbuddy.cn/space/d/roaB3djIExONHwJ3lGoFTo","hapPath":"HongHubMovie.hap","hapShaFile":"HongHubMovie.hap.sha256","hapAutoInstall":false,"hapUrl":"/download/honghub-harmony.hap","generatedAt":"2026-11-21T13:51:30.931Z","downloadUrl":"/download/desktop-setup.exe","contentVersion":57}}</script>
+</head>
+<body>
+<div id="__diag" style="display:none;position:fixed;left:0;right:0;top:0;z-index:99999;background:#B00020;color:#fff;font:12px/1.55 monospace;padding:8px 10px;white-space:pre-wrap;max-height:45%;overflow:auto"></div>
+<div id="__pkgver" style="position:fixed;right:8px;bottom:8px;z-index:99998;background:#4ADE80;color:#0C0E16;font:11px/1.4 monospace;padding:3px 8px;border-radius:8px;opacity:.92">PKG …</div>
+<script>
+/* 版本角标：从清单动态读取，避免写死版本随发版过时（失败保留占位，不影响播放） */
+(function(){
+  try{
+    var q = location.search || '';
+    fetch('remote-manifest.json' + q, {cache:'no-store'})
+      .then(function(r){ return r.json(); })
+      .then(function(m){
+        var el = document.getElementById('__pkgver');
+        if (el && m && m.versionName) el.textContent = 'PKG ' + m.versionName;
+      }).catch(function(){});
+  }catch(e){}
+})();
+/* 运行期自诊断：真机无控制台，异常直接显示在页面顶部（不影响正常播放） */
+(function(){
+  try{ console.log('KAIHONG HTML 1.1.4 (diag)'); }catch(e){}
+  var shown = [];
+  function show(tag, msg){
+    try{
+      var d = document.getElementById('__diag');
+      if(!d) return;
+      var line = '[' + tag + '] ' + msg;
+      /* 1.7.0 自动收集：主脚本尚未加载时先缓存，加载后直接进问题中心 */
+      try{
+        if(typeof window.__khIssue === 'function') window.__khIssue(tag, String(msg), {early:true});
+        else (window.__KH_EARLY_ISSUES = window.__KH_EARLY_ISSUES || []).push(
+          {tag:tag, msg:String(msg), ts:Date.now()});
+      }catch(e){}
+      if(shown.indexOf(line) >= 0) return;
+      if(shown.length > 6) return;
+      shown.push(line);
+      d.style.display = 'block';
+      d.textContent = shown.join('\n') + '\nUA: ' + navigator.userAgent;
+    }catch(e){}
+  }
+  window.__diag = show;
+  window.addEventListener('error', function(e){
+    var t = e.target || {};
+    if(t && t.tagName === 'SCRIPT'){ show('资源', '脚本加载失败 ' + (t.src || '')); return; }
+    if(t && (t.tagName === 'LINK' || t.tagName === 'IMG')){ return; }
+    if(t && (t.tagName === 'VIDEO' || t.tagName === 'AUDIO' || t.tagName === 'SOURCE')){
+      show('播放', '媒体资源加载失败 ' + (t.src || t.currentSrc || ''));
+      return;
+    }
+    var _st = (e.error && e.error.stack) ? String(e.error.stack).split('\n')[0] : '';
+    show('脚本', (e.message || '未知错误') + ' 行' + (e.lineno || 0) + ':' + (e.colno || 0) + (_st ? ' · ' + _st.slice(0, 80) : ''));
+  }, true);
+  window.addEventListener('unhandledrejection', function(e){
+    var r = e.reason || {};
+    var _rs = (r && r.stack) ? String(r.stack).split('\n')[0] : '';
+    show('异步', (r && r.message ? r.message : String(r)) + (_rs ? ' · ' + _rs.slice(0, 80) : ''));
+  });
+  setTimeout(function(){
+    var m = document.getElementById('main');
+    if(!m || m.children.length === 0){
+      show('渲染', '2.5 秒内未渲染出内容（脚本可能未执行）');
+    }
+  }, 2500);
+})();
+</script>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">▶</div>
+    <div>
+      <div class="brand-name">鸿汇影</div>
+      <div class="brand-sub">KaihongOS · 点击即播</div>
+    </div>
+  </div>
+  <div class="search">
+    <span style="color:#7C8296;font-size:13px">🔍</span>
+    <input id="searchInput" type="text" placeholder="搜片名 / 演员 / 标签，输入即搜" autocomplete="off" aria-label="搜索影片">
+    <button class="search-clear" id="searchClear" aria-label="清空搜索">×</button>
+  </div>
+  <div class="nav" id="nav">
+    <button data-view="home" class="on">首页</button>
+    <button data-view="live">直播</button>
+    <button data-view="category">分类</button>
+    <button data-view="favorites">收藏</button>
+    <button data-view="history">历史</button>
+    <button data-view="custom">网址</button>
+    <button data-view="sites">网站</button>
+    <button data-view="resources">资源</button>
+    <button data-view="issues">🩺 问题</button>
+    <button data-view="settings">⚙ 设置</button>
+    <button data-view="about">关于</button>
+  </div>
+  <div class="status" id="statusWrap"><span class="dot"></span><span id="statusText">资源加载中…</span></div>
+</div>
+
+<div id="main"></div>
+<button id="toTop" aria-label="回到顶部">↑</button>
+
+<div id="playerLayer">
+  <div class="player-top">
+    <button class="back" id="closeBtn">‹ 返回</button>
+    <div class="player-title" id="playerTitle">—</div>
+    <button class="fav-btn" id="favBtn">☆ 收藏</button>
+  </div>
+  <div class="video-wrap" id="videoWrap">
+    <video id="video" playsinline webkit-playsinline preload="auto"></video>
+    <div class="sub-layer" id="subLayer" aria-live="polite"></div>
+    <button id="tapPlay" class="tap-play">▶ 点击播放</button>
+    <div class="buffering" id="buffering">正在缓冲…</div>
+  </div>
+  <div class="player-ctrl">
+    <div class="seek-row">
+      <input id="seek" type="range" min="0" max="100" step="0.1" value="0" aria-label="播放进度">
+      <span class="timetext" id="timeText">00:00 / 00:00</span>
+    </div>
+    <div class="livebar" id="liveBar">
+      <span class="lb-live">● LIVE</span>
+      <span class="lb-ch" id="lbCh">CH —</span>
+      <span class="lb-epg" id="lbEpg">正在直播 —</span>
+      <span class="lb-clock" id="lbClock">--:--:--</span>
+      <span class="spacer"></span>
+      <button class="cbtn" data-ctrl="live-prev" title="上一台">▲ 上一台</button>
+      <button class="cbtn" data-ctrl="live-next" title="下一台">▼ 下一台</button>
+      <button class="cbtn" data-ctrl="live-fav" id="lbFav">☆ 收藏</button>
+      <button class="cbtn" data-ctrl="live-list" title="返回频道列表">▦ 频道</button>
+    </div>
+    <div class="ctrl-row">
+      <button class="cbtn play" data-ctrl="play" id="btnPlay" aria-label="播放或暂停">▶</button>
+      <button class="cbtn" data-ctrl="back10" title="后退 10 秒">«10s</button>
+      <button class="cbtn" data-ctrl="fwd10" title="前进 10 秒">10s»</button>
+      <div class="volbox">
+        <button class="cbtn" data-ctrl="mute" id="btnMute" aria-label="静音切换">🔊</button>
+        <input id="vol" type="range" min="0" max="1" step="0.05" value="1" aria-label="音量">
+      </div>
+      <span class="spacer"></span>
+      <button class="cbtn" data-ctrl="rate" id="btnRate" title="切换倍速">1.0×</button>
+      <button class="cbtn" data-ctrl="fullscreen" title="全屏">⛶ 全屏</button>
+      <button class="cbtn" data-ctrl="fit" id="btnFit" title="画面比例：自适应 / 铺满裁剪 / 拉伸">🖍 自适应</button>
+      <button class="cbtn" data-ctrl="pip" title="画中画">🖼 画中画</button>
+      <button class="cbtn" data-ctrl="quality" id="btnQuality" title="切换清晰度（HLS 多码率时可用）">🎚 自动</button>
+      <button class="cbtn" data-ctrl="downgrade" id="btnDown" title="手动降低一档清晰度（弱网 / 卡顿）">⬇ 降档</button>
+      <button class="cbtn" data-ctrl="subtitle" id="btnSubtitle" title="加载字幕（支持 .srt / .vtt，本机渲染）">📝 字幕</button>
+      <button class="cbtn" data-ctrl="sub-translate" id="btnSubTrans" title="把当前字幕翻译成中文">🌐 译</button>
+      <button class="cbtn" data-ctrl="audiotrack" id="btnAudioTrack" title="切换音轨（HLS 多音轨时可用）">🎵 音轨</button>
+      <button class="cbtn" data-ctrl="shot" id="btnShot" title="截取当前画面并存到本机">📷 截图</button>
+      <button class="cbtn" data-ctrl="watchlater" id="btnWatchLater" title="加入稍后再看（收藏页可见）">⏰ 稍后看</button>
+      <button class="cbtn" data-ctrl="watchsub" id="btnWatchSub" title="追剧订阅（本机记录，片单快照变化时提醒）">⭐ 追剧</button>
+      <button class="cbtn" data-ctrl="external" id="btnExternal" title="用本机外部播放器（VLC / mpv / 系统默认）打开当前片源">🖥 外播</button>
+      <button class="cbtn" data-ctrl="cast" id="btnCast" title="投屏到电视 / 盒子（DLNA，仅桌面版，需同一局域网）">📺 投屏</button>
+      <button class="cbtn" data-ctrl="dl-current" id="btnDlCurrent" title="把当前片源加入下载队列（继承防盗链头，仅桌面版）">⬇ 下载</button>
+      <button class="cbtn" data-ctrl="openfile" id="btnOpenFile" title="打开本机视频文件（仅桌面版）">📂 本机</button>
+    </div>
+  </div>
+  <div class="player-extra">
+    <div class="player-aside" id="playerAside">
+      <div class="aside-head">相关推荐 · 点击换片</div>
+      <div class="aside-list" id="asideList"></div>
+    </div>
+    <div class="srcbar" id="srcBar"></div>
+    <div class="player-info" id="playerInfo"></div>
+    <div class="player-msg" id="playerMsg"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span id="toastText"></span><button id="toastAction" style="display:none"></button></div>
+<div class="ctx-menu" id="khCtxMenu"></div>
+<div id="diag" data-state="idle" data-cards="0" data-sites="0" data-live="0" data-hls="" data-source="" data-ready="0" data-render="0" data-boot="0" data-error="0" data-rate="1" data-volume="1" data-muted="0" data-watchdog="0" data-livemode="live"></div>
+
+<script src="kh-config.js"></script>
+<script src="kh-core.js"></script>
+<script src="kh-src.js"></script>
+<script src="kh-admin.js"></script>
+<script src="kh-player.js"></script>
+<script src="kh-app.js"></script>
+</body>
+</html>

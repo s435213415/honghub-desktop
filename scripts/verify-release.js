@@ -86,9 +86,10 @@ const deliverDirs = (fs.existsSync(DESKTOP) ? fs.readdirSync(DESKTOP, { withFile
   .filter(d => d.isDirectory() && /^鸿汇影·客户成品_v/i.test(d.name))
   .map(d => path.join(DESKTOP, d.name));
 function firstExisting(list) { for (const p of list) if (fs.existsSync(p)) return p; return list[0]; }
+/* 优先认版本化交付夹：桌面根可能残留上一版平铺 HAP/Setup，拿它比当前版必然误报。 */
 for (const [src, dst] of [
-  [path.join(DIST, 'desktop-setup.exe'), firstExisting([path.join(DESKTOP, setupName)].concat(deliverDirs.map(d => path.join(d, setupName))))],
-  [path.join(DIST, 'honghub-harmony.hap'), firstExisting([path.join(DESKTOP, 'HongHubMovie.hap')].concat(deliverDirs.map(d => path.join(d, 'HongHubMovie.hap')))  )]
+  [path.join(DIST, 'desktop-setup.exe'), firstExisting(deliverDirs.map(d => path.join(d, setupName)).concat([path.join(DESKTOP, setupName)]))],
+  [path.join(DIST, 'honghub-harmony.hap'), firstExisting(deliverDirs.map(d => path.join(d, 'HongHubMovie.hap')).concat([path.join(DESKTOP, 'HongHubMovie.hap')]))]
 ]) {
   if (!fs.existsSync(dst)) { bad('桌面交付物缺失：' + dst); continue; }
   if (!fs.existsSync(src)) { bad('dist 产物缺失：' + src); continue; }

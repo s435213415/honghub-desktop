@@ -1,18 +1,18 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-21T11:16:16.496Z",
+  "generatedAt": "2026-11-21T13:54:41.431Z",
   "latest": {
     "versionName": "1.7.85",
     "versionCode": 1000199
   },
   "versions": [
     {
-      "versionName": "1.7.84",
-      "versionCode": 1000198,
-      "publishedAt": "2026-11-21T11:11:11.104Z",
+      "versionName": "1.7.85",
+      "versionCode": 1000199,
+      "publishedAt": "2026-11-21T13:51:30.931Z",
       "features": {
-        "versionName": "1.7.84",
-        "versionCode": 1000198,
+        "versionName": "1.7.85",
+        "versionCode": 1000199,
         "count": 38,
         "hash": "78c545d7ffe9ce9c",
         "ids": [
@@ -56,123 +56,133 @@
           "upgrade-telemetry"
         ]
       },
-      "dir": "releases/v1.7.84",
+      "dir": "releases/v1.7.85",
       "artifacts": {
         "desktop": {
-          "path": "releases/v1.7.84/鸿汇影桌面版 Setup 1.7.84.exe",
-          "size": 108106047,
-          "sha256": "b8257d4da6daaa248d70c8ad31eac1e13b09d0af3a0fb332e462bcab1326a34b"
+          "path": "releases/v1.7.85/鸿汇影桌面版 Setup 1.7.85.exe",
+          "size": 118703159,
+          "sha256": "a13239d6551e08964099c10e86e4ca0d1fa055569091b726869621348ac741af"
         },
         "hap": {
-          "path": "releases/v1.7.84/HongHubMovie.hap",
-          "size": 2215054,
-          "sha256": "69fe5ad2ab7e93e955e6a57e9ec5ff34c094101fe6fa3446087a1e4b08a54330"
-        },
-        "arm64": {
-          "path": "releases/v1.7.84/鸿汇影桌面版 Setup 1.7.84-arm64.exe",
-          "size": 108397361,
-          "sha256": "14187d87d57fc5bb00e70470f490b44b8f22b5f661702d1ddd16647a19ae58dc"
+          "path": "releases/v1.7.85/HongHubMovie.hap",
+          "size": 2219150,
+          "sha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
         }
       },
-      "downloadUrl": "/download/archive/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.84.exe",
+      "downloadUrl": "/download/archive/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.85.exe",
       "hapUrl": "/download/archive/HongHubMovie.hap",
-      "rollbackUrl": "/api/update/rollback?version=1.7.84",
-      "arm64Url": "/download/archive/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.84-arm64.exe"
+      "rollbackUrl": "/api/update/rollback?version=1.7.85"
     },
     {
-      "versionName": "1.7.83",
+      "versionName": "1.7.84",
       "versionCode": null,
-      "dir": "dist",
+      "dir": "dist/_archive_public_versions/v1.7.84",
       "historical": true,
       "artifacts": {
         "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.83.exe",
+          "path": "dist/_archive_public_versions/v1.7.84/desktop-setup.exe",
           "size": 108106047,
           "sha256": "b8257d4da6daaa248d70c8ad31eac1e13b09d0af3a0fb332e462bcab1326a34b"
         },
         "hap": null
       },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.83.exe",
+      "downloadUrl": "/download/archive/v1.7.84/desktop-setup.exe",
+      "rollbackUrl": "/api/update/rollback?version=1.7.84"
+    },
+    {
+      "versionName": "1.7.83",
+      "versionCode": null,
+      "dir": "dist/_archive_public_versions/v1.7.83",
+      "historical": true,
+      "artifacts": {
+        "desktop": {
+          "path": "dist/_archive_public_versions/v1.7.83/鸿汇影桌面版 Setup 1.7.83.exe",
+          "size": 108106058,
+          "sha256": "9e47ab2824da5b072d7462551975dec2fb2e4920eccae9888510f610b18f25e9"
+        },
+        "hap": null
+      },
+      "downloadUrl": "/download/archive/v1.7.83/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.83.exe",
       "rollbackUrl": "/api/update/rollback?version=1.7.83"
     },
     {
       "versionName": "1.7.82",
       "versionCode": null,
-      "dir": "dist",
+      "dir": "dist/_archive_public_versions/v1.7.82",
       "historical": true,
       "artifacts": {
         "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.82.exe",
-          "size": 108105227,
-          "sha256": "0e7628f835f44e4c936e3ab71a71f8fdb4e7f36ab63fa4278bf78192f7444d50"
-        },
-        "hap": null
-      },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.82.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.82"
-    },
-    {
-      "versionName": "1.7.81",
-      "versionCode": null,
-      "dir": "dist",
-      "historical": true,
-      "artifacts": {
-        "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.81.exe",
+          "path": "dist/_archive_public_versions/v1.7.82/鸿汇影桌面版 Setup 1.7.82.exe",
           "size": 108104456,
           "sha256": "f29d57360eac8c73fae254ac18d2796fa3e3bb109bbe855624710234594a88c3"
         },
         "hap": null
       },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.81.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.81"
+      "downloadUrl": "/download/archive/v1.7.82/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.82.exe",
+      "rollbackUrl": "/api/update/rollback?version=1.7.82"
     },
     {
-      "versionName": "1.7.80",
+      "versionName": "1.7.81",
       "versionCode": null,
-      "dir": "dist",
+      "dir": "dist/_archive_public_versions/v1.7.81",
       "historical": true,
       "artifacts": {
         "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.80.exe",
+          "path": "dist/_archive_public_versions/v1.7.81/鸿汇影桌面版 Setup 1.7.81.exe",
           "size": 108097890,
           "sha256": "8172467f4ee7d4be146599b78837e53996b079a51239fda186142baaa9525d25"
         },
         "hap": null
       },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.80.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.80"
+      "downloadUrl": "/download/archive/v1.7.81/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.81.exe",
+      "rollbackUrl": "/api/update/rollback?version=1.7.81"
     },
     {
-      "versionName": "1.7.79",
+      "versionName": "1.7.80",
       "versionCode": null,
-      "dir": "dist",
+      "dir": "dist/_archive_public_versions/v1.7.80",
       "historical": true,
       "artifacts": {
         "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.79.exe",
+          "path": "dist/_archive_public_versions/v1.7.80/鸿汇影桌面版 Setup 1.7.80.exe",
           "size": 108092402,
           "sha256": "00d11de42321d3acf627cdfe67decb32c1ca2f5524ee00820c3946085db3b32e"
         },
         "hap": null
       },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.79.exe",
-      "rollbackUrl": "/api/update/rollback?version=1.7.79"
+      "downloadUrl": "/download/archive/v1.7.80/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.80.exe",
+      "rollbackUrl": "/api/update/rollback?version=1.7.80"
     },
     {
-      "versionName": "1.7.78",
+      "versionName": "1.7.79",
       "versionCode": null,
-      "dir": "dist",
+      "dir": "dist/_archive_public_versions/v1.7.79",
       "historical": true,
       "artifacts": {
         "desktop": {
-          "path": "dist/鸿汇影桌面版 Setup 1.7.78.exe",
+          "path": "dist/_archive_public_versions/v1.7.79/鸿汇影桌面版 Setup 1.7.79.exe",
           "size": 108163044,
           "sha256": "02144f4023cb21368aec0dbd4bc10aee48fd1ef0aa4e28489359bc77a3d555ce"
         },
         "hap": null
       },
-      "downloadUrl": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.78.exe",
+      "downloadUrl": "/download/archive/v1.7.79/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.79.exe",
+      "rollbackUrl": "/api/update/rollback?version=1.7.79"
+    },
+    {
+      "versionName": "1.7.78",
+      "versionCode": null,
+      "dir": "dist/_archive_public_versions/v1.7.78",
+      "historical": true,
+      "artifacts": {
+        "desktop": {
+          "path": "dist/_archive_public_versions/v1.7.78/鸿汇影桌面版 Setup 1.7.78.exe",
+          "size": 108145678,
+          "sha256": "8ce2615b12a22a1e2f0c58d270920893ed6da59adf0761c1f8fa35d4cf0202e3"
+        },
+        "hap": null
+      },
+      "downloadUrl": "/download/archive/v1.7.78/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.78.exe",
       "rollbackUrl": "/api/update/rollback?version=1.7.78"
     },
     {
