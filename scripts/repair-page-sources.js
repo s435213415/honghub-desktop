@@ -20,7 +20,9 @@ const oldMatch = html.match(/<script id="kh-sources" type="application\/json">([
 if (!oldMatch) throw new Error('页面缺少 kh-sources 块');
 const old = JSON.parse(oldMatch[1]);
 const block = {
-  v: 23,
+  // 历史脚本固定写 23；现网源清单已到 v41，硬写会把客户端源版本倒退，
+  // 导致「自动更新」误判为旧清单。保留已发布版本，必要时再往上走。
+  v: Math.max(Number(old.v) || 0, 23),
   updatedAt: new Date().toISOString(),
   count: man.sources.channels.length,
   channels: man.sources.channels.map((c) => ({ id: c.id, name: c.name, group: c.group, sources: c.sources })),
@@ -39,9 +41,20 @@ html = html.slice(0, oldMatch.index) +
 fs.writeFileSync(PAGE, html);
 
 // ③ 自检：两段都能解析才算修好
+// 页面已拆成外链版：LIVE_CHANNELS / LIVE_STATUS 迁到 kh-config.js，
+// 不能再假设它们还内嵌在 index.html 里（2026-11-21 发版流水线在此崩过）。
 const h2 = fs.readFileSync(PAGE, 'utf8');
-const ch = h2.match(/var LIVE_CHANNELS = \[[\s\S]*?\n\];/)[0];
-const st = h2.match(/var LIVE_STATUS = [\s\S]*?;/)[0];
+const cfgPath = path.join(ROOT, 'app/kh-config.js');
+const h3 = fs.existsSync(cfgPath) ? fs.readFileSync(cfgPath, 'utf8') : '';
+function findDecl(re) {
+  const inPage = h2.match(re);
+  if (inPage) return inPage[0];
+  const inCfg = h3.match(re);
+  if (inCfg) return inCfg[0];
+  throw new Error('找不到直播变量声明：' + re);
+}
+const ch = findDecl(/var LIVE_CHANNELS = \[[\s\S]*?\n\];/);
+const st = findDecl(/var LIVE_STATUS = [\s\S]*?;/);
 try {
   const arr = new Function('var EPG_NEWS=[];var EPG_DOC=[];' + ch + '; return LIVE_CHANNELS;')();
   console.log('LIVE_CHANNELS 可解析 · ' + arr.length + ' 个频道');
