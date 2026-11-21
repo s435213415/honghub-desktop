@@ -256,6 +256,12 @@ ipcMain.handle('kh:http-get', async (event, arg) => {
   const timer = setTimeout(() => { try { if (ctl) ctl.abort(); } catch (e) {} }, timeout);
   try {
     const r = await fetch(url, { signal: ctl ? ctl.signal : undefined, redirect: 'follow', headers });
+    /* 1.7.85：仓配置等场景要按 GBK/UTF-8 智能解码，返回二进制 base64 给渲染层；
+       普通请求仍走 text()，保持既有调用方不变。 */
+    if (a.binary === true) {
+      const buf = Buffer.from(await r.arrayBuffer());
+      return { ok: r.ok, status: r.status, base64: buf.toString('base64'), via: 'main' };
+    }
     const text = await r.text();
     return { ok: r.ok, status: r.status, text: String(text).slice(0, 3000000), via: 'main' };
   } catch (e) {
@@ -783,6 +789,26 @@ ipcMain.handle('kh:pick-video', async () => {
     try { size = fs.statSync(fp).size; } catch (e) { size = 0; }
     const url = 'file:///' + fp.replace(/\\/g, '/').split('/').map((seg, i) => i === 0 ? seg : encodeURIComponent(seg)).join('/');
     return { ok: true, path: fp, name: path.basename(fp), size: size, url: url };
+  } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
+});
+/* 1.7.85：一键加载影视仓配置——选本机 .json/.txt 配置文件，按 GBK/UTF-8 智能解码读回文本。
+   只读文本文件，不改文件系统、不注册文件关联，内容交由用户在影视仓里确认导入。 */
+ipcMain.handle('kh:pick-config', async () => {
+  try {
+    const r = await dialog.showOpenDialog(mainWin && !mainWin.isDestroyed() ? mainWin : undefined, {
+      title: '选择影视仓配置文件',
+      properties: ['openFile'],
+      filters: [{ name: '配置文件', extensions: ['json', 'txt'] }, { name: '全部文件', extensions: ['*'] }]
+    });
+    if (!r || r.canceled || !r.filePaths || !r.filePaths[0]) return { ok: false, canceled: true };
+    const fp = r.filePaths[0];
+    let buf;
+    try { buf = fs.readFileSync(fp); } catch (e) { return { ok: false, reason: '读取失败：' + ((e && e.message) || e) }; }
+    if (buf.length > 5 * 1024 * 1024) return { ok: false, reason: '文件超过 5MB，不是配置文件' };
+    let text = '';
+    try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+    catch (e) { try { text = new TextDecoder('gb18030').decode(buf); } catch (e2) { text = buf.toString('utf8'); } }
+    return { ok: true, name: path.basename(fp), text: text, size: buf.length };
   } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
 });
 /* 落盘地址 → file:// 地址（拖放走渲染层的 File.path，同样需要转换） */

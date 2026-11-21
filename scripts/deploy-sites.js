@@ -86,6 +86,12 @@ function localFiles(man) {
   return [
     { key: 'index.html', rel: 'index.html', url: man.baseUrl + '/index.html' + man.shareQuery, size: fs.existsSync(path.join(PUB, 'index.html')) ? fs.statSync(path.join(PUB, 'index.html')).size : 0 },
     { key: 'app-page.html', rel: 'app-page.html', url: man.pageUrl, size: man.pageSize },
+    /* 客户页外链 js：缺一个线上就是空壳，必须纳入回验（曾实际全 404 未被发现）。 */
+    ...['kh-config.js', 'kh-core.js', 'kh-src.js', 'kh-admin.js', 'kh-player.js', 'kh-app.js'].map((js) => ({
+      key: js, rel: js,
+      url: man.baseUrl + '/' + js + (man.shareQuery || ''),
+      size: fs.existsSync(path.join(PUB, js)) ? fs.statSync(path.join(PUB, js)).size : -1
+    })),
     { key: 'remote-manifest.json', rel: 'remote-manifest.json', url: man.baseUrl + '/remote-manifest.json' + man.shareQuery, size: fs.statSync(MAN).size },
     { key: 'desktop-setup.exe', rel: v + 'desktop-setup.exe', url: man.desktopUrl, size: man.desktopSize, sha: man.desktopSha256 },
     { key: 'HongHubMovie.hap', rel: v + 'HongHubMovie.hap', url: man.hapUrl, size: man.hapSize, sha: man.hapSha256 },

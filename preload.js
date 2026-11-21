@@ -114,6 +114,11 @@ contextBridge.exposeInMainWorld('khLocalFile', {
   toUrl: (p) => ipcRenderer.invoke('kh:file-path-to-url', p)
 });
 
+/* 一键加载影视仓配置（1.7.85）：选本机 .json/.txt 配置文件读回文本，内容由用户确认导入。 */
+contextBridge.exposeInMainWorld('khConfigFile', {
+  pick: () => ipcRenderer.invoke('kh:pick-config')
+});
+
 /* 网络代理（1.7.82）：跟随系统 / 直连 / 手动 host:port。 */
 contextBridge.exposeInMainWorld('khProxy', {
   get: () => ipcRenderer.invoke('kh:proxy-get'),

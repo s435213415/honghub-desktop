@@ -319,6 +319,22 @@ els.main.addEventListener('keydown', function(e){
     whRemove(_whDId);
     toast('已删除仓「' + _whD.name + '」及其站点');
     render();
+  } else if(act === 'wh-pick-file'){
+    /* 1.7.85：一键加载本机配置文件，读回后填入文本框并直接导入（合并进选中/新建仓） */
+    if(!window.khConfigFile || typeof window.khConfigFile.pick !== 'function'){
+      toast('当前环境不支持读取本机文件（仅桌面版可用），请用粘贴方式'); return;
+    }
+    window.khConfigFile.pick().then(function(r){
+      if(!r || !r.ok){ if(r && r.canceled) return; toast('读取失败：' + ((r && r.reason) || '未知原因')); return; }
+      var txt = String(r.text || '').trim();
+      if(!txt){ toast('文件是空的'); return; }
+      var ta = document.getElementById('whPaste');
+      var sel = document.getElementById('whPasteTarget');
+      if(ta) ta.value = txt;
+      whImportText(sel ? sel.value : '', txt);
+      toast('已从「' + (r.name || '文件') + '」导入配置');
+      render();
+    }).catch(function(e){ toast('读取失败：' + ((e && e.message) || e)); });
   } else if(act === 'wh-paste'){
     var _whTa = document.getElementById('whPaste');
     var _whSel = document.getElementById('whPasteTarget');
@@ -698,6 +714,8 @@ document.querySelector('.player-ctrl').addEventListener('click', function(e){
   else if(c === 'watchlater') toggleWatchLater();
   else if(c === 'watchsub') toggleWatchSub();
   else if(c === 'external') khOpenExternal();
+  else if(c === 'cast') khDlnaDiscover();
+  else if(c === 'dl-current') khDownloadCurrent();
   else if(c === 'openfile') khOpenLocalVideo();
   else if(c === 'live-prev') switchLive(-1);
   else if(c === 'live-next') switchLive(1);
@@ -866,7 +884,11 @@ els.video.addEventListener('playing', function(){
     khPlayReport(khVideoCatalogId(state.movie), 'firstFrame', null, Date.now() - (state.playStartAt || Date.now()));
   }
   setDiag('ready', els.video.readyState);
-  els.msg.textContent = '';
+  /* 续播二选一提示（data-resume）必须留到用户点选：首帧 playing 事件不能清空它，
+     否则「上次看到 X · 继续观看 / 从头播放」一闪而过，进度记忆形同虚设。 */
+  if(!(state.resumePos > 0 && els.msg.querySelector && els.msg.querySelector('[data-resume]'))){
+    els.msg.textContent = '';
+  }
   syncPlayBtn();
 });
 els.video.addEventListener('pause', syncPlayBtn);
@@ -901,6 +923,8 @@ window.addEventListener('error', function(ev){
 });
 
 /* ---------------- 启动 ---------------- */
+/* 内置种子（客户首次打开自动导入网站 + 影视仓接口；幂等、用户删除后不灌回） */
+try{ khSeedBuiltin(); }catch(e){}
 applyVolume(1, false);
 render();
 setDiag('boot', Date.now() - BOOT_AT);
@@ -2360,6 +2384,45 @@ function khCaptureShot(){
     toast('该片源不允许截图（跨域画布保护），这是浏览器的安全限制，不是应用故障');
   }
 }
+/* 当前片源的「原始直链」：优先取 sources[] 里的真实 m3u8/mp4 地址，绝不返回 hls.js 的 blob:。
+   投屏 / 外播 / 下载都必须用它——video.currentSrc 在 MSE 播放时是 blob:，设备与外部进程无法访问。 */
+function khCurrentPlayUrl(){
+  try{
+    if(state.movie){
+      var srcs = currentSources(state.movie);
+      var cur = srcs && srcs[state.srcIndex];
+      if(cur && cur.url && !/^blob:/i.test(String(cur.url))) return String(cur.url);
+    }
+  }catch(e){}
+  var cs = '';
+  try{ cs = (els.video && els.video.currentSrc) || ''; }catch(e){}
+  return (cs && !/^blob:/i.test(cs)) ? cs : '';
+}
+/* 当前片源自带的防盗链头（sources[].headers），投屏代理 / 下载复用，避免 403。 */
+function khCurrentPlayHeaders(){
+  try{
+    if(state.movie){
+      var srcs = currentSources(state.movie);
+      var cur = srcs && srcs[state.srcIndex];
+      if(cur && cur.headers && typeof cur.headers === 'object') return cur.headers;
+    }
+  }catch(e){}
+  return null;
+}
+/* 下载当前片：加入队列时把站点防盗链头一起交给主进程（kh:dl-add 已支持 arg.headers），
+   m3u8 是切片清单不能当文件下，明确提示。 */
+function khDownloadCurrent(){
+  if(!window.khDl){ toast('当前环境没有下载桥（仅桌面版可离线下载）'); return; }
+  var url = khCurrentPlayUrl();
+  if(!url){ toast('当前片源没有可下载的直链（hls 内存播放）'); return; }
+  if(/\.m3u8(\?|$)/i.test(url)){ toast('m3u8 是切片清单，下载队列不支持；请用「外播」或在线观看'); return; }
+  var title = (state.movie && state.movie.title) || '鸿汇影下载';
+  var ext = (url.split('?')[0].match(/\.(mp4|mkv|ts|avi|mov|flv|webm)$/i) || [null, 'mp4'])[1];
+  window.khDl.add({ url: url, name: title + '.' + ext, headers: khCurrentPlayHeaders() || undefined }).then(function(r){
+    if(r && r.ok){ toast('已加入下载队列（含站点请求头）'); khDlRender(); }
+    else { toast('加入失败：' + ((r && r.reason) || '未知原因')); }
+  }).catch(function(){ toast('加入下载队列失败'); });
+}
 /* DLNA 投屏（#125/#131）：桌面主进程做 SSDP 发现 → 列设备 → 选中后经本机局域网代理转发片源，再发 AVTransport 真实推送。
    设备端 HAP / 纯网页没有 khCast，按钮虽在但会如实提示「当前环境不支持」。 */
 function khDlnaDiscover(){
@@ -2405,7 +2468,10 @@ function khDlnaShow(list){
     if(castBtn){
       var loc = castBtn.getAttribute('data-dlna-cast');
       close();
-      window.khCast.cast({ location: loc, url: (els.video && (els.video.currentSrc || '')) || '' }).then(function(r){
+      /* 推原始 m3u8/mp4 直链：MSE 播放时 currentSrc 是 blob:，电视访问不到。 */
+      var castUrl = khCurrentPlayUrl();
+      if(!castUrl){ toast('当前片源没有可投放的直链（hls 内存播放），换一条线路试试'); return; }
+      window.khCast.cast({ location: loc, url: castUrl, headers: khCurrentPlayHeaders() || undefined }).then(function(r){
         if(r && r.ok){ toast('已推送：' + ((r && r.device) || '设备')); }
         else { toast((r && r.reason) || '推送未接通'); }
       }).catch(function(){ toast('推送失败：主进程没有响应'); });
@@ -2423,14 +2489,8 @@ function khNotifyPush(title, body){
    取当前播放源直链交本机 VLC / mpv / 系统默认播放器打开。 */
 function khOpenExternal(){
   if(!window.khExternal){ toast('当前环境不支持外部播放器'); return; }
-  var url = '';
-  if(state.movie){
-    var srcs = currentSources(state.movie);
-    var cur = srcs[state.srcIndex];
-    url = cur ? cur.url : '';
-  }
-  if(!url){ url = els.video.currentSrc || ''; }
-  if(!url){ toast('当前没有可打开的片源'); return; }
+  var url = khCurrentPlayUrl();
+  if(!url){ toast('当前没有可打开的片源（hls 内存播放无直链）'); return; }
   window.khExternal.open(url).then(function(r){
     if(r && r.ok){ toast('已用外部播放器打开' + (r.via ? '（' + r.via + '）' : '')); }
     else { toast('外部播放器拉起失败：' + ((r && r.reason) || '未找到可用播放器')); }
@@ -2624,9 +2684,35 @@ function khSaveProxy(){
   }).catch(function(e){ toast('保存失败：' + ((e && e.message) || e)); });
 }
 
-/* 影视仓线路 → 内置播放器（1.7.82）。hdr 为该站点自带的请求头，播放层会按 host 补上。 */
+/* 影视仓线路 → 内置播放器（1.7.82 / 1.7.85 强化）。
+   1.7.85：过去只把 hdr 塞进 sources[].headers，但原生 <video>/hls 分片不会带这些头，
+   导致防盗链站 403。现在把请求头按 host 下发到主进程 webRequest 出口统一注入，
+   m3u8 主清单与分片都能带上 Referer/UA。 */
+function khApplyPlayHeaders(url, hdr){
+  try{
+    if(!window.khPlayHdr || typeof window.khPlayHdr.set !== 'function') return; /* 网页/HAP 无此桥 */
+    var u = new URL(url);
+    var host = u.host.toLowerCase();
+    var referer = (u.protocol + '//' + u.host + '/');
+    var ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36';
+    var extra = null;
+    if(hdr && typeof hdr === 'object'){
+      for(var k in hdr){
+        if(!Object.prototype.hasOwnProperty.call(hdr, k)) continue;
+        var v = String(hdr[k] || '').trim();
+        if(!v) continue;
+        var lk = k.toLowerCase();
+        if(lk === 'referer') referer = v;
+        else if(lk === 'user-agent') ua = v;
+        else { extra = extra || {}; extra[k] = v.slice(0, 300); }
+      }
+    }
+    window.khPlayHdr.set({ host: host, referer: referer, ua: ua, headers: extra });
+  }catch(e){ /* 下发失败不影响播放流程 */ }
+}
 function khPlayUrlInApp(url, title, hdr){
   try{
+    khApplyPlayHeaders(url, hdr);
     var m = {
       id: 'whsrc_' + Date.now(), custom: true,
       title: title || '仓内线路', subtitle: String(url).slice(0, 42),
@@ -2814,6 +2900,7 @@ var KH_L10N = {
       '财经生活':'Business & life', '中国港澳台地区':'HK / Macau / Taiwan', '网络直播':'Web live',
       /* 按钮 */
       '＋ 添加仓':'＋ Add warehouse', '⟳ 刷新全部启用仓':'⟳ Refresh all', '📥 导入到影视仓':'📥 Import to warehouse',
+      '📂 选择本机配置文件':'📂 Pick local config file',
       '🔍 跨仓搜片':'🔍 Search all', '↺ 重新应用当前档':'↺ Re-apply preset', '⟳ 立即同步':'⟳ Sync now',
       '⟳ 实时巡检平台入口':'⟳ Probe platforms', '⟳ 巡检片源（本机连通性）':'⟳ Probe sources',
       '⟳ 探测自建站点是否可打开':'⟳ Probe sites', '⟳ 立即检查更新':'⟳ Check for updates',
@@ -3545,10 +3632,14 @@ try {
     var lc = s && s.lastCrash;
     if(lc){ window.KH_LAST_CRASH = lc; setTimeout(function(){ toast('检测到上次非正常退出（' + (lc.kind || '崩溃') + '）：可到「问题」页复制诊断报告反馈'); }, 1200); }
   }).catch(function(){}); }catch(e){}
-  // 外部播放器入口（#109）：无桌面桥（纯网页 / HAP）时隐藏按钮；下载进度订阅做状态提示
+  // 桌面桥专属按钮：无对应桥（纯网页 / HAP）时隐藏，避免点了只报「不支持」
   try{
     var extBtn = byId('btnExternal');
     if(extBtn && !window.khExternal) extBtn.style.display = 'none';
+    var castBtn = byId('btnCast');
+    if(castBtn && !(window.khCast && window.khCast.discover)) castBtn.style.display = 'none';
+    var dlCurBtn = byId('btnDlCurrent');
+    if(dlCurBtn && !window.khDl) dlCurBtn.style.display = 'none';
   }catch(e){}
   try{
     if(window.khDownload) window.khDownload.on(function(st){

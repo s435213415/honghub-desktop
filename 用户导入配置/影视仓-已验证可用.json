@@ -1,0 +1,10 @@
+{
+  "sites": [
+    {
+      "name": "光速资源",
+      "api": "https://api.guangsuapi.com/api.php/provide/vod/from/gsm3u8",
+      "type": 1,
+      "class": "已验证"
+    }
+  ]
+}

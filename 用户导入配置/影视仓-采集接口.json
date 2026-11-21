@@ -1,0 +1,12 @@
+{
+  "sites": [
+    { "name": "红牛资源", "api": "http://hongniuzy2.com/api.php/provide/vod/from/hnm3u8", "type": 1, "class": "采集接口" },
+    { "name": "量子资源", "api": "http://cj.lziapi.com/api.php/provide/vod/from/lzm3u8", "type": 1, "class": "采集接口" },
+    { "name": "非凡资源", "api": "http://cj.ffzyapi.com/api.php/provide/vod/", "type": 1, "class": "采集接口" },
+    { "name": "卧龙资源", "api": "http://collect.wolongzyw.com/api.php/provide/vod", "type": 1, "class": "采集接口" },
+    { "name": "樱花资源", "api": "http://m3u8.apiyhzy.com/api.php/provide/vod", "type": 1, "class": "采集接口" },
+    { "name": "光速资源", "api": "http://api.guangsuapi.com/api.php/provide/vod/from/gsm3u8", "type": 1, "class": "采集接口" },
+    { "name": "U酷资源", "api": "http://api.ukuapi.com/api.php/provide/vod", "type": 1, "class": "采集接口" },
+    { "name": "dj6u接口", "api": "http://v.dj6u.com/api.php/provide/vod/", "type": 1, "class": "采集接口" }
+  ]
+}

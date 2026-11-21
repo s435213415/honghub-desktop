@@ -300,6 +300,15 @@ function parseBaseline(notePath) {
   const pageHash = crypto.createHash('sha256').update(pageBuf).digest('hex');
   fs.writeFileSync(path.join(PUB, 'app-page.html'), pageBuf);
   record('生成客户应用页面', 'passed', 'app-page.html · ' + pageBuf.length + ' B / ' + pageHash.slice(0, 12) + '…');
+  /* 关键：app-page.html 是外链版（<script src="kh-*.js">），这 6 个 js 必须与页面同目录下发。
+     以前漏拷 + ALLOW 白名单未列入，导致线上客户页只有骨架、功能全废（js 全 404）。 */
+  const PAGE_JS = ['kh-config.js', 'kh-core.js', 'kh-src.js', 'kh-admin.js', 'kh-player.js', 'kh-app.js'];
+  for (const js of PAGE_JS) {
+    const src = path.join(ROOT, 'app', js);
+    if (!fs.existsSync(src)) throw new Error('客户页外链脚本缺失：' + js);
+    fs.copyFileSync(src, path.join(PUB, js));
+  }
+  record('客户页外链脚本', 'passed', PAGE_JS.length + ' 个 kh-*.js 已随 app-page.html 下发');
 
   // 公网清单：结构与现网一致，哈希/体积/URL 以本地实测成品为准
   const manifest = {
@@ -332,6 +341,8 @@ function parseBaseline(notePath) {
   // 一律不上传；若发布目录留有历史残留，移动到 dist/_public_internal/ 留档（不删除、可回滚）。
   const ALLOW = new Set([
     'index.html', 'remote-manifest.json', 'app-page.html',
+    // 客户页外链脚本：缺一个线上就是空壳，必须随页面一起下发
+    'kh-config.js', 'kh-core.js', 'kh-src.js', 'kh-admin.js', 'kh-player.js', 'kh-app.js',
     prefix + '/desktop-setup.exe',
     prefix + '/HongHubMovie.hap',
     prefix + '/honghub-desktop-' + V + '-win.bin'
@@ -363,7 +374,7 @@ function parseBaseline(notePath) {
   };
   prune(PUB);
   record('组装纯净站点', 'passed',
-    'dist/public/ 仅 5 个客户成品文件（下载页 + 更新清单 + exe/hap/zip）；内部资料移出 ' + stashed + ' 件');
+    'dist/public/ 仅客户成品文件（下载页 + 更新清单 + 客户页 + 6 外链 js + exe/hap/zip）；内部资料移出 ' + stashed + ' 件');
 
   // ---- 4) 部署 ----
   let deployStatus = 'pending';

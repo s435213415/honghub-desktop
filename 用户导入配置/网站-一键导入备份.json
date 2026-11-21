@@ -1,0 +1,10 @@
+{
+  "sites": [
+    { "name": "电影天堂", "url": "https://www.afhgrj.com/y/2/", "color": "#3B456B", "tag": "电", "group": "影视" },
+    { "name": "金牌影院", "url": "https://sizhengxt.com/", "color": "#3B456B", "tag": "金", "group": "影视" },
+    { "name": "电影天堂2", "url": "https://www.tfznaz.com/", "color": "#3B456B", "tag": "电", "group": "影视" },
+    { "name": "找剧AI", "url": "https://zhaoju4.com/", "color": "#7C5CFF", "tag": "找", "group": "影视" },
+    { "name": "电影天堂3", "url": "https://www.jianwuye5.com/", "color": "#3B456B", "tag": "电", "group": "影视" },
+    { "name": "茶杯狐", "url": "https://m.irrmj.cc/", "color": "#3B456B", "tag": "茶", "group": "影视" }
+  ]
+}

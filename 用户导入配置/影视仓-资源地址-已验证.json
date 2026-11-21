@@ -1,0 +1,130 @@
+{
+  "sites": [
+    {
+      "name": "虎牙采集",
+      "api": "https://www.huyaapi.com/api.php/provide/vod/from/hym3u8",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "淘片·采集",
+      "api": "https://taopianapi.com/cjapi/mc/vod/json.html",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "火狐采集",
+      "api": "https://hhzyapi.com/api.php/provide/vod/",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "量子·资源",
+      "api": "https://lzizy1.com/api.php/provide/vod/",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "百度·采集",
+      "api": "https://api.apibdzy.com/api.php/provide/vod/?ac=list",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "影视 · 天涯",
+      "api": "http://tyyszy.com/api.php/provide/vod",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "影视 · 非凡[直连]",
+      "api": "http://ffzy.tv/api.php/provide/vod/",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "影视 · 极速[直连]",
+      "api": "https://jszyapi.com/api.php/provide/vod/?ac=list",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "影视 · 建安",
+      "api": "http://154.219.117.232:9981/jacloudapi.php/provide/vod",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "光速资源(切)",
+      "api": "https://api.guangsuapi.com/api.php/provide/vod/",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "创享影视",
+      "api": "https://ys.cxkjg.cn/api/provide/vod",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "金鹰",
+      "api": "https://ys.cxkjg.cn/api/provide/vod?source=2680151544",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "闪电",
+      "api": "https://ys.cxkjg.cn/api/provide/vod?source=3848762792",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "非凡",
+      "api": "https://ys.cxkjg.cn/api/provide/vod?source=1840804598",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "速博",
+      "api": "https://ys.cxkjg.cn/api/provide/vod?source=1016684692",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "HD(SN)",
+      "api": "https://ys.cxkjg.cn/api/provide/vod?source=1208629981",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "U酷",
+      "api": "https://ys.cxkjg.cn/api/provide/vod?source=4194624554",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "WS",
+      "api": "https://ys.cxkjg.cn/api/provide/vod?source=4118858385",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "樱花",
+      "api": "https://ys.cxkjg.cn/api/provide/vod?source=531717376",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "红牛",
+      "api": "https://ys.cxkjg.cn/api/provide/vod?source=2761253814",
+      "type": 1,
+      "class": "资源地址"
+    },
+    {
+      "name": "光速",
+      "api": "https://ys.cxkjg.cn/api/provide/vod?source=4247318859",
+      "type": 1,
+      "class": "资源地址"
+    }
+  ]
+}

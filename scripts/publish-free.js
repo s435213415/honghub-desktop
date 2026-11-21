@@ -105,7 +105,10 @@ async function main() {
         [art.hap, path.join(md, 'HongHubMovie.hap')],
         [art.bin, path.join(md, 'honghub-desktop-' + v + '-win.bin')],
         [path.join(DIST, 'public', 'remote-manifest.json'), path.join(SITE, 'remote-manifest.json')],
-        [path.join(DIST, 'public', 'app-page.html'), path.join(SITE, 'app-page.html')]
+        [path.join(DIST, 'public', 'app-page.html'), path.join(SITE, 'app-page.html')],
+        // 客户页外链 js：必须与 app-page.html 同目录下发，否则镜像站是空壳
+        ...['kh-config.js', 'kh-core.js', 'kh-src.js', 'kh-admin.js', 'kh-player.js', 'kh-app.js']
+          .map((js) => [path.join(ROOT, 'app', js), path.join(SITE, js)])
       ];
       for (const [src, dst] of pairs) {
         if (!fs.existsSync(src)) { log('  跳过（源缺失）：' + path.basename(src)); continue; }

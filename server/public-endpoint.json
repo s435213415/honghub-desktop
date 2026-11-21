@@ -13,5 +13,7 @@
   "desktopSha256Source": "remote-manifest.json",
   "desktopSha256Note": "安装包自身 SHA256 / 体积刻意不写入随包配置：该配置是 exe 的一部分，写死会导致重打包后哈希再次变化而永远对不上。真实值由 server/distribute.js 运行时从公网 remote-manifest.json 拉取。",
   "hapSha256Source": "remote-manifest.json",
-  "hapSha256Note": "1.7.83 起 HAP 的 SHA256 / 体积同样不在随包里写死。旧的 279f44… / 959160 B 是 1.7.70 的值，留着会让每一次校验都失败，已删除。"
+  "hapSha256Note": "1.7.83 起 HAP 的 SHA256 / 体积同样不在随包里写死。旧的 279f44… / 959160 B 是 1.7.70 的值，留着会让每一次校验都失败，已删除。",
+  "hapSha256": "69fe5ad2ab7e93e955e6a57e9ec5ff34c094101fe6fa3446087a1e4b08a54330",
+  "hapSize": 2215054
 }

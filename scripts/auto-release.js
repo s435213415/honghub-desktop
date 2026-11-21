@@ -46,6 +46,14 @@ function copyKeep(src, dst, skipSameSize) {
 }
 function rmDuplicates(dir) { return dir; }
 
+/* 客户应用页 app-page.html 是外链版：它 <script src> 这 6 个 js，
+   必须与页面一起下发，否则线上客户页是「只有骨架、功能全废」的空壳（曾实际发生）。 */
+const PAGE_JS = ['kh-config.js', 'kh-core.js', 'kh-src.js', 'kh-admin.js', 'kh-player.js', 'kh-app.js'];
+/* 把 app/ 下的外链 js 拷到目标目录（发布目录 / 镜像站），与 app-page.html 同层。 */
+function copyPageJs(dstDir) {
+  for (const js of PAGE_JS) copyKeep(path.join(ROOT, 'app', js), path.join(dstDir, js));
+}
+
 const manifestPath = path.join(DIST, 'remote-manifest.json');
 if (!fs.existsSync(manifestPath)) throw new Error('缺少 dist/remote-manifest.json，请先 npm run pack');
 const M = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
@@ -124,6 +132,8 @@ for (const n of ['remote-manifest.json', 'latest.yml']) {
   copyKeep(path.join(DIST, n), path.join(PUB, n));
 }
 copyKeep(path.join(ROOT, 'app', 'index.html'), path.join(PUB, 'app-page.html'));
+/* 关键：app-page.html 外链 6 个 js，必须同目录一起下发，否则线上是空壳页面。 */
+copyPageJs(PUB);
 
 /* 1.3) 页面热更新端点：客户端只认 remote-manifest.json 里的 pageUrl/pageHash/pageSize，
    以前这三项没人写，页面热更新等于永远不触发（公网换了页面客户端也收不到）。
@@ -192,6 +202,7 @@ if (!NO_MIRROR) {
     copyKeep(SRC.hap, path.join(md, 'HongHubMovie.hap'));
     copyKeep(path.join(PUB, 'remote-manifest.json'), path.join(MIRROR, 'remote-manifest.json'));
     copyKeep(path.join(PUB, 'app-page.html'), path.join(MIRROR, 'app-page.html'));
+    copyPageJs(MIRROR); // 客户页外链 js 同步到镜像，避免镜像站同样是空壳
     // 下载中心首页版本/链接/体积/哈希
     syncDownloadPage(path.join(MIRROR, 'index.html'), '镜像站首页');
   }

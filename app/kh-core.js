@@ -637,7 +637,7 @@ function render(){
       '<div class="sitetools">' +
         '<button class="qbtn" data-act="wh-refresh-all">⟳ 刷新全部启用仓</button>' +
         '<button class="qbtn" data-act="wh-probe">🩺 探测上面的地址</button>' +
-        '<span class="syncstat">最多存 12 个仓 · 同时启用 ' + 6 + ' 个 · 启用中的仓每 30 分钟自动刷新</span>' +
+        '<span class="syncstat">最多存 ' + (typeof WH_MAX !== 'undefined' ? WH_MAX : 30) + ' 个仓 · 同时启用 ' + (typeof WH_MAX_ON !== 'undefined' ? WH_MAX_ON : 12) + ' 个 · 启用中的仓每 30 分钟自动刷新</span>' +
       '</div>';
     if (_whList.length) {
       html += '<div class="sitelist" style="margin-top:10px">';
@@ -676,7 +676,11 @@ function render(){
       html += '<div class="empty"><span class="ico">📦</span>还没有影视仓，在上面填个地址试试，或直接把仓内容粘贴导入</div>';
     }
     html += '<div class="pastebox" style="margin-top:12px;border-top:1px dashed rgba(255,255,255,.18);padding-top:10px">' +
-      '<p style="margin:0 0 6px;font-size:13px;line-height:1.5">或<strong>粘贴仓配置内容直接导入</strong>（免跨域，立即可用；支持明文 JSON 与 base64 串）：</p>' +
+      '<p style="margin:0 0 6px;font-size:13px;line-height:1.5">或<strong>从本机配置文件一键导入</strong>（选 .json / .txt，自动识别 GBK/UTF-8；桌面版可用）：</p>' +
+      '<div class="sitetools" style="margin-bottom:8px">' +
+        '<button class="qbtn" data-act="wh-pick-file">📂 选择本机配置文件</button>' +
+      '</div>' +
+      '<p style="margin:8px 0 6px;font-size:13px;line-height:1.5">或<strong>粘贴仓配置内容直接导入</strong>（免跨域，立即可用；支持明文 JSON 与 base64 串）：</p>' +
       '<textarea id="whPaste" style="width:100%;min-height:90px;box-sizing:border-box;background:#0f1422;color:#e7ecf5;border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:8px 10px;font:13px/1.5 monospace" placeholder="在此粘贴仓内容，例如：{&quot;sites&quot;:[{&quot;key&quot;:&quot;demo&quot;,&quot;name&quot;:&quot;示例站&quot;,&quot;api&quot;:&quot;https://example.com/api.php/provide/vod/&quot;,&quot;type&quot;:1}]}" aria-label="仓配置内容"></textarea>' +
       '<div class="sitetools" style="margin-top:8px">' +
         '<select id="whPasteTarget" aria-label="导入目标仓">' +

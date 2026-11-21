@@ -45,6 +45,11 @@ server/data/snapshots/
 server/data/app.page.html
 server/data/app.page.json
 server/data/weekly.md
+# 局域网访问口令 / 令牌等敏感明文，一旦生成绝不允许进版本库
+server/data/access-token.txt
+server/data/*token*
+server/data/*password*
+server/data/*secret*
 
 # ---------- 本地调试与临时脚本 ----------
 __pycache__/

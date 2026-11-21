@@ -28,12 +28,32 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ARGS = process.argv.slice(2);
 const CHECK_ONLY = ARGS.includes('--check');
 const JSON_OUT = ARGS.includes('--json');
-const GATE_RELEASE = path.resolve(ROOT, '..', '..', '2026-11-16-14-25-02', 'honghub-channel-gate', 'scripts', 'release.mjs');
+/* 频道网关 release.mjs 路径：不再写死会话目录名（换机/换工作区即失效）。
+   优先级：环境变量 KH_GATE_RELEASE > 扫描工作区根下各会话目录里的 honghub-channel-gate/scripts/release.mjs。 */
+function findGateRelease() {
+  if (process.env.KH_GATE_RELEASE && fs.existsSync(process.env.KH_GATE_RELEASE)) return process.env.KH_GATE_RELEASE;
+  const base = path.resolve(ROOT, '..', '..');
+  try {
+    for (const d of fs.readdirSync(base)) {
+      const p = path.join(base, d, 'honghub-channel-gate', 'scripts', 'release.mjs');
+      if (fs.existsSync(p)) return p;
+    }
+  } catch (e) { /* 扫描失败视为未挂载 */ }
+  return '';
+}
+const GATE_RELEASE = findGateRelease();
 
 const results = [];
+/* fn 返回字符串=通过；返回 {skip:'原因'}=跳过（不计入通过数，也不算失败）。
+   以前「网关未挂载」返回普通字符串却仍标 passed，导致换机后 7/7 假绿。 */
 function step(name, fn) {
   try {
     const detail = fn();
+    if (detail && typeof detail === 'object' && detail.skip) {
+      results.push({ name, status: 'skipped', detail: detail.skip });
+      if (!JSON_OUT) console.log(`[SKIP] ${name} · ${detail.skip}`);
+      return true;
+    }
     results.push({ name, status: 'passed', detail: detail || '' });
     if (!JSON_OUT) console.log(`[OK] ${name}${detail ? ' · ' + detail : ''}`);
     return true;
@@ -59,16 +79,16 @@ step('静态工程检查', () => { run(path.join(ROOT, 'scripts', 'check-static.
 const publishDir = path.join(ROOT, 'dist', 'public');
 if (CHECK_ONLY) {
   step('发版数据一致性', () => {
-    if (!fs.existsSync(GATE_RELEASE)) return '本地未挂载频道网关工程，跳过（CI 正常）';
+    if (!GATE_RELEASE) return { skip: '本地未挂载频道网关工程（CI 正常，本机不计通过）' };
     run(GATE_RELEASE, ['--dir', publishDir, '--check']); return '清单/页面/端点/网关路径一致';
   });
 } else {
   step('发版数据同步', () => {
-    if (!fs.existsSync(GATE_RELEASE)) return '本地未挂载频道网关工程，跳过';
+    if (!GATE_RELEASE) return { skip: '本地未挂载频道网关工程（本机不计通过）' };
     run(GATE_RELEASE, ['--dir', publishDir]); return '已写入';
   });
   step('同步后一致性复检', () => {
-    if (!fs.existsSync(GATE_RELEASE)) return '跳过（无网关工程）';
+    if (!GATE_RELEASE) return { skip: '无网关工程（本机不计通过）' };
     run(GATE_RELEASE, ['--dir', publishDir, '--check']); return '一致';
   });
   step('复检版本号', () => { run(path.join(ROOT, 'scripts', 'version.js'), ['--check']); return '一致'; });
@@ -93,9 +113,10 @@ step('客户成品页健康', () => {
 
 step('关键脚本语法', () => {
   const files = ['scripts/version.js', 'scripts/check-static.js', 'scripts/dev-auto.mjs'];
-  if (fs.existsSync(GATE_RELEASE)) files.push('../../2026-11-16-14-25-02/honghub-channel-gate/scripts/release.mjs');
+  if (GATE_RELEASE) files.push(GATE_RELEASE);
   for (const f of files) {
-    const r = spawnSync(process.execPath, ['--check', path.resolve(ROOT, f)], { encoding: 'utf8' });
+    const chk = path.isAbsolute(f) ? f : path.resolve(ROOT, f);
+    const r = spawnSync(process.execPath, ['--check', chk], { encoding: 'utf8' });
     if (r.error) throw r.error;
     if (r.status !== 0) throw new Error(path.basename(f) + ' 语法错误');
   }
@@ -119,16 +140,19 @@ step('无根目录一次性脚本', () => {
 });
 
 const failed = results.filter((r) => r.status === 'failed');
-const summary = { ok: failed.length === 0, checkOnly: CHECK_ONLY, results };
+const skipped = results.filter((r) => r.status === 'skipped');
+const passed = results.filter((r) => r.status === 'passed');
+const summary = { ok: failed.length === 0, checkOnly: CHECK_ONLY, passed: passed.length, skipped: skipped.length, results };
 if (JSON_OUT) console.log(JSON.stringify(summary, null, 2));
 else {
   console.log('\n===== 开发者端自动化汇总 =====');
-  console.log(`${results.length - failed.length}/${results.length} 项通过`);
+  console.log(`${passed.length}/${results.length} 项通过` + (skipped.length ? ` · ${skipped.length} 项跳过（不计通过）` : ''));
+  if (skipped.length) console.log('跳过项：' + skipped.map((r) => r.name + '（' + r.detail + '）').join('、'));
   if (failed.length) {
     console.log('失败项：' + failed.map((r) => r.name).join('、'));
     console.log('未发布、未重新出包；请先修复失败项。');
   } else {
-    console.log('本地开发端全部通过。站点发布仍由 WorkBuddy 发布工具执行；Cloudflare OAuth 需本人授权。');
+    console.log('本地开发端已挂载项全部通过。站点发布仍由 WorkBuddy 发布工具执行；Cloudflare OAuth 需本人授权。');
   }
 }
 process.exit(failed.length ? 1 : 0);

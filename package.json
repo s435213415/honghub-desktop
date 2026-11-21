@@ -30,6 +30,8 @@
     "archive": "node scripts/archive-release.js",
     "archive:prune": "node scripts/prune-and-archive.js",
     "archive:prune:dry": "node scripts/prune-and-archive.js --dry",
+    "dist:clean": "node scripts/dist-cleanup.js",
+    "dist:clean:apply": "node scripts/dist-cleanup.js --apply",
     "sign:win": "node scripts/sign-windows.js",
     "sign:test": "node scripts/sign-windows.js --selftest",
     "publish:remote": "node scripts/publish-remote.js",

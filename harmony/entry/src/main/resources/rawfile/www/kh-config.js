@@ -835,9 +835,11 @@ var WH_KEY = 'kh_wh';              // {list:[{id,name,url,enabled,last,lastOk,n,
 var WH_SITES_KEY = 'kh_wh_sites';  // {whId: [{name,url,cat,wh,whName,api,type,ext,header}]}
 var WH_LIVES_KEY = 'kh_wh_lives';  // {whId: [{name,url,group}]}  仓自带的直播源
 var WH_PARSES_KEY = 'kh_wh_parses';// {whId: [{name,type,url,ext}]} 仓自带的解析接口
-var WH_MAX = 12;                   // 最多存 12 个仓（其中同时启用最多 WH_MAX_ON 个）
-var WH_MAX_ON = 6;                 // 同时启用的仓上限：启用的仓才参与搜索与刷新
-var WH_MAX_SITES = 300;            // 单仓最多落 300 条站点
+/* 1.7.85 容量提升：仓 12→30、同时启用 6→12、单仓站点 300→1000。
+   搜索仍只扫启用仓；单仓展示仍分页，避免一次渲染上千行卡顿。 */
+var WH_MAX = 30;                   // 最多存 30 个仓（其中同时启用最多 WH_MAX_ON 个）
+var WH_MAX_ON = 12;                // 同时启用的仓上限：启用的仓才参与搜索与刷新
+var WH_MAX_SITES = 1000;           // 单仓最多落 1000 条站点
 var WH_SHOW_SITES = 40;            // 面板里每仓先显示 40 条，其余可展开
 
 function whCleanOne(w, i) {
@@ -1032,9 +1034,63 @@ function normalizeParses(data, wh) {
   }
   return out;
 }
+/* 1.7.85 解析兼容：字节 → 文本，UTF-8 严格失败退 GB18030（国内大量仓配置是 GBK），
+   再退宽松 UTF-8。桌面端由主进程桥拿到二进制后走这里，网页端 fetch 的 arrayBuffer 也走这里。 */
+function khDecodeWarehouse(buf) {
+  try {
+    if (!buf) return '';
+    var u8 = (buf instanceof ArrayBuffer) ? new Uint8Array(buf)
+      : (ArrayBuffer.isView(buf) ? new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength) : null);
+    if (!u8) return String(buf);
+    try { return new TextDecoder('utf-8', { fatal: true }).decode(u8); } catch (e) { /* 不是合法 UTF-8 */ }
+    try { return new TextDecoder('gb18030', { fatal: false }).decode(u8); } catch (e2) { /* 环境不支持 GB18030 */ }
+    return new TextDecoder('utf-8').decode(u8);
+  } catch (e3) { return ''; }
+}
+/* 1.7.85 字节流拉取仓配置：优先主进程桥（无跨域 + 拿二进制智能解码），
+   失败退回渲染层 fetch + arrayBuffer。返回 Promise<string>。 */
+function khFetchWarehouseText(url, signal) {
+  /* 桌面端：主进程桥要二进制，按 GB18030/UTF-8 智能解码 */
+  if (typeof window !== 'undefined' && window.khHttp && typeof window.khHttp.get === 'function') {
+    return window.khHttp.get({ url: url, timeout: 20000, binary: true })
+      .then(function (r) {
+        if (!r || !r.ok) throw new Error((r && (r.reason || ('HTTP ' + r.status))) || '请求失败');
+        if (r.base64 != null) {
+          try { return khDecodeWarehouse(Uint8Array.from(atob(r.base64), function (c) { return c.charCodeAt(0); })); }
+          catch (e) { /* base64 异常退回 text */ }
+        }
+        return String(r.text || '');
+      });
+  }
+  /* 网页 / HAP：直连 fetch，用 arrayBuffer 智能解码 */
+  if (typeof fetch !== 'function') return Promise.reject(new Error('当前环境不支持网络请求'));
+  return fetch(url, { cache: 'no-store', signal: signal || undefined })
+    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+    .then(function (buf) { return khDecodeWarehouse(buf); });
+}
+/* 清洗仓文本：去 BOM / 去控制字符 / 去行首 // 注释 / 去围栏标记 / 截取 JSON 主体。
+   1.7.85：不少仓配置带「//说明」抬头或前后杂文本，过去 JSON.parse 直接失败。 */
+function khCleanWarehouseText(txt) {
+  var t = String(txt == null ? '' : txt);
+  t = t.replace(/^\uFEFF/, '');                       // BOM
+  t = t.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ''); // 控制字符
+  /* 去掉每行行首的 // 注释，保留行内 http:// 中的 // */
+  t = t.split(/\r?\n/).filter(function (line) { return !/^\s*\/\//.test(line); }).join('\n');
+  t = t.replace(/^\s*```(?:json)?\s*/i, '').replace(/```\s*$/, ''); // Markdown 代码围栏
+  t = t.trim();
+  /* 前后有杂文本时，截取第一个 { 或 [ 到最后一个 } 或 ] 的 JSON 主体 */
+  var first = -1;
+  for (var i = 0; i < t.length; i++) { if (t.charAt(i) === '{' || t.charAt(i) === '[') { first = i; break; } }
+  if (first > 0) {
+    var last = -1;
+    for (var j = t.length - 1; j >= first; j--) { if (t.charAt(j) === '}' || t.charAt(j) === ']') { last = j; break; } }
+    if (last > first) t = t.slice(first, last + 1);
+  }
+  return t.trim();
+}
 /* 文本 → 仓数据：先按 JSON 解，失败再试 base64（不少仓地址返回编码串） */
 function parseWarehouseText(txt) {
-  var t = String(txt || '').trim();
+  var t = khCleanWarehouseText(txt);
   if (!t) throw new Error('内容为空');
   try { return JSON.parse(t); } catch (e) { /* 继续试 base64 */ }
   var cleaned = t.replace(/\s+/g, '');
@@ -1048,9 +1104,8 @@ function parseWarehouseText(txt) {
 function whFetchOneSub(sub) {
   var ctl = ('AbortController' in window) ? new AbortController() : null;
   var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 15000);
-  return fetch(sub.url, { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
-    .then(function (r) { clearTimeout(timer); if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
-    .then(function (t) {
+  return khFetchWarehouseText(sub.url, ctl ? ctl.signal : undefined)
+    .then(function (t) { clearTimeout(timer);
       var d = parseWarehouseText(t);
       if (warehouseKind(d) === 'jar') throw new Error('子仓依赖 jar 爬虫，已跳过');
       var st = normalizeWarehouse(d, { id: 'sub', name: sub.name });
@@ -1084,13 +1139,8 @@ function whFetchApply(wh, silent) {
   var ctl = ('AbortController' in window) ? new AbortController() : null;
   var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 15000);
   if (!silent) toast('正在拉取「' + target.name + '」…');
-  fetch(target.url, { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
-    .then(function (r) {
-      clearTimeout(timer);
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.text();
-    })
-    .then(function (txt) {
+  khFetchWarehouseText(target.url, ctl ? ctl.signal : undefined)
+    .then(function (txt) { clearTimeout(timer);
       var data = parseWarehouseText(txt);
       var kind = warehouseKind(data);
       /* jar 仓：能认出来就要说清楚，不能导成 0 站点让用户以为地址错了 */
@@ -1237,13 +1287,8 @@ function whProbe(url, done) {
   var t0 = Date.now();
   var ctl = ('AbortController' in window) ? new AbortController() : null;
   var timer = setTimeout(function () { if (ctl) ctl.abort(); }, 15000);
-  fetch(url, { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
-    .then(function (r) {
-      clearTimeout(timer);
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.text();
-    })
-    .then(function (txt) {
+  khFetchWarehouseText(url, ctl ? ctl.signal : undefined)
+    .then(function (txt) { clearTimeout(timer);
       var data = parseWarehouseText(txt);
       var kind = warehouseKind(data);
       var subs = (kind === 'multi') ? warehouseSubs(data) : [];
@@ -1273,6 +1318,92 @@ function whAutoTick() {
   }
 }
 setInterval(function () { try { whAutoTick(); } catch (e) { } }, 60000);
+
+/* ---------------- 内置种子：客户首次打开自动导入网站 + 影视仓 ----------------
+   纪律说明：这是对「用户提供、自行负责」配置的一次性本机导入，不是应用代抓第三方内容。
+   写入本机 localStorage（kh_sites / kh_wh / kh_wh_sites），只做一次（版本标记 kh_seed_v）；
+   用户随后删除不会被重新灌回。内置仓 url 留空 → whAutoTick 按 !url 跳过，不会被远程覆盖。 */
+var SEED_VER_KEY = 'kh_seed_v';
+var SEED_VER = 3;   /* 提升到 3：追加 6 个影视网站 + 22 条采集接口 */
+var SEED_WH_ID = 'wh_builtin_seed';
+var SEED_WH_NAME = '内置资源仓';
+/* 内置网站（来自用户提供清单；zhaoju4 已在 BUILTIN_SITES，按 url 去重自动跳过） */
+var SEED_SITES = [
+  {name:'电影天堂',   url:'https://www.afhgrj.com/y/2/', color:'#3B456B', tag:'电', cat:'影视'},
+  {name:'金牌影院',   url:'https://sizhengxt.com/',      color:'#3B456B', tag:'金', cat:'影视'},
+  {name:'电影天堂2',  url:'https://www.tfznaz.com/',     color:'#3B456B', tag:'电', cat:'影视'},
+  {name:'找剧AI',     url:'https://zhaoju4.com/',        color:'#7C5CFF', tag:'找', cat:'影视'},
+  {name:'电影天堂3',  url:'https://www.jianwuye5.com/',  color:'#3B456B', tag:'电', cat:'影视'},
+  {name:'茶杯狐',     url:'https://m.irrmj.cc/',         color:'#3B456B', tag:'茶', cat:'影视'}
+];
+/* 内置影视仓接口（用户提供，曾实测可用；type=1 走解析器取片单） */
+var SEED_WH_APIS = [
+  ['光速资源','https://api.guangsuapi.com/api.php/provide/vod/from/gsm3u8'],
+  ['虎牙采集','https://www.huyaapi.com/api.php/provide/vod/from/hym3u8'],
+  ['淘片采集','https://taopianapi.com/cjapi/mc/vod/json.html'],
+  ['火狐采集','https://hhzyapi.com/api.php/provide/vod/'],
+  ['量子资源','https://lzizy1.com/api.php/provide/vod/'],
+  ['百度采集','https://api.apibdzy.com/api.php/provide/vod/?ac=list'],
+  ['影视天涯','http://tyyszy.com/api.php/provide/vod'],
+  ['影视非凡','http://ffzy.tv/api.php/provide/vod/'],
+  ['影视极速','https://jszyapi.com/api.php/provide/vod/?ac=list'],
+  ['影视建安','http://154.219.117.232:9981/jacloudapi.php/provide/vod'],
+  ['光速资源(切)','https://api.guangsuapi.com/api.php/provide/vod/'],
+  ['创享影视','https://ys.cxkjg.cn/api/provide/vod'],
+  ['金鹰','https://ys.cxkjg.cn/api/provide/vod?source=2680151544'],
+  ['闪电','https://ys.cxkjg.cn/api/provide/vod?source=3848762792'],
+  ['非凡','https://ys.cxkjg.cn/api/provide/vod?source=1840804598'],
+  ['速博','https://ys.cxkjg.cn/api/provide/vod?source=1016684692'],
+  ['HD(SN)','https://ys.cxkjg.cn/api/provide/vod?source=1208629981'],
+  ['U酷','https://ys.cxkjg.cn/api/provide/vod?source=4194624554'],
+  ['WS','https://ys.cxkjg.cn/api/provide/vod?source=4118858385'],
+  ['樱花','https://ys.cxkjg.cn/api/provide/vod?source=531717376'],
+  ['红牛','https://ys.cxkjg.cn/api/provide/vod?source=2761253814'],
+  ['光速','https://ys.cxkjg.cn/api/provide/vod?source=4247318859']
+];
+function khSeedBuiltin(){
+  try{
+    if(Number(getStore(SEED_VER_KEY, 0)) >= SEED_VER) return;
+    /* 1) 网站：并入自建站点，按 url 去重，跳过预置里已有的（如找剧AI） */
+    var sites = getSites(), known = {};
+    for(var b=0;b<BUILTIN_SITES.length;b++) known[BUILTIN_SITES[b].url] = 1;
+    for(var i=0;i<sites.length;i++) known[sites[i].url] = 1;
+    var add = 0;
+    for(var j=0;j<SEED_SITES.length && sites.length<50;j++){
+      var s = SEED_SITES[j];
+      if(known[s.url]) continue;
+      known[s.url] = 1;
+      sites.push({name:s.name, url:s.url, color:s.color, tag:s.tag, cat:s.cat});
+      add++;
+    }
+    setStore('kh_sites', sites);
+    /* 2) 影视仓接口：整成一个内置仓，站点结构与 normalizeWarehouse 一致 */
+    var list = getWhList(), has = false;
+    for(var k=0;k<list.length;k++) if(list[k].id === SEED_WH_ID){ has = true; break; }
+    if(!has){
+      var wh = { id:SEED_WH_ID, name:SEED_WH_NAME, url:'', enabled:true, kind:'builtin',
+                 last:Date.now(), lastOk:Date.now(), n:0, subs:0, lives:0, err:'' };
+      var rows = [], seen = {};
+      for(var m=0;m<SEED_WH_APIS.length;m++){
+        var a = SEED_WH_APIS[m], api = String(a[1]||'').trim(), uu = '';
+        try{ var u = new URL(api); uu = u.origin; }catch(e){}
+        if(!uu) continue;
+        /* 按完整 api 去重：创享多 source 是同域名不同片库源，必须全部保留 */
+        var dk = api.replace(/\/+$/, '');
+        if(seen[dk]) continue;
+        seen[dk] = 1;
+        rows.push({ name:String(a[0]).slice(0,20), url:uu, tag:String(a[0]).slice(0,1),
+          color:'#3B456B', cat:'采集', api:api, type:1, ext:'', header:'', jar:0,
+          wh:SEED_WH_ID, whName:SEED_WH_NAME });
+      }
+      wh.n = rows.length;
+      list.push(wh);
+      saveWhList(list);
+      var map = whSitesMap(); map[SEED_WH_ID] = rows; saveWhSitesMap(map);
+    }
+    setStore(SEED_VER_KEY, SEED_VER);
+  }catch(e){ /* 种子失败不影响启动，用户仍可手动导入 */ }
+}
 
 /* ---------------- 场景预设 · 一键切换 ---------------- */
 /* 场景 = 一批配置键的推荐取值。切换时只写该档明确列出的键，其余键保持原值，

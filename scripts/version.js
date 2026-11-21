@@ -34,6 +34,11 @@ const PKG = path.join(ROOT, 'package.json');
 const STAMP = path.join(ROOT, 'server', 'feature-version.json');
 const ENDPOINT = path.join(ROOT, 'server', 'public-endpoint.json');
 const INDEX = path.join(ROOT, 'releases', 'index.json');
+/* 公网/发布清单：客户端更新真正读的是 dist/public/remote-manifest.json，
+   历史上这类清单停在旧版会导致「永远提示已是最新」，必须纳入版本门禁。 */
+const PUB_MANIFEST = path.join(ROOT, 'dist', 'public', 'remote-manifest.json');
+const DIST_MANIFEST = path.join(ROOT, 'dist', 'remote-manifest.json');
+const DIST_RELEASE = path.join(ROOT, 'dist', 'release.json');
 const PAGES = [
   path.join(ROOT, 'app', 'index.html'),
   /* 前端已模块化（1.7.72）：KH_APP_CODE 定义在 app/kh-app.js，必须一起纳入一致性链 */
@@ -61,6 +66,15 @@ function collect() {
   const st = read(STAMP, {}); add('feature-version.json', STAMP, st.versionName, st.versionCode);
   const ep = read(ENDPOINT, {}); add('public-endpoint.json', ENDPOINT, ep.versionName, ep.versionCode);
   const ix = read(INDEX, {}); const il = ix.latest || {}; add('releases/index.json.latest', INDEX, il.versionName, il.versionCode);
+  // 公网/发布清单（客户端更新与出包真相；文件不存在=未出包，跳过而非误报不一致）
+  for (const [name, file] of [
+    ['dist/public/remote-manifest.json', PUB_MANIFEST],
+    ['dist/remote-manifest.json', DIST_MANIFEST],
+    ['dist/release.json', DIST_RELEASE]
+  ]) {
+    if (!fs.existsSync(file)) continue;
+    const j = read(file, {}); add(name, file, j.versionName, j.versionCode);
+  }
   for (const p of PAGES) {
     if (!fs.existsSync(p)) continue;
     const s = fs.readFileSync(p, 'utf8');
@@ -127,6 +141,19 @@ function syncAll(v) {
   if (ix.latest && (ix.latest.versionName !== v.vname || normCode(ix.latest.versionCode) !== v.vcode)) {
     ix.latest.versionName = v.vname; ix.latest.versionCode = v.vcode;
     write(INDEX, ix); touched.push('releases/index.json');
+  }
+  // 公网/发布清单：只同步已存在的构建产物（未出包时不凭空创建）
+  for (const [name, file] of [
+    ['dist/public/remote-manifest.json', PUB_MANIFEST],
+    ['dist/remote-manifest.json', DIST_MANIFEST],
+    ['dist/release.json', DIST_RELEASE]
+  ]) {
+    if (!fs.existsSync(file)) continue;
+    const j = read(file, {});
+    if (j.versionName !== v.vname || normCode(j.versionCode) !== v.vcode) {
+      j.versionName = v.vname; j.versionCode = v.vcode;
+      write(file, j); touched.push(name);
+    }
   }
   // pages
   for (const p of PAGES) if (syncPage(p, v)) touched.push(path.relative(ROOT, p));
