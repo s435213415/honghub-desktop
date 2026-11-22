@@ -11,7 +11,7 @@
  *
  * 本地打包：npm install 后 npm run pack。
  */
-const { app, BrowserWindow, Menu, ipcMain, screen, shell, Notification, Tray, nativeImage, globalShortcut, session, dialog } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, screen, shell, Notification, Tray, nativeImage, globalShortcut, session, dialog, clipboard } = require('electron');
 const { spawn } = require('child_process');
 const http = require('http');
 const https = require('https');
@@ -27,6 +27,7 @@ const MAX_RESTARTS = 3;
 /* 可用空间低于该阈值在诊断 / 错误页提示紧张（完整包约 77MB，另需留缓存与历史余量） */
 const DISK_MIN_BYTES = 200 * 1024 * 1024;
 let HUB_PORT = BASE_PORT;
+let pageDeviceId = '';   // 页面匿名 ID（前端 kh_issue_devid），崩溃上报与页面错误共用
 
 /* 兼容兜底（#62/#64）：部分老显卡 / 集显机器上 Chromium 硬件加速会出现花屏、黑屏、
    渲染进程反复崩溃。提供一条不依赖界面的本机退路：环境变量 KH_DISABLE_GPU=1，
@@ -289,6 +290,13 @@ ipcMain.handle('kh:env-info', () => {
 });
 
 /* 本机崩溃 / 异常日志（#95）：只读返回最近记录，供诊断报告并入；不含堆栈与用户数据 */
+/* 页面匿名 ID（1.7.85）：前端首次生成时同步过来，崩溃上报不再固定 desktop-main */
+ipcMain.handle('kh:device-id-set', (e, id) => {
+  const v = String(id || '').trim().slice(0, 40);
+  if (v) pageDeviceId = v;
+  return { ok: true, deviceId: pageDeviceId || 'desktop-main' };
+});
+
 ipcMain.handle('kh:crash-log', () => {
   try { return readCrashLog().slice(0, 30); } catch (e) { return []; }
 });
@@ -1234,6 +1242,169 @@ function registerShortcuts() {
   } catch (e) { /* 旧内核或键位被占用时不阻断启动 */ }
 }
 
+/* 应用内浏览窗口：按平台多开（同一域名复用，最多 4 个），每个窗口各带返回工具栏。
+   平台页普遍禁止 iframe，所以用 webview 载入；站内 _blank 链接在当前窗口继续走，
+   工具栏的「← 返回」走各自 webview 的历史，「回平台列表」只关自己这一个窗口。
+   多开是为了对照：以前单例时点第二个平台会把第一个的站内历史和正在播的视频一起顶掉。 */
+const BROWSE_PAGE = path.join(__dirname, 'assets', 'browse.html');
+const BROWSE_MAX = 4;
+const browseWins = new Map();   // 序号 -> BrowserWindow
+const browseKeys = new Map();   // 平台域名 -> 序号（同平台再点复用同一个窗口）
+const browseSeen = new Map();   // 序号 -> 最近聚焦时间（超出上限时按最久未用淘汰）
+let browseSeq = 0;
+
+function browseKeyOf(url) {
+  try { return new URL(String(url)).hostname || String(url); } catch (e) { return String(url); }
+}
+function liveBrowseEntries() {
+  const out = [];
+  for (const [id, w] of browseWins) { if (w && !w.isDestroyed()) out.push({ id: id, win: w }); }
+  return out;
+}
+function browseSenderWin(sender) {
+  for (const w of browseWins.values()) {
+    if (w && !w.isDestroyed() && w.webContents === sender) return w;
+  }
+  return null;
+}
+function focusBrowseOrMain() {
+  try {
+    const entries = liveBrowseEntries();
+    if (entries.length) {
+      const last = entries[entries.length - 1].win;
+      if (last.isMinimized()) last.restore();
+      last.show();
+      last.focus();
+      return;
+    }
+    if (mainWin && !mainWin.isDestroyed()) {
+      if (mainWin.isMinimized()) mainWin.restore();
+      mainWin.show();
+      mainWin.focus();
+    }
+  } catch (e) {}
+}
+/* 浏览窗口自己的位置/尺寸记忆：主窗口有 window-bounds.json，这里单独一份，
+   避免两个窗口互相覆盖；恢复前做屏内校验（拔掉副屏后不会跑到看不见的地方）。 */
+function browseBoundsFile() { return path.join(app.getPath('userData'), 'browse-bounds.json'); }
+function readBrowseBounds() {
+  try {
+    const p = browseBoundsFile();
+    if (!fs.existsSync(p)) return null;
+    const b = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (!b || typeof b.width !== 'number' || typeof b.height !== 'number') return null;
+    if (b.width < 720 || b.height < 480) return null;
+    return clampToDisplay({ x: b.x, y: b.y, width: b.width, height: b.height });
+  } catch (e) { return null; }
+}
+function saveBrowseBounds(win) {
+  try {
+    const b = win.getNormalBounds ? win.getNormalBounds() : win.getBounds();
+    fs.writeFileSync(browseBoundsFile(), JSON.stringify(b), 'utf8');
+  } catch (e) { /* 不可写就忽略 */ }
+}
+function openInAppBrowser(url) {
+  if (!/^https?:\/\//i.test(String(url || ''))) return;
+  const key = browseKeyOf(url);
+  const existingId = browseKeys.get(key);
+  if (existingId !== undefined) {
+    const w = browseWins.get(existingId);
+    if (w && !w.isDestroyed()) {
+      try { w.loadFile(BROWSE_PAGE, { query: { u: String(url) } }); } catch (e) {}
+      if (w.isMinimized()) { try { w.restore(); } catch (e) {} }
+      browseSeen.set(existingId, Date.now());
+      w.show();
+      w.focus();
+      return;
+    }
+    browseWins.delete(existingId);
+    browseKeys.delete(key);
+  }
+  /* 超出上限时淘汰最久没被聚焦的那个，用户不会一直开第 5 个还看不出哪个被顶掉 */
+  const entries = liveBrowseEntries();
+  if (entries.length >= BROWSE_MAX) {
+    let oldest = entries[0];
+    for (const e of entries) {
+      if ((browseSeen.get(e.id) || 0) < (browseSeen.get(oldest.id) || 0)) oldest = e;
+    }
+    try { oldest.win.close(); } catch (e) {}
+  }
+  const saved = readBrowseBounds();
+  const anchor = entries.length ? entries[entries.length - 1].win.getBounds() : saved;
+  const opts = {
+    width: anchor ? anchor.width : 1200,
+    height: anchor ? anchor.height : 820,
+    minWidth: 720, minHeight: 480,
+    title: '鸿汇影 · 平台浏览',
+    backgroundColor: '#14161a',
+    autoHideMenuBar: true,
+    icon: path.join(__dirname, 'assets', 'icon.png'),
+    webPreferences: { webviewTag: true, nodeIntegration: false, contextIsolation: true,
+                      preload: path.join(__dirname, 'assets', 'browse-preload.js') }
+  };
+  /* 级联错位：新窗口相对上一个窗口右下偏移 24px，避免完全叠在一起看不出开了两个 */
+  if (anchor) {
+    const b = clampToDisplay({ x: (typeof anchor.x === 'number' ? anchor.x : 0) + 24,
+                               y: (typeof anchor.y === 'number' ? anchor.y : 0) + 24,
+                               width: anchor.width, height: anchor.height });
+    opts.x = b.x; opts.y = b.y;
+  }
+  const win = new BrowserWindow(opts);
+  const id = ++browseSeq;
+  browseWins.set(id, win);
+  browseKeys.set(key, id);
+  browseSeen.set(id, Date.now());
+  win.on('focus', () => browseSeen.set(id, Date.now()));
+  win.setMenuBarVisibility(false);
+  /* 只允许 http(s) 挂 webview；webview 里再开新窗口时改为当前窗口内导航，避免又冒无工具栏窗口 */
+  win.webContents.on('will-attach-webview', (e, wp, params) => {
+    if (!/^https?:\/\//i.test(String(params.src || ''))) { e.preventDefault(); return; }
+    try { wp.nodeIntegration = false; wp.contextIsolation = true; } catch (err) {}
+  });
+  win.webContents.on('did-attach-webview', (e, guest) => {
+    try {
+      guest.setWindowOpenHandler(({ url: u2 }) => {
+        try { if (/^https?:\/\//i.test(String(u2 || ''))) guest.loadURL(u2); } catch (err) {}
+        return { action: 'deny' };
+      });
+      /* 第三方页只允许 http(s) 站内跳转，file: / javascript: / data: 一律拦下 */
+      guest.on('will-navigate', (ev, u3) => {
+        if (!/^https?:\/\//i.test(String(u3 || ''))) { ev.preventDefault(); }
+      });
+      /* 子进程崩溃（内存不足等）不能让窗口变白屏：回传给宿主页显示重试面板 */
+      guest.on('render-process-gone', (ev, d) => {
+        try {
+          if (!win.isDestroyed()) {
+            win.webContents.send('kh:browse-crashed', String((d && d.reason) || 'unknown'));
+          }
+        } catch (err) {}
+      });
+    } catch (err) {}
+  });
+  win.loadFile(BROWSE_PAGE, { query: { u: String(url) } });
+  win.on('close', () => saveBrowseBounds(win));
+  /* 关掉一个浏览窗口后：还有别的就聚焦最近那个，没有了才回主窗口，用户不用去任务栏翻 */
+  win.on('closed', () => {
+    browseWins.delete(id);
+    browseSeen.delete(id);
+    if (browseKeys.get(key) === id) browseKeys.delete(key);
+    focusBrowseOrMain();
+  });
+}
+/* 浏览窗口工具栏的三个动作：关闭（只关当前这一个）、复制地址、把当前地址交给系统浏览器 */
+ipcMain.on('kh:browse-close', (e) => {
+  const w = browseSenderWin(e.sender);
+  if (w) w.close();
+});
+ipcMain.on('kh:browse-copy', (e, text) => {
+  if (!browseSenderWin(e.sender)) return;
+  try { clipboard.writeText(String(text || '')); } catch (err) {}
+});
+ipcMain.on('kh:browse-external', (e, u) => {
+  if (!browseSenderWin(e.sender)) return;
+  if (/^https?:\/\//i.test(String(u || ''))) { try { shell.openExternal(String(u)); } catch (err) {} }
+});
+
 function createWindow() {
   const savedBounds = readSavedBounds();
   const winOpts = {
@@ -1253,6 +1424,24 @@ function createWindow() {
   // 窗口标题固定为中文，不被网页 <title> 覆盖
   mainWin.on('page-title-updated', (e) => { e.preventDefault(); mainWin.setTitle(APP_TITLE); });
   mainWin.setMenuBarVisibility(false);
+  /* 平台 / 第三方外链走应用内浏览窗口（assets/browse.html）：
+     以前 window.open 会新开一个没有工具栏的应用内窗口，用户进去后找不到"返回"，
+     只能关窗口回列表。现在统一收进一个带「← 返回 / 前进 / 刷新 / 回平台列表」工具栏的浏览窗口，
+     站内跳转与 _blank 也在同一窗口里走，返回键可用，随时能回列表换别的平台。 */
+  mainWin.webContents.setWindowOpenHandler(({ url }) => {
+    openInAppBrowser(url);
+    return { action: 'deny' };
+  });
+  mainWin.webContents.on('will-navigate', (e, url) => {
+    let local = false;
+    try {
+      const u = new URL(url);
+      local = (u.hostname === '127.0.0.1' || u.hostname === 'localhost') && u.port === String(HUB_PORT);
+    } catch (err) {}
+    if (local || !/^https?:\/\//i.test(url)) return;
+    e.preventDefault();
+    openInAppBrowser(url);
+  });
 
   let failed = 0;
   waitForServer(() => {
@@ -1300,10 +1489,12 @@ function createWindow() {
       const now = Date.now();
       const payload = JSON.stringify({
         schema: 1, app: 'HongHubMovie',
-        deviceId: 'desktop-main', version: String(app.getVersion ? app.getVersion() : ''),
+        deviceId: pageDeviceId || 'desktop-main', version: String(app.getVersion ? app.getVersion() : ''),
         device: 'electron-main', sentAt: now,
         summary: { total: 1 },
-        issues: [{ kind: 'crash', sev: 'error', code: kind, msg: String(reason || 'unknown').slice(0, 120), n: 1, ts: now }]
+        issues: [{ kind: 'crash', sev: 'error', code: kind, msg: String(reason || 'unknown').slice(0, 120),
+                   n: 1, ts: now, view: 'main', plat: 'desktop',
+                   ver: String(app.getVersion ? app.getVersion() : '') }]
       });
       const req = require('http').request({
         hostname: '127.0.0.1', port: HUB_PORT, path: '/api/report', method: 'POST',

@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>鸿汇影 · 平台浏览</title>
+<style>
+  html, body { margin:0; height:100%; background:#14161a; overflow:hidden;
+               font-family: system-ui, "Microsoft YaHei", sans-serif; }
+  .bar { position:relative; display:flex; align-items:center; gap:8px; padding:8px 10px;
+         background:#1e2228; color:#dfe4ea; border-bottom:1px solid #2c323a;
+         user-select:none; box-sizing:border-box; height:50px; }
+  button { background:#2b313a; color:#dfe4ea; border:1px solid #3a424d; border-radius:8px;
+           padding:6px 12px; font-size:13px; cursor:pointer; white-space:nowrap; }
+  button:hover { background:#343b45; }
+  button:focus-visible { outline:2px solid #2E86C1; outline-offset:1px; }
+  button:disabled { opacity:.4; cursor:default; }
+  #back { background:#2E86C1; border-color:#2E86C1; color:#fff; font-weight:600; }
+  #title { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+           font-size:13px; color:#9aa4b2; }
+  #close { background:#8e2f2f; border-color:#8e2f2f; color:#fff; }
+  /* 顶部细进度条：加载时来回跑，加载完成收起 */
+  #prog { position:absolute; left:0; bottom:-1px; height:2px; width:100%; overflow:hidden; display:none; }
+  #prog::after { content:""; display:block; height:2px; width:38%;
+                 background:linear-gradient(90deg,#2E86C1,#5dade2); animation:slide 1.05s linear infinite; }
+  @keyframes slide { from { transform:translateX(-100%); } to { transform:translateX(365%); } }
+  .wrap { position:absolute; top:50px; left:0; right:0; bottom:0; }
+  webview { width:100%; height:100%; border:0; background:#fff; }
+  /* 加载失败面板：白屏时给出原因和出口，而不是一行小字 */
+  #fail { position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+          background:#14161a; color:#dfe4ea; text-align:center; padding:24px; box-sizing:border-box; }
+  #fail .card { max-width:560px; }
+  #fail h2 { margin:0 0 10px; font-size:18px; font-weight:600; }
+  #fail .desc { margin:0 0 6px; font-size:13px; color:#9aa4b2; line-height:1.6; }
+  #fail .url { margin:0 0 18px; font-size:12px; color:#6b7684; word-break:break-all; }
+  #fail .row { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+  #fail .primary { background:#2E86C1; border-color:#2E86C1; color:#fff; font-weight:600; }
+  #toast { position:absolute; left:50%; bottom:24px; transform:translateX(-50%);
+           background:rgba(20,22,26,.92); border:1px solid #3a424d; color:#dfe4ea;
+           padding:8px 14px; border-radius:8px; font-size:13px; opacity:0;
+           transition:opacity .18s; pointer-events:none; }
+  #toast.show { opacity:1; }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <button id="back" disabled title="Alt + ←">← 返回</button>
+    <button id="fwd" disabled title="Alt + →">前进</button>
+    <button id="reload" title="F5 / Ctrl + R">刷新</button>
+    <span id="title">加载中…</span>
+    <button id="copy" title="Ctrl + L">复制链接</button>
+    <button id="ext">浏览器打开</button>
+    <button id="close" title="Esc">回平台列表</button>
+    <div id="prog"></div>
+  </div>
+  <div class="wrap"><webview id="wv"></webview></div>
+  <div id="fail">
+    <div class="card">
+      <h2>这个平台没打开</h2>
+      <p class="desc" id="failDesc">网络不通，或者对方站点拒绝了这次访问。</p>
+      <p class="url" id="failUrl"></p>
+      <div class="row">
+        <button class="primary" id="retry">重试</button>
+        <button id="failExt">用系统浏览器打开</button>
+        <button id="failBack">回平台列表</button>
+      </div>
+    </div>
+  </div>
+  <div id="toast"></div>
+
+  <script>
+    const wv = document.getElementById('wv');
+    const back = document.getElementById('back');
+    const fwd = document.getElementById('fwd');
+    const reload = document.getElementById('reload');
+    const ext = document.getElementById('ext');
+    const copy = document.getElementById('copy');
+    const title = document.getElementById('title');
+    const close = document.getElementById('close');
+    const prog = document.getElementById('prog');
+    const fail = document.getElementById('fail');
+    const failDesc = document.getElementById('failDesc');
+    const failUrl = document.getElementById('failUrl');
+    const toast = document.getElementById('toast');
+    const q = new URLSearchParams(location.search);
+    const start = q.get('u') || '';
+    let cur = start;
+    let toastTimer = 0;
+
+    /* 用本机 Chromium 的真实版本号拼桌面 UA：去掉 Electron 标识后
+       多数平台会按普通 Chrome 处理（优酷等站点对 Electron UA 会直接跳验证码）。 */
+    function desktopUA() {
+      try { if (window.khBrowse && window.khBrowse.ua) return window.khBrowse.ua; } catch (e) {}
+      return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+    }
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 1600);
+    }
+    function showFail(desc, url) {
+      failDesc.textContent = desc || '网络不通，或者对方站点拒绝了这次访问。';
+      failUrl.textContent = url || cur || '';
+      fail.style.display = 'flex';
+    }
+    function hideFail() { fail.style.display = 'none'; }
+
+    function sync() {
+      try { back.disabled = !wv.canGoBack(); } catch (e) { back.disabled = true; }
+      try { fwd.disabled = !wv.canGoForward(); } catch (e) { fwd.disabled = true; }
+    }
+    function nav(delta) {
+      try {
+        if (delta < 0 && wv.canGoBack()) wv.goBack();
+        if (delta > 0 && wv.canGoForward()) wv.goForward();
+      } catch (e) {}
+    }
+    function copyUrl() {
+      if (!cur) return;
+      try { window.khBrowse.copy(cur); showToast('链接已复制'); }
+      catch (e) { showToast('复制失败'); }
+    }
+
+    /* 先给 webview 定好 UA，再给地址：UA 必须在首次导航前生效 */
+    wv.setAttribute('useragent', desktopUA());
+    if (start) { wv.src = start; } else { title.textContent = '没有可打开的地址'; showFail('没有可打开的地址。', ''); }
+
+    wv.addEventListener('did-start-loading', () => {
+      prog.style.display = 'block';
+      title.textContent = '加载中… ' + cur;
+      hideFail();
+    });
+    wv.addEventListener('did-stop-loading', () => { prog.style.display = 'none'; sync(); });
+    wv.addEventListener('did-navigate', (e) => { cur = e.url; sync(); });
+    wv.addEventListener('did-navigate-in-page', sync);
+    wv.addEventListener('page-title-updated', (e) => { title.textContent = e.title || cur; });
+    wv.addEventListener('did-fail-load', (e) => {
+      if (e.errorCode === -3) return; // 主动取消不算失败
+      prog.style.display = 'none';
+      title.textContent = '没能打开这个平台';
+      const map = {
+        '-105': '域名解析失败，检查一下网络或 DNS。',
+        '-106': '网络已断开，连上网后点重试。',
+        '-118': '连接超时，对方站点响应太慢。',
+        '-102': '连接被对方拒绝。',
+        '-202': '站点证书有问题，已停止加载。',
+        '-324': '对方没有返回内容。',
+        '-501': '对方不支持这种访问方式。'
+      };
+      showFail(map[String(e.errorCode)] || ('加载失败：' + (e.errorDescription || e.errorCode)), e.validatedURL);
+    });
+
+    back.addEventListener('click', () => nav(-1));
+    fwd.addEventListener('click', () => nav(1));
+    reload.addEventListener('click', () => { hideFail(); try { wv.reload(); } catch (e) {} });
+    ext.addEventListener('click', () => { try { window.khBrowse.openExternal(cur); } catch (e) {} });
+    copy.addEventListener('click', copyUrl);
+    close.addEventListener('click', () => { try { window.khBrowse.close(); } catch (e) {} });
+    document.getElementById('retry').addEventListener('click', () => {
+      hideFail();
+      try { if (cur) wv.src = cur; else wv.reload(); } catch (e) {}
+    });
+    document.getElementById('failExt').addEventListener('click', () => { try { window.khBrowse.openExternal(cur); } catch (e) {} });
+    document.getElementById('failBack').addEventListener('click', () => { try { window.khBrowse.close(); } catch (e) {} });
+
+    /* 快捷键：浏览器里习惯的那几个，免得每次都要找按钮 */
+    document.addEventListener('keydown', (e) => {
+      const k = e.key;
+      if (e.altKey && k === 'ArrowLeft') { e.preventDefault(); nav(-1); return; }
+      if (e.altKey && k === 'ArrowRight') { e.preventDefault(); nav(1); return; }
+      if (k === 'F5' || (e.ctrlKey && (k === 'r' || k === 'R'))) { e.preventDefault(); hideFail(); try { wv.reload(); } catch (x) {} return; }
+      if (k === 'Escape') { e.preventDefault(); try { window.khBrowse.close(); } catch (x) {} return; }
+      if (e.ctrlKey && (k === 'l' || k === 'L')) { e.preventDefault(); copyUrl(); }
+    });
+
+    /* 渲染进程崩溃：主进程会通知宿主，给出可点的恢复入口 */
+    try {
+      window.khBrowse.onCrash((reason) => {
+        prog.style.display = 'none';
+        title.textContent = '页面已停止响应';
+        showFail('页面进程异常退出（' + (reason || '未知原因') + '），重试即可恢复。', cur);
+      });
+    } catch (e) {}
+  </script>
+</body>
+</html>

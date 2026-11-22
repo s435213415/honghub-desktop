@@ -967,6 +967,19 @@ def main():
     if os.path.exists(WWW):
         shutil.rmtree(WWW)
     shutil.copytree(src, WWW)
+    # 客户包剔除随包文档：lib/*.md 只是源清单编写说明，运行时代码零引用。
+    # kh-admin.js 不能删：网站/资源管理的 20 个函数由 kh-app.js 与 kh-core.js 直接调用，删了客户版会 ReferenceError。
+    if os.environ.get('KH_DEVUI') != '1':
+        dropped = []
+        libdir = os.path.join(WWW, 'lib')
+        if os.path.isdir(libdir):
+            for root, _dirs, files in os.walk(libdir):
+                for f in files:
+                    if f.endswith('.md'):
+                        os.remove(os.path.join(root, f))
+                        dropped.append(f)
+        if dropped:
+            print('   客户包已剔除随包文档：', ', '.join(dropped))
     hit, touched = inject_main(WWW, hub)
     mods = [t for t in touched if t != 'index.html']
 

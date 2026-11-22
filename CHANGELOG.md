@@ -2,6 +2,72 @@
 
 版本号与 #code 以 `server/manifest.json` 的 `release.latest` 为唯一真相源，`scripts/version.js --check` 核对 13 处一致性。
 
+## 1.7.85 / #1000199 — 2026-11-22
+
+本轮主题：内置资源 + 影视仓升级 + 播放链路修复 + 发布链止损。这一版先是自动发版出了一轮半成品，收口后才对外。
+
+### 内置资源：换台机器打开就什么都有
+
+- `khSeedBuiltin()` 在启动、render 之前写入 6 个网站（电影天堂、金牌影院、电影天堂2、找剧AI、电影天堂3、茶杯狐；找剧AI 原有，按 url 去重实际新增 5 个自建站）与 22 条影视仓接口（含创享影视 11 个片库源，22/22 全保留）。
+- 幂等标记 `kh_seed_v=3`：重复启动不叠加；用户删除后不自动灌回；内置仓 url 留空，远程刷新不会清掉。
+
+### 影视仓与播放
+
+- 影视仓升级：主进程二进制抓取 + 智能解码（GB18030 / base64 / 注释头），容量提到 30 仓 / 12 启用 / 1000 站点。
+- `khApplyPlayHeaders()` 下发 Referer / UA 修部分站点 403；续播提示不再被播放状态清空；投屏改用原始直链（排除 blob）；下载当前片携带播放请求头。
+
+### 发布后补丁（11-22 二次重出）
+
+- 客户包剔除 app/lib/sources-schema.md；package.json files 加 !app/lib/*.md，包内 .md 归零。
+- 备份导入加 64 MB 上限：khPickBackupFile() 先看 file.size，超限直接提示拒绝。
+- 免安装 zip 根注入 先看我-安装说明.txt（按 x64 / ARM64 分版本文案），解压即见。
+- 重出后实测：x64 Setup 110,188,301 / 0e4cdbfd…；x64 zip 145,653,985 / 1c6baf29…；arm64 Setup 108,411,807 / 9f42394d…；arm64 zip 141,279,305 / d67a4e0e…；开发端 exe 110,243,304 / 3a95c51c…。
+- dist 瘦身 22,481 MB → 15,725 MB（清旧 client 包、x64-build、_历史构建增量_、_历史版本_1.7.70 与 1.7.30/33/34/35 旧件）。
+### 发布链止损（本轮实际踩到并修掉）
+
+- `electronLanguages` 被清成空数组，首轮包把 55 个语言包全打进去：x64 Setup 118,703,159 B / zip 157,412,874 B（比 1.7.84 多约 10.6 MB，zip 条目 79 → 130）。恢复 `["zh-CN","en-US"]` 并在两棵树上只留 `zh-CN.pak` / `en-US.pak`，重走 `build-client-exe.js`（13 个 `*-admin.html` 暂存剥离、开发端 server 资产剥离、`CLIENT_ONLY` 硬开关）后包体回落。
+- `archs.json` 首轮把 x64 误指向开发端 exe（118,755,792 / c7f23de4…），且 arm64 标 `fallback`（实际原生包就在 dist）。本轮按 `dist/client` 客户包重建，x64 / arm64 均 `ready`。
+- `dist/public` 的 `kh-app.js` 原是开发端版（195,824 B，含 dev UI 段），发布目录已换成客户净化版（194,872 B）。
+
+### 上报闭环加固（11-22 第三轮重出）
+
+- 告警外发接入运维中枢：`server/alerts-center.js` 新增 `push(items)` 与 `data/alerts-injected.jsonl` 外部告警入口，`list()` / `dispatchOnce()` 合并注入条目；
+  `server/server.js` 的 `/api/report` 每写入一条上报即把 `stats().alerts` 喂入，跨设备超阈值（≥30 台或 ≥500 次）进分级、可经 Webhook 推群。告警开关仍默认关闭，需显式配置。
+- 崩溃与页面错误共用设备号：`preload.js` 暴露 `khDeviceId.set`，主进程 `ipcMain.handle('kh:device-id-set')` 存 `pageDeviceId`；
+  `reportCrash` 不再固定 `desktop-main`，改真实设备号并补 `view/plat/ver`；前端 `issueDeviceId()` 首次生成时同步一次。
+- 问题闭环率上运维面板：`server/server.js` 新增 `readClosure()`，`stats()` 返回 `closure`，`/api/ops` 透传；
+  运维面板增「问题闭环」卡（闭环率 % · 已归档/观测 · 生成时间），问题上报看板增「问题闭环率」格，无数据时提示先跑一轮自动修 Bug。
+- 安装卸载端到端修两缺陷：新增 `build/installer.nsh`（`customInstall` 写卸载键 `InstallLocation`，`customUnInstall` 先 `SetOutPath "$TEMP"` 再 `RMDir "$INSTDIR"`），
+  `package.json` 的 `build.nsis` 挂 `include`。x64 静默安装实测：装 13.3 s / 78 文件 / 监听 8787 / `%APPDATA%` 21 项；卸 13.2 s 后目录不存在、注册表 0 条、快捷方式清空，个人数据保留。
+
+### 验证与产物（本轮实测）
+
+- 客户 x64 Setup 110,188,301 B · `0e4cdbfd37469932bb21303d73021e3e01137d1fefa3d01365ee7613bcb68fbd`；x64 免安装 zip 145,653,985 B · `1c6baf29f2e5802f404da41e6d14983bc25dc8e4e1ab46aa7365cdfa3c2609be`
+- 客户 arm64 Setup 108,411,807 B · `9f42394d6f7e53bab6d1b84a21c326a4a29802cf31603b7f9f2cfb2ec13697df`；arm64 免安装 zip 141,279,305 B · `d67a4e0e080baa7e32d4c4beb560bb92f2c683d1bb2ea77fbe6e8e783fbddabe`
+- 开发端 exe 110,243,304 B · `3a95c51cba3e70f8e9a50e5003bd5d74e912566db78463aaf26e1ac24f406537`；客户 HAP 2,261,000 B · `283b9c59…`；dev HAP 2,261,003 B · `3148fe4d…`
+- `check-client-purity` 全部 zip 违规 0；`verify-release` 全部通过（页面运行时冒烟 data-act 132）；`build-archs` x64 / arm64 双 ready。
+- 客户夹 11 件（4 产物 + 2 Setup 别名 zip + HAP + 说明 + 核对清单 + 自检 cmd/ps1）、开发端夹 11 项（补 `exe.sha256` 与「切回客户界面.cmd」）；桌面根 Setup 与 HAP 已换成 1.7.85。
+### 浏览窗口体验打磨（11-22 第七轮重出）
+
+- 桌面 webview 改桌面 Chrome UA（去掉 Electron 标识）：实测优酷对 Electron UA 返回 1,441 字节验证码跳转页，改后 1,013,195 字节正常首页。
+- 浏览窗口补齐：失败原因面板 + 重试 / 浏览器打开 / 回列表、加载进度条、Alt+←/→ / F5 / Esc / Ctrl+L 快捷键、独立窗口位置尺寸记忆、关闭后回焦主窗、webview 崩溃恢复、复制链接、guest 仅允许 http(s) 导航。
+- HAP 浏览页补齐：安全区（khAvoidArea）避让、browserActive 返回键放行、桌面 Chrome UA、失败面板与 HTTP 错误原因、2vp 进度条、按钮 40vp 热区、复制链接与系统浏览器打开。
+- 本轮产物：x64 Setup 110,188,301 / 0e4cdbfd…；x64 zip 145,653,985 / 1c6baf29…；arm64 Setup 108,411,807 / 9f42394d…；arm64 zip 141,279,305 / d67a4e0e…；客户 HAP 2,261,000 / 283b9c59…；开发端 HAP 2,261,003 / fe213de8…。
+
+### 浏览窗口多开 / HAP 横屏 / 清单补齐（11-22 第八轮重出）
+
+- 桌面浏览窗口从单例改为按平台多开：同域名复用，上限 4 个，超出按最近聚焦时间淘汰；新窗口级联错位 24px；关闭一个时优先聚焦剩余窗口，全部关闭才回主窗口。
+- HAP 浏览页进入切 landscape、退出恢复 auto。
+- 客户下载说明补齐 ARM64 两件（108,411,807 / 9f42394d…；141,279,305 / d67a4e0e…）。
+- 本轮产物：x64 Setup 110,188,301 / 0e4cdbfd…；x64 zip 145,653,985 / 1c6baf29…；arm64 Setup 108,411,807 / 9f42394d…；arm64 zip 141,279,305 / d67a4e0e…；客户 HAP 2,261,000 / 283b9c59…；开发端 HAP 2,261,003 / fe213de8…。
+
+### 开发端运维面板体验打磨（11-22 第九轮）
+
+- 13 个子页由服务端统一注入顶栏：返回看板 + 当前页名 + 12 项面板直达下拉 + 刷新 + 口令 + 影视页；Alt+← 回看板；对 body 无内边距的 3 页自动补齐 22px，顶栏不再顶出屏幕。
+- `/admin/home` 总目录 11 个磁贴状态全部真实化（`/api/ops` 更新成功率与源可用率、`/api/features/flags` 开关数、`/api/features/track` 版本数与增删），新增「刷新全部状态」与状态更新时间/失败计数。
+- 告警中心保存 Webhook 覆盖已有地址时二次确认。
+- 开发端重出：x64 110,243,304 / `3a95c51c…`；arm64 108,466,807 / `2edbc1f4…`（客户包与 HAP 未变）。
+
 ## 1.7.84 / #1000198 — 2026-11-21
 
 本轮主题：客户端备份与重置漏项补齐——这是**第一个带此修补的对外发布版**（1.7.83 只在本地出过包、从未推公网，内容原样并入本版）。
@@ -236,3 +302,66 @@
 - 功能总数 0（本版未记录功能 id）
 
 更早批次见 `releases/` 归档与 `鸿汇影·文档资料/开发端开发排期_v1.7.70.txt` 台账（回滚索引共 19 版）。
+
+### 平台改为应用内浏览（11-22 第五轮重出）
+
+- 上一版把平台交给系统浏览器，用户否决；改为应用内「平台浏览」窗口，自带返回按钮。
+- `electron-main.js` 新增 `openInAppBrowser()`：单例 BrowserWindow + `assets/browse.html` 工具栏
+  （← 返回 / 前进 / 刷新 / 浏览器打开 / 回平台列表），平台页由 webview 承载；
+  `will-attach-webview` 只放行 http(s)，`did-attach-webview` 把 guest 的 `_blank` 收在同一窗口内导航。
+- `assets/browse-preload.js` 只暴露 `khBrowse.close / openExternal`，第三方页不继承该桥。
+- 打包体积修正：`resources/app/dist` 里的上一版安装包缓存使 Setup 膨胀到 222MB，打包前清掉后回到 110MB 级。
+- 本轮产物：x64 Setup 110,188,301 / `0e4cdbfd…`、x64 zip 145,653,985 / `1c6baf29…`、
+  arm64 Setup 108,411,807 / `9f42394d…`、arm64 zip 141,279,305 / `d67a4e0e…`、客户 HAP 2,261,000 / `283b9c59…`、
+  开发端 x64 110,243,304 / `3a95c51c…`、开发端 arm64 108,466,807 / `2edbc1f4…`。
+- `verify-release` / `check-client-purity` 通过；公网站点仍为旧包（外部阻塞）。
+
+### HAP 端同步应用内浏览（11-22 第六轮）
+
+- 新增 `harmony/entry/src/main/ets/pages/BrowserPage.ets`：工具栏「← 返回 / 前进 / 刷新 / 回平台列表」，
+  平台页用原生 Web 组件承载；`onBackPress` 先退页内历史，无历史才退出浏览页。
+- `Index.ets` KaihongBridge 新增 `openSiteMode` / `openExternal`，并注册进 JS 代理；
+  `main_pages.json` 增加 `pages/BrowserPage`。
+- 剔除 `rawfile/www-dev-v1.7.85-backup`（旧前端副本，含 .md）：不剔则新壳包会把客户 HAP 顶到 3.34MB。
+- 新 HAP：客户 2,261,000 / `283b9c59…`、开发端变体 2,261,003 / `de5e8288…`。
+- 编译链路：`build_hap.py` → `hvigorw assembleHap`（PATH 必须含 System32，否则 es2abc 报 `spawn cmd.exe ENOENT`）
+  → `hap-sign.js`。真机仍无目标，未实机点验。
+
+### 双端「未开发能力」盘点与设备端补齐（11-22 第十轮）
+
+- 盘点结论：桌面端 `preload.js` 的 11 类本机能力桥全部有实现；HAP 端原本只有设备信息 / 返回键 /
+  屏幕方向 / 外部打开四项，下载队列、系统通知、环境信息在设备上只能弹「当前环境不支持」。
+- HAP 端新增 `HapBridge`（`Index.ets`，注册为 JS 代理 `KHHap`）：`getEnv` / `notify` /
+  `dlAdd` / `dlList` / `dlRemove` / `dlClear` / `dlReveal`。
+  下载落地 `filesDir/downloads`，`request.downloadFile` 跑任务，进度与瞬时速度经 `__KH_DL_EVT` 回推；
+  带 headers（Referer 防盗链）；m3u8 明确拒绝并提示用桌面端。
+- 新增前端 shim `app/kh-hap-bridge.js`（HAP 副本同文件）：只在 ArkWeb / OpenHarmony / Kaihong 生效，
+  把同步代理包成桌面同形 Promise（`khEnvInfo` / `khExternal` / `khNotify` / `khDl`，含 `khDl.on` 快照订阅），
+  业务代码无需平台分支；桌面端加载即返回。
+- 明确不做、也不假装能做的五项：DLNA 组播投屏、开机自启、全局媒体键、本机文件直读、HAP 静默安装
+  （三方应用无 INSTALL_BUNDLE 权限），前端继续走既有降级文案。
+- 编译坑：`arkts-no-untyped-obj-literals` 不接受嵌套对象字面量，事件改扁平 `Record`，
+  环境信息用 `Record<string, Object | null>`。
+- 产物：客户 HAP 2,297,050 / `f3798cb8…`、开发端 HAP 2,297,058 / `28eb5faa…`；
+  x64 Setup 110,200,204 / `46a12e4b…`、x64 zip 145,654,832 / `116ee572…`；
+  arm64 Setup 110,490,890 / `e90331eb…`、arm64 zip 143,382,107 / `d6a44151…`；
+  开发端 x64 110,253,752 / `d5397a1e…`、开发端 arm64 110,545,546 / `ea297ccc…`。
+- 链路：oneclick 14 步全过；arm64 补出（build-archs → 注入内置 HAP → patch 图标 → prepackaged →
+  客户净化）；archive 8 件、verify 全过、ship 3/3；公网回读仍为旧包（等宿主发布）。
+- 诚实边界：无真机（`hdc list targets` 为空），下载 / 通知 / 外部打开只做编译与包内静态核对。
+### 设备端文件能力补齐（11-22 第十一轮）
+
+- **补的缺口**：HAP 端导入备份只能粘贴文本、导出备份/诊断报告只能复制剪贴板。根因是 `<input type="file">` 在 ArkWeb 需要内核 `onShowFileSelector` 回调才弹系统文件框，以及 `Blob + <a download>` 在 ArkWeb 没有下载目录、静默无效。
+- **原生**（`harmony/entry/src/main/ets/pages/Index.ets`）：新增 `@ohos.file.picker` / `@ohos.util`；`HapBridge.saveText` / `openText`（DocumentViewPicker 保存/选择 → `fs` 写读，64 MB 上限，UTF-8 忽略 BOM），结果经 `__KH_FILE_EVT` 回推；Web 组件新增 `onShowFileSelector`；`KHHap` 注册 `saveText` / `openText`。
+- **前端**：`app/kh-hap-bridge.js` 新增 `__KH_FILE_EVT` 与 `khFile`（3 分钟兜底）；`kh-config.js` 的 `downloadTextFile`、`kh-admin.js` 的备份导出/导入改为「有文件桥先落盘/读盘，失败再退回剪贴板/粘贴」。桌面端无 `khFile`，行为不变。
+- **仍不做**：`khDl` 暂停/续传（DownloadTask 无 API）、设备端 m3u8 合并（无 ffmpeg）、网页全屏回调（已窗口级全屏，无额外收益）、HAP 静默安装（无 INSTALL_BUNDLE 权限）、DLNA 组播 / 开机自启 / 全局媒体键 / 本机文件直读 / 设备端画中画。
+- **产物**：客户 HAP `2,313,598` / `76449e90…`；开发端 HAP `2,313,604` / `2177d163…`；x64 Setup `110,206,761` / `4ebe27df…`；x64 免安装 `145,661,831` / `0425803e…`；arm64 Setup `110,497,456` / `104df104…`；arm64 免安装 `143,389,107` / `06959b1d…`；开发端 x64 `110,260,318` / `7a682b63…`；开发端 arm64 `110,551,605` / `f45f5a71…`。
+- **验收**：`verify-release` 全过（末行「交付验收全部通过」）；`oneclick` OK 14 / WARN 4 / ERR 0；arm64 手工补齐（build-archs → 注入 HAP → patch 图标 → prepackaged → build-client-exe arm64）。真机仍未接入（`hdc list targets` 为空），文件选择器只做编译与包内静态核对。
+
+### 设备端再补两处 + 出包链 zip 取值修复（11-22 第十二轮）
+
+- **影视仓配置文件一键读取**：设备端 `wh-pick-file` 以前只提示「仅桌面版可用」；现在优先 `khConfigFile`，缺则走原生 `khFile.openText`，选好 `.json/.txt/.conf` 读回即导入。
+- **网页下载链接接管**：ArkWeb 里点第三方页的下载按钮毫无反应。`Index.ets` 新增 `onDownloadStart`，把 url / contentDisposition 文件名 / mimetype 交给 `HapBridge.dlAdd` 进应用内下载队列（m3u8 仍拒绝）。
+- **修出包链 bug**：`auto-release.js` 用 `readdir().find(...)` 取「免安装 zip」，dist 根同版本有 x64 与 `-arm64` 两个 zip，历史上多次取到 arm64，使客户说明、文件导航、公网 `win.bin` 的尺寸与哈希全变成 arm64 的值。现明确排除 arm64；客户说明生成器同时补上 ARM64 两个包与别名说明（生成器改完换版自动生效）。
+- **产物**：客户 HAP `2,312,383` / `cca79fdc…`；开发端 HAP `2,312,391` / `78190608…`；x64 Setup `110,207,636` / `f5acfca3…`；x64 免安装 `145,663,060` / `efe610e9…`；arm64 Setup `110,498,322` / `26928f94…`；arm64 免安装 `143,390,324` / `0bc97f8c…`；开发端 x64 `110,261,186` / `805fbb1e…`；开发端 arm64 `110,552,467` / `e184926f…`。
+- **验收**：oneclick 8/8 通过；arm64 手工补齐；`auto-release` 重跑后 bin 已是 x64 值；公网仍为旧包待宿主发布。

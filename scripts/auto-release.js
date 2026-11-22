@@ -59,7 +59,12 @@ if (!fs.existsSync(manifestPath)) throw new Error('缺少 dist/remote-manifest.j
 const M = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 const VER = String(M.versionName);
 const rel = JSON.parse(fs.readFileSync(path.join(DIST, 'release.json'), 'utf8')).release || {};
-const zipName = fs.readdirSync(DIST).find((f) => f.endsWith('.zip') && f.includes(VER));
+/* dist 根同时躺着 x64 与 arm64 两个同名 zip，readdir 顺序不保证：
+   以前这里会随机取到 -arm64.zip 当 x64 免安装包，导致文档、公网 bin 的尺寸/哈希全是 arm64 的值。
+   这里明确排除 arm64，并优先「鸿汇影免安装 VER.zip」。 */
+const zipName = fs.readdirSync(DIST).find((f) =>
+  f.endsWith('.zip') && f.includes(VER) && !/arm64/i.test(f)) ||
+  fs.readdirSync(DIST).find((f) => f.endsWith('.zip') && f.includes(VER));
 if (!zipName) throw new Error('找不到 v' + VER + ' 的免安装 zip');
 
 const SRC = {
@@ -254,22 +259,38 @@ if (!NO_DESKTOP) {
     }
   }
   // 客户下载说明（每次按真实哈希重写）
+  /* arm64 两个包以前没写进说明，ARM 笔记本用户只能猜哪个能装；这里按实际文件补齐。 */
+  const arm64SetupC = path.join(DIST, 'client', '鸿汇影桌面版 Setup ' + VER + '-arm64.exe');
+  const arm64Setup = fs.existsSync(arm64SetupC) ? arm64SetupC : null;
+  const arm64ZipC = path.join(DIST, 'client', '鸿汇影免安装 ' + VER + '-arm64.zip');
+  const arm64Zip = fs.existsSync(arm64ZipC) ? arm64ZipC : null;
   const readme = [
     '鸿汇影 · 客户下载说明（v' + VER + ' / #' + M.versionCode + '）',
     '生成时间：' + new Date().toISOString().slice(0, 10),
     '本文件夹只放客户直接能用的成品，不含开发端 / 运维界面。',
     '',
     '一、装哪一个',
-    '  Windows：「鸿汇影桌面版 Setup ' + VER + '.exe」双击安装；或解压「鸿汇影免安装 ' + VER + '.zip」用免安装版。',
+    '  Windows x64（绝大多数电脑）：「鸿汇影桌面版 Setup ' + VER + '.exe」双击安装，',
+    '    或解压「鸿汇影免安装 ' + VER + '.zip」直接用免安装版。',
+    ...(arm64Setup ? ['  Windows ARM64（骁龙本 / Windows on ARM）：装「鸿汇影桌面版 Setup ' + VER + '-arm64.exe」；',
+      '    免安装用「鸿汇影免安装 ' + VER + '-arm64.zip」。'] : []),
     '  深开鸿 / OpenHarmony：装「HongHubMovie.hap」（应用市场直装，或 hdc install）。',
+    '  「鸿汇影桌面版 Setup ' + VER + '.zip」（含 -arm64 版同名 zip）是免安装包的别名，',
+    '  内容与对应免安装 zip 完全相同，下一个即可。',
     '',
     '二、文件与校验值（SHA-256）',
     '  鸿汇影桌面版 Setup ' + VER + '.exe',
     '    ' + nf(bytes.exe) + ' 字节',
     '    ' + bytes.exeSha,
+    ...(arm64Setup ? ['  鸿汇影桌面版 Setup ' + VER + '-arm64.exe',
+      '    ' + nf(fs.statSync(arm64Setup).size) + ' 字节',
+      '    ' + sha256(arm64Setup)] : []),
     '  鸿汇影免安装 ' + VER + '.zip',
     '    ' + nf(bytes.bin) + ' 字节',
     '    ' + bytes.binSha,
+    ...(arm64Zip ? ['  鸿汇影免安装 ' + VER + '-arm64.zip',
+      '    ' + nf(fs.statSync(arm64Zip).size) + ' 字节',
+      '    ' + sha256(arm64Zip)] : []),
     '  HongHubMovie.hap',
     '    ' + nf(bytes.hap) + ' 字节',
     '    ' + bytes.hapSha,
@@ -277,6 +298,8 @@ if (!NO_DESKTOP) {
     '校验方法（Windows）：certutil -hashfile "文件名" SHA256，或右键 → 属性 → 详细信息。',
     '',
     '三、系统适配',
+    '  Windows：x64 与 arm64 两个安装包，Win10 1809 起可用；未签名安装包可能被 SmartScreen',
+    '  提示，点「更多信息 → 仍要运行」即可。',
     '  HAP 最低 API 11（KaihongOS / OpenHarmony 4.0 起可装），目标 API 26；',
     '  前端读系统版本自动切换安全区、手势返回与全屏策略，新老系统同一套包；',
     '  自 v1.7.46 起改用 OpenHarmony 官方证书链（与开鸿设备端同一套）；',

@@ -94,6 +94,7 @@ function load(){
     document.getElementById('cChan').className = 'v ' + (cfg.enabled ? 'ok' : 'warn');
     document.getElementById('dChan').textContent = (cfg.webhookUrl ? 'Webhook 已配置' : '未配置地址') + ' · 门槛 ' + ({critical:'仅严重',warn:'严重+警告',info:'全部'}[cfg.minLevel] || cfg.minLevel);
     fillCfg(cfg);
+    curUrl = cfg.webhookUrl || '';
 
     document.getElementById('tbAlerts').innerHTML = (d.alerts || []).map(function(a){
       var lv = LV[a.level] || LV.info;
@@ -108,6 +109,7 @@ function load(){
   }).catch(function(e){ document.getElementById('hint').textContent = '读取失败：' + e.message; });
 }
 
+var curUrl = '';
 document.getElementById('btnSave').onclick = function(){
   var body = {
     enabled: document.getElementById('fEnable').value === '1',
@@ -115,6 +117,8 @@ document.getElementById('btnSave').onclick = function(){
     dedupeMin: Number(document.getElementById('fDedupe').value) || 30,
     webhookUrl: document.getElementById('fUrl').value.trim()
   };
+  /* 覆盖已有地址时先问一句：改错了旧通道就直接哑了，告警还以为在发 */
+  if(curUrl && body.webhookUrl !== curUrl && !confirm('已有 Webhook 地址：\n' + curUrl + '\n将替换为：\n' + (body.webhookUrl || '（清空）') + '\n\n保存后旧地址立即停用。继续？')) return;
   fetch('/api/alerts/config', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
     .then(function(r){ return r.json(); }).then(function(d){
       document.getElementById('hint').textContent = d.ok ? '已保存' : ('保存失败：' + (d.error || ''));

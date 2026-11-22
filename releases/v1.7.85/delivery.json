@@ -4,7 +4,7 @@
   "noReview": true,
   "versionName": "1.7.85",
   "versionCode": 1000199,
-  "generatedAt": "2026-11-21T13:52:13.434Z",
+  "generatedAt": "2026-11-22T12:22:25.139Z",
   "guarantee": "所有包不限设备、不限内存：任意系统 / 架构 / 内存都有可用成品，未知设备与低内存自动保底走免安装在线影站；Windows 各架构走原生包、深开鸿走轻量 HAP；播放缓冲与码率按内存档设硬上限；三条通道随发版自动更新，无需人工",
   "devicePolicy": {
     "unrestricted": true,
@@ -212,8 +212,8 @@
       "note": "深开鸿 / OpenHarmony 设备端轻量签名包",
       "status": "ready",
       "file": "honghub-harmony.hap",
-      "size": 2219150,
-      "sha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af",
+      "size": 2312383,
+      "sha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c",
       "url": "/download/honghub-harmony.hap"
     },
     "full": {
@@ -227,8 +227,8 @@
           "status": "ready",
           "customer": true,
           "file": "desktop-setup.exe",
-          "size": 118755792,
-          "sha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
+          "size": 110207636,
+          "sha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
           "url": "/download/desktop-setup.exe",
           "native": false
         },
@@ -239,11 +239,13 @@
           "note": "Electron 45 起官方不再提供 32 位 Windows 二进制，本项目不再出 ia32 包；此前「自动回退 x64」属虚标，已移除"
         },
         "arm64": {
-          "status": "fallback",
+          "status": "ready",
+          "customer": true,
           "file": "鸿汇影桌面版 Setup 1.7.85-arm64.exe",
-          "url": "/download/desktop-setup.exe",
-          "fallbackTo": "x64",
-          "note": "无原生包，自动回退 x64 通用包（ARM64 Windows 可经系统模拟运行）"
+          "size": 110498322,
+          "sha256": "26928f94abd0908cf0495c9864f1fd9e1880561db8d7f248093026d1ce901eea",
+          "url": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.85-arm64.exe",
+          "native": true
         }
       },
       "note": "完整安装包：按架构自动选包，无原生包回退 x64 通用包；内存低于 2GB 或非 Windows 设备自动改走免安装通道"
@@ -254,8 +256,8 @@
       "status": "ready",
       "customer": true,
       "file": "desktop-setup.exe",
-      "size": 118755792,
-      "sha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
+      "size": 110207636,
+      "sha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
       "url": "/download/desktop-setup.exe",
       "native": false
     },
@@ -266,18 +268,20 @@
       "note": "Electron 45 起官方不再提供 32 位 Windows 二进制，本项目不再出 ia32 包；此前「自动回退 x64」属虚标，已移除"
     },
     "arm64": {
-      "status": "fallback",
+      "status": "ready",
+      "customer": true,
       "file": "鸿汇影桌面版 Setup 1.7.85-arm64.exe",
-      "url": "/download/desktop-setup.exe",
-      "fallbackTo": "x64",
-      "note": "无原生包，自动回退 x64 通用包（ARM64 Windows 可经系统模拟运行）"
+      "size": 110498322,
+      "sha256": "26928f94abd0908cf0495c9864f1fd9e1880561db8d7f248093026d1ce901eea",
+      "url": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.85-arm64.exe",
+      "native": true
     }
   },
   "hap": {
     "status": "ready",
     "file": "honghub-harmony.hap",
-    "size": 2219150,
-    "sha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af",
+    "size": 2312383,
+    "sha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c",
     "url": "/download/honghub-harmony.hap"
   },
   "features": {
@@ -325,7 +329,7 @@
     ]
   },
   "osProfiles": {
-    "generatedAt": "2026-11-21T13:52:13.428Z",
+    "generatedAt": "2026-11-22T12:22:25.135Z",
     "followAllOSVersions": true,
     "families": {
       "windows": {
@@ -337,7 +341,7 @@
           "6.3",
           "11.0"
         ],
-        "devices": 213,
+        "devices": 295,
         "baseline": true
       },
       "unknown": {
@@ -401,11 +405,11 @@
       }
     },
     "summary": {
-      "devices": 231,
-      "realReports": 210,
+      "devices": 313,
+      "realReports": 292,
       "families": 7,
       "osVersions": 22,
-      "fixesApplied": 300,
+      "fixesApplied": 423,
       "manual": 0,
       "unresolved": 0
     }
@@ -421,18 +425,18 @@
     "schema": 1,
     "versionName": "1.7.85",
     "versionCode": 1000199,
-    "publishedAt": "2026-11-21T13:51:30.931Z",
-    "buildAt": "2026-11-21T13:52:12.698Z",
+    "publishedAt": "2026-11-22T12:10:53.874Z",
+    "buildAt": "2026-11-22T12:11:35.183Z",
     "artifacts": {
       "desktop": {
         "file": "desktop-setup.exe",
-        "size": 118755792,
-        "sha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d"
+        "size": 110207636,
+        "sha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695"
       },
       "hap": {
         "file": "honghub-harmony.hap",
-        "size": 2219150,
-        "sha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+        "size": 2312383,
+        "sha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
       }
     },
     "features": {

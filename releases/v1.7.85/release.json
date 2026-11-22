@@ -2,18 +2,18 @@
   "schema": 1,
   "versionName": "1.7.85",
   "versionCode": 1000199,
-  "publishedAt": "2026-11-21T13:51:30.931Z",
-  "buildAt": "2026-11-21T13:52:12.698Z",
+  "publishedAt": "2026-11-22T12:10:53.874Z",
+  "buildAt": "2026-11-22T12:11:35.183Z",
   "artifacts": {
     "desktop": {
       "file": "desktop-setup.exe",
-      "size": 118703159,
-      "sha256": "a13239d6551e08964099c10e86e4ca0d1fa055569091b726869621348ac741af"
+      "size": 110207636,
+      "sha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695"
     },
     "hap": {
       "file": "honghub-harmony.hap",
-      "size": 2219150,
-      "sha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+      "size": 2312383,
+      "sha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
     }
   },
   "features": {

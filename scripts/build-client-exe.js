@@ -234,10 +234,26 @@ try {
     log('[警告] 临时改名失败，zip 顶层目录名仍为 ' + path.basename(UNPACKED) + '：' + (e && e.message));
     zipRoot = UNPACKED;
   }
+  /* 1.7.85：免安装 zip 根放一份安装说明，客户解压后知道该双击哪个 exe */
+  let readmePath = null;
+  try {
+    const readmeTxt = '\uFEFF' +
+      '鸿汇影桌面版 ' + VER + (SUFFIX ? '（ARM64）' : '（x64）') + '\n' +
+      '=================================================\n' +
+      '1) 安装版：双击「鸿汇影桌面版 Setup ' + VER + SUFFIX + '.exe」，按向导安装。\n' +
+      '2) 免安装版：本目录就是程序目录，直接双击「鸿汇影桌面版.exe」运行，不写注册表。\n' +
+      '3) 校验：certutil -hashfile "鸿汇影桌面版 Setup ' + VER + SUFFIX + '.exe" SHA256，与下载页哈希对比。\n' +
+      '4) 装不上：先跑客户成品夹里的「装机环境自检.cmd」，确认 Windows 10/11 64 位、C 盘 ≥ 500 MB。\n' +
+      '5) 更新：设置页「检查更新」认随包清单；公网分发站同步后才提示新版本。\n' +
+      '提示：本包不含开发端 / 运维界面；SmartScreen 提示时选「更多信息 → 仍要运行」。\n';
+    readmePath = path.join(zipRoot, '先看我-安装说明.txt');
+    fs.writeFileSync(readmePath, readmeTxt, 'utf8');
+  } catch (e) { readmePath = null; log('[警告] 安装说明写入失败：' + (e && e.message)); }
   let rz;
   try {
     rz = spawnSync(SEVEN, ['a', '-tzip', '-mx=5', '-bso0', '-bsp0', zipPath, zipRoot], { stdio: 'ignore' });
   } finally {
+    if (readmePath) { try { fs.unlinkSync(readmePath); } catch (e) {} }
     if (zipRoot !== UNPACKED) {
       try { fs.renameSync(zipRoot, UNPACKED); } catch (e) { throw new Error('zip 打完改名回原失败：' + (e && e.message)); }
     }
@@ -284,9 +300,9 @@ try {
   if (devSetupBak && fs.existsSync(devSetupBak)) { // 再还原开发端
     fs.copyFileSync(devSetupBak, built);
     // 开发端安装版固定命名留存：客户版会覆盖同名 Setup，不留存就会丢开发端入口
-    fs.copyFileSync(devSetupBak, path.join(DIST, '鸿汇影桌面版 开发端 ' + VER + '.exe'));
+    fs.copyFileSync(devSetupBak, path.join(DIST, '鸿汇影桌面版 开发端 ' + VER + SUFFIX + '.exe'));
     fs.unlinkSync(devSetupBak);
-    log('[4/4+] 开发端安装版已留存：鸿汇影桌面版 开发端 ' + VER + '.exe');
+    log('[4/4+] 开发端安装版已留存：鸿汇影桌面版 开发端 ' + VER + SUFFIX + '.exe');
   }
   signFiles([dest], '客户版安装包');
   log('[4/4] 安装版: ' + setupName + ' · ' + fs.statSync(dest).size + ' B · ' + sha(dest).slice(0, 12));

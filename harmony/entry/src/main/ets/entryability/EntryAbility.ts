@@ -200,6 +200,11 @@ export default class EntryAbility extends UIAbility {
   }
 
   onBackPressed(): boolean {
+    /* 平台浏览页在场：返回键由页面 onBackPress 先处理，这里必须放行。
+       否则首页残留的 canBack=true 会把按键吞掉，浏览页出现「按返回没反应」。 */
+    if (KhBridgeStore.browserActive) {
+      return false;
+    }
     if (KhBridgeStore.canBack) {
       try {
         this.context.eventHub.emit('khBack', '');

@@ -1141,13 +1141,18 @@ function render(){
     html += '<div class="section-head"><h2>问题中心 · 自动收集</h2><span>本机记录 ' +
       _is.total + ' 条 / 近 24 小时 ' + _is.day + ' 次</span></div>' +
       '<div class="sitebox"><h3>运行期问题自动汇总</h3>' +
-      '<p>自动收集脚本异常、媒体资源失败、片源 / 平台不可达、云端清单与升级异常、系统兼容，' +
-      '以及原生网页页的加载错误码（如 -310 / 403）。同类问题 60 秒内合并计数，最多保留 ' + ISSUE_MAX +
-      ' 条，<b>只存本机、不上传</b>，不含账号与片源内容。点「复制诊断报告」即可把设备、版本、' +
-      '源健康与问题明细粘贴给开发者；从网页页返回时会自动拉取那边的加载错误。</p>' +
+      '<p>' + (KH_UI_CLEAN
+        ? '自动收集脚本异常、媒体资源失败、片源 / 平台不可达与网页加载错误码。同类问题 60 秒合并计数，最多保留 ' + ISSUE_MAX +
+          ' 条，<b>默认只存本机</b>；如你主动开启下方「匿名诊断上报」，才会把脱敏摘要（类别、错误码、次数、域名）随随机匿名 ID 发出去，' +
+          '不含账号、片源内容与完整链接，可随时关闭并清空。'
+        : '自动收集脚本异常、媒体资源失败、片源 / 平台不可达、云端清单与升级异常、系统兼容，' +
+          '以及原生网页页的加载错误码（如 -310 / 403）。同类问题 60 秒内合并计数，最多保留 ' + ISSUE_MAX +
+          ' 条，<b>只存本机、不上传</b>，不含账号与片源内容。点「复制诊断报告」即可把设备、版本、' +
+          '源健康与问题明细粘贴给开发者；从网页页返回时会自动拉取那边的加载错误。') + '</p>' +
       '<div class="sitetools">' +
       '<button class="qbtn" data-act="issue-toggle">' + (_ic.auto ? '◉ 自动收集已开启' : '○ 自动收集已暂停') + '</button>' +
       (KH_UI_CLEAN ? '' : '<button class="qbtn" data-act="issue-check">⟳ 立即自检并拉取网页错误</button>') +
+      (KH_UI_CLEAN ? '<button class="qbtn" data-act="issue-remote-toggle">' + (issueRemoteCfg().enabled ? '◉ 允许匿名诊断上报' : '○ 匿名诊断上报已关闭') + '</button>' : '') +
       '<button class="qbtn" data-act="issue-copy">📋 复制诊断报告</button>' +
       '<button class="qbtn" data-act="issue-export-txt">📄 导出报告 .txt</button>' +
       '<button class="qbtn" data-act="issue-export">📥 导出 JSON</button>' +
@@ -1156,6 +1161,13 @@ function render(){
       (state.issueConfirm ? '<div class="confirmbar">确定清空全部 ' + _is.total + ' 条问题记录？' +
         '<button class="btn-primary" data-act="issue-clear-yes">确定清空</button>' +
         '<button class="btn-ghost" data-act="issue-clear-no">再想想</button></div>' : '') +
+      (KH_UI_CLEAN ? (function(){
+        var _r = issueRemoteCfg(), _d = (typeof issueDaily === 'function' ? issueDaily() : {n:0});
+        return '<p class="platnote">匿名上报：' +
+          (_r.enabled ? '<b>已开启</b>' : '已关闭') +
+          ' · 最近 ' + (_r.lastAt ? esc(new Date(_r.lastAt).toLocaleString('zh-CN', {hour12:false})) + ( _r.fails ? ' · <b style="color:#F5C542">失败（' + esc(_r.err) + '，第 ' + _r.fails + ' 次）</b>' : ' · 成功') : '尚未上报') +
+          ' · 累计 ' + (_r.sent || 0) + ' 条 · 今日 ' + (_d.n || 0) + '/' + ISSUE_DAILY_MAX + '</p>';
+      })() : '') +
       '<p class="platnote">设备：<b>' + esc(issueDevice()) + '</b> · 源清单 v' + (_im.v || 0) +
       ' · 可用线路 ' + _ist.good + ' / 降权 ' + _ist.bad + ' · 平台 ' + BUILTIN_SITES.length + ' 个</p>' +
       '</div>';
@@ -1182,6 +1194,7 @@ function render(){
       (_rc.lastAt ? '最近成功 ' + esc(new Date(_rc.lastAt).toLocaleString('zh-CN', {hour12:false})) : '尚未上报') +
       (window.KH_REMOTE_STATE && window.KH_REMOTE_STATE.via ? ' · 通道 ' + (window.KH_REMOTE_STATE.via === 'native' ? '原生' : '网页') + (window.KH_REMOTE_STATE.n ? ' · 本次 ' + window.KH_REMOTE_STATE.n + ' 条' : '') : '') +
       (_rc.err ? ' · <b style="color:#F5C542">上次失败：' + esc(_rc.err) + '（' + _rc.fails + ' 次）</b>' : '') +
+      ' · 今日 ' + (issueDaily().n || 0) + '/' + ISSUE_DAILY_MAX +
       ' · 匿名 ID ' + esc(issueDeviceId().slice(0, 18)) + '…</p></div>';
     }
     /* 中枢侧问题单：由中枢按播放回传 + 定时探测自动建单 / 换源 / 复检，客户端只读展示 */

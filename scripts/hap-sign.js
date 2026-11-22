@@ -51,6 +51,7 @@ const buf = fs.readFileSync(HAP);
 const sha = crypto.createHash('sha256').update(buf).digest('hex');
 let meta = {};
 try { meta = JSON.parse(fs.readFileSync(STAMP, 'utf8')); } catch (e) {}
-if (Number(meta.versionCode) && Number(meta.versionCode) !== code) fail('dist 内 HAP 版本 #' + meta.versionCode + ' ≠ 本次发版 #' + code);
+const expectedCode = IS_DEV ? code + 100 : code;   // 与 resign_hap.py 的 DEV_VERSION_CODE_OFFSET 对齐：dev 独立版本号
+if (Number(meta.versionCode) && Number(meta.versionCode) !== expectedCode) fail('dist 内 HAP 版本 #' + meta.versionCode + ' ≠ 本次' + (IS_DEV ? '开发端' : '发版') + ' #' + expectedCode);
 if (meta.sha256 && meta.sha256 !== sha) fail('dist 内 HAP 的 sha256 与出包记录不一致');
-console.log('  HAP 新鲜度校验通过：v' + name + (IS_DEV ? '（开发端变体）' : '（客户版）') + ' / #' + code + ' · ' + buf.length + ' B · sha256 ' + sha.slice(0, 16) + '…');
+console.log('  HAP 新鲜度校验通过：v' + name + (IS_DEV ? '（开发端变体 · bundle ' + 'com.honghub.harmony.dev' + '）' : '（客户版 · bundle com.honghub.harmony）') + ' / #' + expectedCode + ' · ' + buf.length + ' B · sha256 ' + sha.slice(0, 16) + '…');

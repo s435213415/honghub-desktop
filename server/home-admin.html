@@ -33,6 +33,11 @@
 <body>
 <h1>鸿汇影 · 开发端总目录</h1>
 <div class="sub">开发端现在有 11 个面板，这里一处全部列出来，并带上各自的实时状态。</div>
+<div class="row" style="margin:-8px 0 16px">
+  <button id="btnRefreshAll">⟳ 刷新全部状态</button>
+  <span class="sub" style="margin:0" id="lastUpd">正在读取…</span>
+  <span class="sub" style="margin:0">· 每 30 秒自动刷新一次</span>
+</div>
 
 <div class="grid">
   <a class="tile" href="/admin"><div class="t">🗂 运维看板</div><div class="d">发布 / 灰度 / 自愈 / 治理 / 资源探测 / 回滚的原有入口</div><div class="s" id="sBoard">—</div></a>
@@ -69,52 +74,93 @@
 <script>
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 function ts(t){ if(!t) return '—'; return new Date(t).toLocaleString('zh-CN', {hour12:false}); }
-function get(u, cb){ fetch(u, {cache:'no-store'}).then(function(r){ return r.json(); }).then(cb).catch(function(){ cb(null); }); }
+var pending = 0, fails = 0;
+function get(u, cb){
+  pending++;
+  fetch(u, {cache:'no-store'}).then(function(r){ return r.json(); })
+    .then(function(d){ pending--; if(!d) fails++; cb(d); done(); })
+    .catch(function(){ pending--; fails++; cb(null); done(); });
+}
+function done(){
+  if(pending > 0) return;
+  var t = new Date().toLocaleTimeString('zh-CN', {hour12:false});
+  var e = document.getElementById('lastUpd');
+  if(!e) return;
+  e.textContent = '状态更新 ' + t + (fails ? ' · ' + fails + ' 项读取失败（点左边刷新重试）' : ' · 全部读到');
+  e.className = 'sub ' + (fails ? 'bad' : 'ok');
+}
 function set(id, html, cls){ var e = document.getElementById(id); if(e){ e.innerHTML = html; if(cls) e.className = 's ' + cls; } }
+function fail(id){ set(id, '<span class="bad">读取失败 · 点「刷新全部状态」重试</span>'); }
 
 function loadBoard(){
+  fails = 0; pending = 0;
   get('/api/build/status', function(d){
-    if(!d || !d.ok) return set('sBuild', '<span class="bad">读取失败</span>');
+    if(!d || !d.ok) return fail('sBuild');
     var v = d.versions;
     set('sBuild', (v.consistent ? '<span class="ok">四源一致 v' + esc(v.versionName) + '</span>' : '<span class="bad">四源不一致</span>') +
       ' · ' + (d.pipelines[0] ? (d.pipelines[0].passed ? '<span class="ok">上次发版通过</span>' : '<span class="bad">上次未通过</span>') : '无记录') +
       ' · 自动发版 ' + (d.autopublish.paused ? '<span class="warn">已暂停</span>' : (d.autopublish.watcherAlive ? '<span class="ok">守候中</span>' : '<span class="bad">未运行</span>')));
   });
   get('/api/release/center', function(d){
-    if(!d || !d.ok) return set('sRelease', '<span class="bad">读取失败</span>');
+    if(!d || !d.ok) return fail('sRelease');
     set('sRelease', '归档 ' + d.releases.count + ' 版 · 闸门 ' + (d.gates.healthy ? '<span class="ok">全绿</span>' : '<span class="bad">有红项</span>') +
       ' · 预检 ' + (d.gates.doctor.summary || '无记录'));
     set('sMetrics', '体积 <span class="' + (d.releases.totalMB > 300 ? 'bad' : 'ok') + '">' + d.releases.totalMB + ' MB 归档</span>');
   });
   get('/api/alerts/center', function(d){
-    if(!d || !d.ok) return set('sAlerts', '<span class="bad">读取失败</span>');
+    if(!d || !d.ok) return fail('sAlerts');
     var t = d.totals;
     set('sAlerts', (t.critical ? '<span class="bad">严重 ' + t.critical + '</span>' : '<span class="ok">无严重</span>') +
       ' · 警告 ' + t.warn + ' · 通道 ' + (d.config.enabled ? '<span class="ok">已启用</span>' : '<span class="warn">未启用</span>'));
   });
   get('/api/sources/health', function(d){
-    if(!d) return;
+    if(!d) return fail('sSites');
     var t = (d.totals || {});
-    set('sSites', '条目 ' + (t.items || 0) + ' · 可用 ' + (t.ok || 0) + ' · 失效 ' + (t.dead || 0));
+    set('sSites', '条目 ' + (t.items || 0) + ' · 可用 ' + (t.ok || 0) + ' · 失效 ' + (t.dead ? '<span class="bad">' + t.dead + '</span>' : 0));
   });
   get('/api/devices', function(d){
+    if(!d) return fail('sDevices');
     var n = (d && (d.devices || d.list)) ? (d.devices || d.list).length : 0;
     set('sDevices', '设备 ' + n + ' 台');
   });
   get('/api/stats/fail-top?limit=1', function(d){
-    if(!d) return;
+    if(!d) return fail('sInsights');
     var f = (d.totals || {}).failedItems || 0;
     set('sInsights', f ? '<span class="bad">' + f + ' 条失效源</span>' : '<span class="ok">无失效源</span>');
   });
-  set('sBoard', '发布 / 灰度 / 自愈 / 治理入口');
+  /* 运维看板：从 /api/ops 取近 14 天更新成功率与最近一次源体检可用率 */
+  get('/api/ops', function(d){
+    if(!d) return fail('sBoard');
+    var rate = (d.updateSuccessRate == null) ? '<span class="mut">无样本</span>'
+      : (d.updateSuccessRate >= 95 ? '<span class="ok">' + d.updateSuccessRate + '%</span>' : '<span class="warn">' + d.updateSuccessRate + '%</span>');
+    var okRate = (d.latest || {}).okRate;
+    okRate = (okRate == null) ? '<span class="mut">未体检</span>'
+      : (okRate >= 95 ? '<span class="ok">' + okRate + '%</span>' : '<span class="bad">' + okRate + '%</span>');
+    set('sBoard', '更新成功 ' + rate + ' · 最近源可用 ' + okRate);
+  });
+  /* 开关台：数一数有多少开关、几个被关 */
+  get('/api/features/flags', function(d){
+    if(!d || !d.ok || !d.flags) return fail('sExtras');
+    var ks = Object.keys(d.flags);
+    var off = ks.filter(function(k){ return d.flags[k] === false; }).length;
+    set('sExtras', '开关 ' + ks.length + ' 个 · ' + (off ? '<span class="warn">关着 ' + off + '</span>' : '<span class="ok">全开</span>') +
+      (d.updatedAt ? ' · 改于 ' + ts(d.updatedAt).slice(5, 16) : ''));
+  });
+  /* 功能追踪：历史版本数 + 本版相对上一版的增删 */
+  get('/api/features/track', function(d){
+    if(!d || !d.ok) return fail('sFeatures');
+    var vs = d.versions || [];
+    var x = d.vsPrev || {}, add = (x.added || []).length, rem = (x.removed || []).length;
+    set('sFeatures', '记录 ' + vs.length + ' 版 · ' + (add ? '<span class="ok">+' + add + '</span>' : '') +
+      (rem ? ' <span class="bad">-' + rem + '</span>' : '') +
+      (!add && !rem ? '<span class="mut">本版无增删</span>' : ''));
+  });
   get('/api/quality/status', function(d){
-    if(!d || !d.ok || !d.items) return set('sQuality', '<span class="bad">读取失败</span>');
+    if(!d || !d.ok || !d.items) return fail('sQuality');
     var bad = d.items.filter(function(x){ return x.ok === false; }).length;
     var none = d.items.filter(function(x){ return x.ok === null && !x.running; }).length;
     set('sQuality', bad ? '<span class="bad">' + bad + ' 项未通过</span>' : (none === d.items.length ? '<span class="mut">还没跑过</span>' : '<span class="ok">全部通过</span>'));
   });
-  set('sExtras', '远程开关与实验能力');
-  set('sFeatures', '版本功能增删对比');
 }
 
 var token = '', shown = false;
@@ -165,6 +211,12 @@ document.getElementById('btnGenMd').onclick = function(){
     document.getElementById('mdHint').textContent = d && d.ok ? ('已写入 CHANGELOG.md（' + d.bytes + ' 字节，' + d.entries + ' 个版本）') : ('失败：' + ((d && d.error) || ''));
     b.disabled = false;
   }).catch(function(e){ document.getElementById('mdHint').textContent = '失败：' + e.message; b.disabled = false; });
+};
+
+document.getElementById('btnRefreshAll').onclick = function(){
+  var b = this; b.disabled = true; b.textContent = '⟳ 刷新中…';
+  loadBoard(); loadToken(); loadChangelog();
+  setTimeout(function(){ b.disabled = false; b.textContent = '⟳ 刷新全部状态'; }, 800);
 };
 
 loadBoard(); loadToken(); loadChangelog();

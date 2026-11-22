@@ -320,11 +320,19 @@ els.main.addEventListener('keydown', function(e){
     toast('已删除仓「' + _whD.name + '」及其站点');
     render();
   } else if(act === 'wh-pick-file'){
-    /* 1.7.85：一键加载本机配置文件，读回后填入文本框并直接导入（合并进选中/新建仓） */
-    if(!window.khConfigFile || typeof window.khConfigFile.pick !== 'function'){
+    /* 1.7.85：一键加载本机配置文件，读回后填入文本框并直接导入（合并进选中/新建仓）
+       第十一轮：设备端没有 khConfigFile（桌面 preload 专属），但有原生文件选择器 khFile，
+       以前设备端点这个按钮只会提示「仅桌面版可用」，现在同一条路径也能读文件。 */
+    var _pickCfg = null;
+    if(window.khConfigFile && typeof window.khConfigFile.pick === 'function'){
+      _pickCfg = window.khConfigFile.pick;
+    } else if(window.khFile && typeof window.khFile.openText === 'function'){
+      _pickCfg = function(){ return window.khFile.openText('.json,.txt,.conf'); };
+    }
+    if(!_pickCfg){
       toast('当前环境不支持读取本机文件（仅桌面版可用），请用粘贴方式'); return;
     }
-    window.khConfigFile.pick().then(function(r){
+    _pickCfg().then(function(r){
       if(!r || !r.ok){ if(r && r.canceled) return; toast('读取失败：' + ((r && r.reason) || '未知原因')); return; }
       var txt = String(r.text || '').trim();
       if(!txt){ toast('文件是空的'); return; }

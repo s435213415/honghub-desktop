@@ -81,7 +81,7 @@
     "productName": "鸿汇影桌面版",
     "asar": false,
     "compression": "maximum",
-    "electronLanguages": [],
+    "electronLanguages": ["zh-CN", "en-US"],
     "icon": "assets/icon.ico",
     "files": [
       "app/**/*",
@@ -105,6 +105,7 @@
       "!server/data/*.txt",
       "!server/data/catalog-snapshot-*.json",
       "!server/data/manifest.before-*.json",
+      "!app/lib/*.md",
       "!**/*.bak",
       "!**/*.log",
       "!**/*.dev-backup"
@@ -118,6 +119,7 @@
       "signAndEditExecutable": false
     },
     "nsis": {
+      "include": "build/installer.nsh",
       "language": "2052",
       "installerLanguages": [
         "zh_CN"

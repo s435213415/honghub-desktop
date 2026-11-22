@@ -15,6 +15,8 @@ const DATA = path.join(__dirname, 'data');
 const CFG_FILE = path.join(DATA, 'alerts-config.json');
 const STATE_FILE = path.join(DATA, 'alerts-state.json');
 const OUTBOX_FILE = path.join(DATA, 'alerts-outbox.json');
+const INJECT_FILE = path.join(DATA, 'alerts-injected.json');   // 问题上报链路喂进来的告警
+const INJECT_KEEP = 120;
 
 const LEVELS = { critical: 0, warn: 1, info: 2 };
 const DEFAULTS = { enabled: false, minLevel: 'critical', webhookUrl: '', dedupeMin: 30 };
@@ -34,13 +36,45 @@ function saveConfig(patch) {
 }
 
 /* 聚合：优先用 healthMonitor 的实时与最近告警，拿不到就返回空壳而不是报错 */
+function readInjected() {
+  const arr = jread(INJECT_FILE, []);
+  return Array.isArray(arr) ? arr : [];
+}
+/* 外部告警入口：同 code 合并，保留首次/最近时间与累计次数；
+   问题上报的跨设备高频错误由此进入告警中心，Webhook 才会真的响。 */
+function push(items) {
+  const now = Date.now();
+  const arr = readInjected();
+  let changed = 0;
+  (items || []).forEach(function (a) {
+    if (!a || !a.code) return;
+    const code = String(a.code).slice(0, 40);
+    const lastAt = Number(a.lastAt || a.lastSeen || now) || now;
+    const hit = arr.find(function (x) { return x.code === code; });
+    if (hit) {
+      hit.n = (hit.n || 1) + 1;
+      hit.lastAt = Math.max(Number(hit.lastAt) || 0, lastAt);
+      if (a.detail) hit.detail = String(a.detail).slice(0, 160);
+      if (a.level === 'critical' || (a.level === 'warn' && hit.level !== 'critical')) hit.level = a.level;
+      changed += 1;
+    } else {
+      arr.unshift({ level: a.level === 'critical' ? 'critical' : (a.level === 'warn' ? 'warn' : 'info'),
+        code: code, detail: String(a.detail || '').slice(0, 160),
+        firstAt: lastAt, lastAt: lastAt, n: 1, source: a.source || 'report' });
+      changed += 1;
+    }
+  });
+  if (changed) jwrite(INJECT_FILE, arr.slice(0, INJECT_KEEP));
+  return { ok: true, changed: changed, total: arr.length };
+}
+
 function list() {
   let snap = {};
   let recent = [];
   let graded = { levels: { critical: [], warn: [], info: [] }, total: 0, healthy: true, deduped: [] };
   try { snap = require('./health-monitor').snapshot(); } catch (e) { snap = {}; }
   try { recent = require('./health-monitor').recent(120); } catch (e) { recent = []; }
-  try { graded = require('./devops').gradeAlerts((snap.alerts || []).concat(recent), {}); } catch (e) {}
+  try { graded = require('./devops').gradeAlerts((snap.alerts || []).concat(recent, readInjected()), {}); } catch (e) {}
   const cfg = config();
   const outbox = jread(OUTBOX_FILE, []).slice(0, 12);
   return {
@@ -118,7 +152,11 @@ async function dispatchOnce() {
   const cfg = config();
   if (!cfg.enabled || !cfg.webhookUrl) return { sent: 0, skipped: '未启用或无地址' };
   let graded;
-  try { graded = require('./devops').gradeAlerts((require('./health-monitor').snapshot().alerts || []).concat(require('./health-monitor').recent(120)), {}); }
+  try {
+    graded = require('./devops').gradeAlerts(
+      (require('./health-monitor').snapshot().alerts || [])
+        .concat(require('./health-monitor').recent(120), readInjected()), {});
+  }
   catch (e) { return { sent: 0, skipped: '取不到告警' }; }
   const now = Date.now();
   const dedupeMs = cfg.dedupeMin * 60 * 1000;
@@ -149,4 +187,4 @@ function start(intervalMs) {
   return true;
 }
 
-module.exports = { list, config, saveConfig, sendTest, dispatchOnce, start };
+module.exports = { list, config, saveConfig, sendTest, dispatchOnce, start, push };

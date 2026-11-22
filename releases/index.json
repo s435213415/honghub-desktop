@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-21T13:54:41.431Z",
+  "generatedAt": "2026-11-22T12:31:22.369Z",
   "latest": {
     "versionName": "1.7.85",
     "versionCode": 1000199
@@ -9,7 +9,7 @@
     {
       "versionName": "1.7.85",
       "versionCode": 1000199,
-      "publishedAt": "2026-11-21T13:51:30.931Z",
+      "publishedAt": "2026-11-22T12:10:53.874Z",
       "features": {
         "versionName": "1.7.85",
         "versionCode": 1000199,
@@ -60,18 +60,24 @@
       "artifacts": {
         "desktop": {
           "path": "releases/v1.7.85/鸿汇影桌面版 Setup 1.7.85.exe",
-          "size": 118703159,
-          "sha256": "a13239d6551e08964099c10e86e4ca0d1fa055569091b726869621348ac741af"
+          "size": 110207636,
+          "sha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695"
         },
         "hap": {
           "path": "releases/v1.7.85/HongHubMovie.hap",
-          "size": 2219150,
-          "sha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "size": 2312383,
+          "sha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
+        },
+        "arm64": {
+          "path": "releases/v1.7.85/鸿汇影桌面版 Setup 1.7.85-arm64.exe",
+          "size": 110498322,
+          "sha256": "26928f94abd0908cf0495c9864f1fd9e1880561db8d7f248093026d1ce901eea"
         }
       },
       "downloadUrl": "/download/archive/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.85.exe",
       "hapUrl": "/download/archive/HongHubMovie.hap",
-      "rollbackUrl": "/api/update/rollback?version=1.7.85"
+      "rollbackUrl": "/api/update/rollback?version=1.7.85",
+      "arm64Url": "/download/archive/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.85-arm64.exe"
     },
     {
       "versionName": "1.7.84",

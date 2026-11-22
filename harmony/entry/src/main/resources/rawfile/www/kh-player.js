@@ -423,6 +423,15 @@ function startHls(url){
     if(state.hls !== hls) return;
     if(!data || !data.fatal) return;
     try{ state.lastHlsErr = String(data.type || ''); }catch(e){}
+    /* 上报告警上下文：错误类型 / 详情 / 码率档位 / 缓冲余量，排障比单条文案有用得多 */
+    try{
+      if(window.__khIssue){
+        var _lv = 0; try{ _lv = (hls.levels || []).length; }catch(e){}
+        var _buf = 0; try{ var _b = els.video.buffered; if(_b && _b.length) _buf = Math.max(0, _b.end(_b.length - 1) - els.video.currentTime); }catch(e){}
+        window.__khIssue('播放', 'HLS ' + String(data.type || '') + ' · ' + String(data.details || ''),
+          {code: String(data.details || data.type || ''), url: (typeof url === 'string' ? url : ''), lv: _lv, buf: _buf});
+      }
+    }catch(e){}
     // 网络 / 解码错误先自动降档恢复，不立刻换台；连续失败才切备用源
     if(state.stalls < 2 && (data.type === window.Hls.ErrorTypes.NETWORK_ERROR || data.type === window.Hls.ErrorTypes.MEDIA_ERROR)){
       state.stalls++;

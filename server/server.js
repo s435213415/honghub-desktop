@@ -180,7 +180,41 @@ function refreshPageFromPublic() {
   })(0);
 }
 
-const DATA_FILE = path.join(DATA_DIR, 'reports.jsonl');
+const DATA_FILE = path.join(DATA_DIR, 'reports.jsonl');   // 兼容旧单文件
+const REPORTS_DAYS_KEEP = 7;
+function reportsFileFor(ts) {
+  const d = new Date(ts || Date.now());
+  return path.join(DATA_DIR, 'reports-' + d.toISOString().slice(0, 10) + '.jsonl');
+}
+/* 启动只加载最近 2 天 + 旧单文件，避免长期运行后单文件过肥 */
+function loadRecentReports() {
+  const out = []; const seen = new Set();
+  const push = (p) => {
+    try {
+      if (!fs.existsSync(p)) return;
+      fs.readFileSync(p, 'utf8').split('\n').filter(Boolean).slice(-MAX_KEEP).forEach((l) => {
+        try { const r = JSON.parse(l); if (r && r.id && !seen.has(r.id)) { seen.add(r.id); out.push(r); } } catch (e) {}
+      });
+    } catch (e) {}
+  };
+  for (let i = 0; i < 2; i += 1) push(reportsFileFor(Date.now() - i * 86400000));
+  push(DATA_FILE);
+  out.sort((a, b) => (Number(a.receivedAt) || 0) - (Number(b.receivedAt) || 0));
+  return out.slice(-MAX_KEEP);
+}
+let lastReportsPrune = 0;
+function pruneReportsFiles() {
+  if (Date.now() - lastReportsPrune < 3600000) return;
+  lastReportsPrune = Date.now();
+  try {
+    for (const f of fs.readdirSync(DATA_DIR)) {
+      const m = /^reports-(\d{4}-\d{2}-\d{2})\.jsonl$/.exec(f);
+      if (!m) continue;
+      const t0 = Date.parse(m[1] + 'T00:00:00Z');
+      if (Date.now() - t0 > REPORTS_DAYS_KEEP * 86400000) fs.unlinkSync(path.join(DATA_DIR, f));
+    }
+  } catch (e) {}
+}
 const MANIFEST_FILE = path.join(__dirname, 'manifest.json');
 const FEATURES_FILE = path.join(__dirname, '..', 'features', 'manifest.json');
 const PRESETS_FILE = path.join(__dirname, '..', 'features', 'presets.json');
@@ -194,12 +228,7 @@ let writable = true;
 try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) { writable = false; }
 if (writable) {
   try {
-    if (fs.existsSync(DATA_FILE)) {
-      const lines = fs.readFileSync(DATA_FILE, 'utf8').split('\n').filter(Boolean);
-      for (const line of lines.slice(-MAX_KEEP)) {
-        try { reports.push(JSON.parse(line)); } catch (e) { /* skip */ }
-      }
-    }
+    loadRecentReports().forEach((r) => reports.push(r));
   } catch (e) { writable = false; }
   try {
     if (fs.existsSync(FEEDBACK_FILE)) {
@@ -244,15 +273,50 @@ function clip(v, n) { return String(v === undefined || v === null ? '' : v).slic
 /* 开发端子页面（维护决策 / 功能追踪 / 开关台 / 站点管理）统一注入返回条。
    这些页从主看板右下角入口点进来，原本只能靠浏览器后退返回，容易被困住。 */
 function withAdminBack(html) {
-  const bar = '<div style="position:sticky;top:0;z-index:99999;margin:-22px -22px 16px;padding:10px 22px;'
-    + 'background:#0B1622E6;border-bottom:1px solid #1E3450;display:flex;gap:10px;align-items:center;backdrop-filter:blur(6px)">'
-    + '<a href="/admin" style="display:inline-block;padding:6px 14px;border-radius:16px;background:#1B3A5B;'
-    + 'color:#CFE3FF;text-decoration:none;font:13px/1.4 sans-serif;border:1px solid #2A4E77">← 返回运维看板</a>'
-    + '<a href="/index.html" style="display:inline-block;padding:6px 14px;border-radius:16px;background:#12233B;'
-    + 'color:#9CC5FF;text-decoration:none;font:13px/1.4 sans-serif;border:1px solid #1E3450">🎬 影视页</a>'
-    + '<a href="#" onclick="khSetToken();return false" style="display:inline-block;padding:6px 14px;border-radius:16px;background:#12233B;'
-    + 'color:#9CC5FF;text-decoration:none;font:13px/1.4 sans-serif;border:1px solid #1E3450">🔑 中枢口令</a>'
+  /* 顶栏一条到底：返回 + 当前页名 + 面板直达下拉 + 刷新 + 口令 + 影视页。
+     之前只能「回看板再点进去」，13 页之间来回要跑两趟；现在一格下拉直达，
+     口径也统一了（同一套按钮、同一套颜色），窄屏自动换行不挤成一坨。 */
+  const ADMIN_NAV = [
+    ['/admin', '🗂 运维看板'],
+    ['/admin/build', '🚀 发版流水线'],
+    ['/admin/release', '📦 发布与运维'],
+    ['/admin/metrics', '📈 数据与体积'],
+    ['/admin/alerts', '🔔 告警中心'],
+    ['/admin/quality', '✅ 质量门禁'],
+    ['/admin/extras', '🧩 开关台'],
+    ['/admin/features', '🧩 功能追踪'],
+    ['/admin/sites', '🌐 平台条目'],
+    ['/admin/devices', '📱 设备能力表'],
+    ['/admin/insights', '📊 维护决策'],
+    ['/admin/selfupdate', '🔄 自更新']
+  ];
+  const navOpts = ADMIN_NAV.map((x) => '<option value="' + x[0] + '">' + x[1] + '</option>').join('');
+  const pill = 'display:inline-block;padding:6px 13px;border-radius:16px;text-decoration:none;'
+    + 'font:13px/1.4 sans-serif;border:1px solid #1E3450;background:#12233B;color:#9CC5FF;white-space:nowrap';
+  const bar = '<div id="khAdminBar" style="position:sticky;top:0;z-index:99999;margin:-22px -22px 16px;padding:9px 18px;'
+    + 'background:#0B1622F2;border-bottom:1px solid #1E3450;display:flex;gap:8px;align-items:center;'
+    + 'flex-wrap:wrap;backdrop-filter:blur(6px)">'
+    + '<a href="/admin" title="Alt+← 也能回看板" style="' + pill + ';background:#1B3A5B;color:#CFE3FF;border-color:#2A4E77">← 运维看板</a>'
+    + '<span id="khCurPage" style="font:600 13px/1.4 sans-serif;color:#E8F1FF;white-space:nowrap">开发端面板</span>'
+    + '<select id="khNavSel" title="在面板之间直接切换，不用绕回看板" style="max-width:186px;padding:5px 8px;'
+    + 'border-radius:10px;background:#12233B;color:#9CC5FF;border:1px solid #1E3450;font:12.5px/1.4 sans-serif">' + navOpts + '</select>'
+    + '<a href="#" onclick="location.reload();return false" title="重新拉取本页数据" style="' + pill + '">⟳ 刷新</a>'
+    + '<a href="#" onclick="khSetToken();return false" style="' + pill + '">🔑 中枢口令</a>'
+    + '<a href="/index.html" style="' + pill + '">🎬 影视页</a>'
     + '</div>';
+  const navScript = '<script>(function(){'
+    /* 少数子页 body 没设 padding，注入条用的是 -22px 负边距贴顶，会顶出屏外；
+       这里先补齐同样的 22px 内边距，让 13 页的顶栏位置与宽度一致。 */
+    + 'try{var st=getComputedStyle(document.body);if(parseFloat(st.paddingTop)<16){'
+    + 'document.body.style.paddingTop="22px";document.body.style.paddingLeft="22px";'
+    + 'document.body.style.paddingRight="22px";}}catch(e){}'
+    + 'var p=location.pathname.replace(/\\/$/,"");'
+    + 'var s=document.getElementById("khNavSel"),c=document.getElementById("khCurPage");if(!s)return;'
+    + 'var hit=[].slice.call(s.options).filter(function(o){return o.value===p})[0];'
+    + 'if(hit){s.value=hit.value;if(c)c.textContent=hit.textContent;}'
+    + 's.onchange=function(){if(this.value)location.href=this.value;};'
+    + 'document.addEventListener("keydown",function(e){if(e.altKey&&e.key==="ArrowLeft"){location.href="/admin";}});'
+    + '})();</script>';
   /* 关键：子页面原来只注入了返回条，没有注入口令——
      一旦中枢开了访问口令，这些页自己发的 /api 请求全是 401，界面只会一直「加载中」。
      这里统一补上：① 所有 fetch 自动带 X-KH-Access-Token；② 支持 ?token= 直达写入；
@@ -274,13 +338,16 @@ function withAdminBack(html) {
     + '})();</script>';
   return String(html)
     .replace(/<head(\s[^>]*)?>/i, (m) => m + tokenScript)
-    .replace(/<body(\s[^>]*)?>/i, (m) => m + bar);
+    .replace(/<body(\s[^>]*)?>/i, (m) => m + bar + navScript);
 }
 function cleanIssue(x) {
   return {
     kind: clip(x && x.kind, 16), sev: clip(x && x.sev, 8), code: clip(x && x.code, 20),
     msg: clip(x && x.msg, 240), n: Math.min(9999, Number((x && x.n) || 1) || 1),
-    ts: Number((x && x.ts) || Date.now()), view: clip(x && x.view, 20), host: clip(x && x.host, 80)
+    ts: Number((x && x.ts) || Date.now()), view: clip(x && x.view, 20), host: clip(x && x.host, 80),
+    ver: clip(x && x.ver, 12), plat: clip(x && x.plat, 10),
+    firstTs: Number((x && (x.firstTs || x.ts)) || 0), lastTs: Number((x && (x.lastTs || x.ts)) || 0),
+    lv: Math.max(0, Number((x && x.lv) || 0)), live: !!(x && x.live), buf: Math.max(0, Number((x && x.buf) || 0))
   };
 }
 function cleanReport(r) {
@@ -306,16 +373,42 @@ function readBody(req, cb) {
   req.on('end', () => { if (!done) { done = true; cb(Buffer.concat(chunks).toString('utf8')); } });
   req.on('error', () => { if (!done) { done = true; cb(null); } });
 }
+function readClosure() {
+  try { return JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'report-closure.json'), 'utf8')); } catch (e) { return null; }
+}
 function stats() {
-  const byKind = {}; const devices = {}; const dayAgo = Date.now() - 86400000;
+  const byKind = {}; const devices = {}; const fp = {}; const dayAgo = Date.now() - 86400000;
   let issues = 0, last24 = 0;
   for (const r of reports) {
     devices[r.deviceId] = 1;
     if (r.receivedAt >= dayAgo) last24 += 1;
-    for (const it of r.issues) { byKind[it.kind] = (byKind[it.kind] || 0) + (it.n || 1); issues += (it.n || 1); }
+    for (const it of r.issues) {
+      byKind[it.kind] = (byKind[it.kind] || 0) + (it.n || 1); issues += (it.n || 1);
+      const k = [it.kind, it.code || '', it.view || '', it.host || '', it.ver || '', it.plat || '', String(it.msg || '').slice(0, 60)].join('|');
+      const e = fp[k] || (fp[k] = { key: k, kind: it.kind, code: it.code || '', host: it.host || '',
+        ver: it.ver || '', plat: it.plat || '',
+        msg: String(it.msg || '').slice(0, 80), n: 0, devices: new Set(), firstSeen: 0, lastSeen: 0 });
+      e.n += (it.n || 1);
+      if (r.deviceId) e.devices.add(r.deviceId);
+      const t0 = it.firstTs || it.ts || r.receivedAt || 0;
+      if (t0 && (!e.firstSeen || t0 < e.firstSeen)) e.firstSeen = t0;
+      const t1 = it.lastTs || it.ts || r.receivedAt || 0;
+      if (t1 > e.lastSeen) e.lastSeen = t1;
+    }
   }
   const top = Object.keys(byKind).map((k) => ({ kind: k, n: byKind[k] })).sort((a, b) => b.n - a.n).slice(0, 8);
-  return { reports: reports.length, devices: Object.keys(devices).length, issues, last24, top, writable };
+  const fingerprints = Object.keys(fp).map((k) => {
+    const e = fp[k];
+    return { key: e.key, kind: e.kind, code: e.code, host: e.host, ver: e.ver || '', plat: e.plat || '',
+      msg: e.msg, n: e.n, deviceCount: e.devices.size, firstSeen: e.firstSeen, lastSeen: e.lastSeen };
+  }).sort((a, b) => b.n - a.n).slice(0, 30);
+  /* 上报告警：单指纹影响设备数或次数超阈值，交给 /api/reports 与运维面板直接展示 */
+  const alerts = fingerprints.filter((x) => (x.lastSeen >= dayAgo && (x.deviceCount >= 30 || x.n >= 500)))
+    .map((x) => ({ level: x.deviceCount >= 60 ? 'critical' : 'warn', code: 'report-' + x.kind,
+      detail: x.msg + ' · 设备 ' + x.deviceCount + ' / 次数 ' + x.n + (x.host ? ' · ' + x.host : ''),
+      firstSeen: x.firstSeen, lastSeen: x.lastSeen }));
+  return { reports: reports.length, devices: Object.keys(devices).length, issues, last24, top,
+    fingerprints, alerts, closure: readClosure(), writable };
 }
 function hostOf(u) { try { return new URL(u).hostname; } catch (e) { return ''; } }
 
@@ -1112,7 +1205,7 @@ const BOARD = [
   'function tm(t){try{return new Date(t).toLocaleString("zh-CN",{hour12:false})}catch(e){return "-"}}',
   'function load(){fetch("/api/reports?limit=60",{cache:"no-store"}).then(r=>r.json()).then(d=>{',
   'var s=d.stats||{},c=document.getElementById("cards");',
-  'c.innerHTML=[["上报次数",s.reports||0],["匿名设备",s.devices||0],["问题累计",s.issues||0],["近24小时",s.last24||0]].map(x=>"<div class=card><span>"+x[0]+"</span><b>"+x[1]+"</b></div>").join("");',
+  'c.innerHTML=[["上报次数",s.reports||0],["匿名设备",s.devices||0],["问题累计",s.issues||0],["近24小时",s.last24||0],["问题闭环率",(s.closure?s.closure.rate+"%":"—")]].map(x=>"<div class=card><span>"+x[0]+"</span><b>"+x[1]+"</b></div>").join("");',
   'document.getElementById("top").innerHTML=(s.top||[]).map(x=>"<div class=item><div class=t>"+esc(x.kind)+" · "+x.n+" 次</div></div>").join("")||"<div class=empty>暂无数据</div>";',
   'var rs=d.reports||[];document.getElementById("list").innerHTML=rs.slice(0,20).map(r=>"<div class=item><div class=t>"+esc(r.version)+" · "+esc(r.deviceId)+"</div><div class=m>"+esc(r.device)+"</div><div class=m>"+tm(r.receivedAt)+" · "+r.issues.length+" 条 · 源清单 v"+(r.summary.manifest||0)+"</div></div>").join("")||"<div class=empty>还没有收到上报</div>";',
   'var all=[];rs.forEach(r=>r.issues.forEach(i=>all.push({i:i,d:r})));all.sort((a,b)=>b.i.ts-a.i.ts);',
@@ -1196,7 +1289,7 @@ const BOARD = [
   'function opsLoad(){fetch("/api/ops",{cache:"no-store"}).then(function(r){return r.json()}).then(function(d){',
   'var ro=d.rollout||{},pb=d.publish||{},sm=d.smoke||{},al=d.alerts||{},tr=d.trend||{},au=d.audit||[];',
   'var lv=al.levels||{};var sr=tr.updateSuccessRate;',
-  'var cards=document.getElementById("opsCards");if(cards)cards.innerHTML=opsCard("发布状态",(pb.status||"未发布"),(pb.at?("最近 "+tm(Date.parse(pb.at))):"还没跑过发布闭环"))+opsCard("灰度放量",(ro.paused?"已暂停":"放量中"),((ro.groups||[]).length+" 组 / 权重 "+(ro.weightTotal||0)+" · 失败率阈值 "+Math.round((((ro.autoPause||{}).failRate)||0.2)*100)+"%"))+opsCard("真机冒烟",(sm.state||"no-run"),(sm.state==="no-run"?"还没有冒烟记录，接设备后自动落结果":"最近一次真机冒烟结果"))+opsCard("告警",((lv.critical||[]).length+" 严重 / "+((lv.warn||[]).length)+" 警告"),"同码同窗口合并计数")+opsCard("更新成功率",(sr===null||sr===undefined?"—":(sr+"%")),(tr.totals?("成功 "+tr.totals.updateOk+" / 失败 "+tr.totals.updateFail):"暂无发布记录"))+opsCard("审计",(au.length+" 条"),"最近写操作留痕");',
+  'var cards=document.getElementById("opsCards");if(cards)cards.innerHTML=opsCard("发布状态",(pb.status||"未发布"),(pb.at?("最近 "+tm(Date.parse(pb.at))):"还没跑过发布闭环"))+opsCard("灰度放量",(ro.paused?"已暂停":"放量中"),((ro.groups||[]).length+" 组 / 权重 "+(ro.weightTotal||0)+" · 失败率阈值 "+Math.round((((ro.autoPause||{}).failRate)||0.2)*100)+"%"))+opsCard("真机冒烟",(sm.state||"no-run"),(sm.state==="no-run"?"还没有冒烟记录，接设备后自动落结果":"最近一次真机冒烟结果"))+opsCard("告警",((lv.critical||[]).length+" 严重 / "+((lv.warn||[]).length)+" 警告"),"同码同窗口合并计数")+opsCard("更新成功率",(sr===null||sr===undefined?"—":(sr+"%")),(tr.totals?("成功 "+tr.totals.updateOk+" / 失败 "+tr.totals.updateFail):"暂无发布记录"))+opsCard("问题闭环",(d.closure?(d.closure.rate+"%"):"—"),(d.closure?("已归档 "+d.closure.archived+" / 观测 "+d.closure.observed+" · "+tm(d.closure.at||0)):"还没有归档记录，跑一轮自动修 Bug 后生成"))+opsCard("审计",(au.length+" 条"),"最近写操作留痕");',
   'var t7=(tr.series||[]).slice(-7);var tl=document.getElementById("opsTrend");if(tl)tl.innerHTML=t7.map(function(x){return "<div class=item><div class=t>"+x.date+"</div><div class=m>源可用率 "+(x.okRate===null?"—":(x.okRate+"%"))+" · 更新 "+x.updateOk+"/"+(x.updateOk+x.updateFail)+" · 设备 "+x.devices+"</div></div>";}).join("")||"<div class=empty>还没有趋势数据，跑一轮自愈或发布后开始累积</div>";',
   'var el=document.getElementById("opsAudit");if(el)el.innerHTML=au.map(function(a){var c=a.result==="fail"?"tag e":(a.result==="partial"?"tag w":"tag");return "<div class=item><div class=t><span class=\\""+c+"\\">"+esc(a.action)+"</span>"+tm(a.at)+"</div><div class=m>"+esc(a.target||"")+" "+esc(a.detail||"")+"</div></div>";}).join("")||"<div class=empty>还没有审计记录</div>";',
   'opsState("更新于 "+tm(Date.now()));',
@@ -1485,11 +1578,12 @@ function handleRequest(req, res) {
     try { snap = healthMonitor.snapshot(); } catch (e) { snap = {}; }
     let recent = [];
     try { recent = healthMonitor.recent(30); } catch (e) { recent = []; }
+    const st = stats();
     send(res, 200, Object.assign(devops.overview({
       days: Number(u.searchParams.get('days')) || 14,
-      top: stats().top,
+      top: st.top,
       alerts: (snap.alerts || []).concat(recent)
-    }), { resources: catalog.overview() }));
+    }), { resources: catalog.overview(), closure: st.closure }));
     return;
   }
   if (u.pathname === '/api/audit' && req.method === 'GET') {
@@ -2533,7 +2627,15 @@ function handleRequest(req, res) {
       if (reports.some((x) => x.id === rec.id)) { send(res, 200, { ok: true, duplicate: true, id: rec.id }); return; }
       reports.push(rec);
       if (reports.length > MAX_KEEP) reports.splice(0, reports.length - MAX_KEEP);
-      if (writable) fs.appendFile(DATA_FILE, JSON.stringify(rec) + '\n', (e) => { if (e) writable = false; });
+      if (writable) fs.appendFile(reportsFileFor(rec.receivedAt), JSON.stringify(rec) + '\n', (e) => { if (e) writable = false; });
+      pruneReportsFiles();
+      /* 上报即入告警中心：同一指纹跨设备超阈值（设备≥30 或次数≥500）时，Webhook 才会真的响 */
+      try {
+        const as = (stats().alerts || []);
+        if (as.length) require('./alerts-center').push(as.map((a) => ({
+          level: a.level, code: a.code, detail: a.detail, lastAt: a.lastSeen, source: 'report'
+        })));
+      } catch (e) {}
       send(res, 200, { ok: true, id: rec.id, stored: reports.length });
     });
     return;

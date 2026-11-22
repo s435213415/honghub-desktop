@@ -23,7 +23,9 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 KEYS = os.path.join(HERE, "keys")
 OFFICIAL = os.path.join(HERE, "keys-official")   # OpenHarmony 官方证书链物料（SDK 自带，公开口令）
 OFFICIAL_PWD = "123456"                          # SDK OpenHarmony.p12 公开口令
-BUNDLE = "com.honghub.harmony"
+BUNDLE_CLIENT = "com.honghub.harmony"
+BUNDLE_DEV = "com.honghub.harmony.dev"   # 开发端独立 bundle：与客户版并存，装一个顶不掉另一个
+BUNDLE = BUNDLE_CLIENT                    # 由下方 IS_DEV 切换成 dev 值
 CHAIN_TAG = "official-openharmony"
 DIST = os.path.join(ROOT, "dist")
 # 壳包来源：优先 hvigor 刚编出来的未签名包（ArkTS 改动只有重新编译才生效），
@@ -42,6 +44,11 @@ TARGET_API = int(os.environ.get("KH_HAP_TARGET_API") or 14)
 # 全部与客户版分开，绝不覆盖客户 HongHubMovie.hap；默认（client）行为与现状一致。
 VARIANT = (os.environ.get("KH_HAP_VARIANT") or "client").strip().lower()
 IS_DEV = VARIANT == "dev"
+# 开发端独立版本号：客户 #1000199 / dev #1000299。同 bundle 同版本会被系统视为同一个包、
+# 装不上去也不覆盖；换 bundle 后再给独立码，两边才能真正并存、各自升级。
+DEV_VERSION_CODE_OFFSET = 100
+if IS_DEV:
+    BUNDLE = BUNDLE_DEV
 SIGNED = os.path.join(KEYS, "sign", "HongHubMovie-dev.hap" if IS_DEV else "HongHubMovie.hap")
 ENTRY = "resources/rawfile/www/index.html"
 PAGE = os.path.join(ROOT, "harmony", "entry", "src", "main", "resources", "rawfile", "www", "index.html")
@@ -96,7 +103,7 @@ CHAINS = {
         "keystore": "sdk",                       # SDK 内置 OpenHarmony.p12
         "alias": "openharmony application release",
         "cert": os.path.join(OFFICIAL, "app-chain.pem"),
-        "profile": os.path.join(OFFICIAL, "profile-release.p7b"),
+        "profile": os.path.join(OFFICIAL, "profile-release-dev.p7b" if IS_DEV else "profile-release.p7b"),
         "pwd": "123456",                          # 公开口令
         "note": "OpenHarmony SDK 公开密钥，不是自持私钥",
     },
@@ -292,6 +299,7 @@ def build_unsigned(vn, vc, shell):
                 obj = json.loads(data.decode("utf-8"))
                 obj["app"]["versionName"] = vn
                 obj["app"]["versionCode"] = vc
+                obj["app"]["bundleName"] = BUNDLE   # dev 变体写独立 bundle，与客户版互不顶替
                 # 运行态 API 声明对齐目标设备（OpenHarmony 5.0.2 = API14）：
                 # 目标 API 不高于设备实际，系统按设备版本给出行为；
                 # 发行类型改 Release，避免 Beta1 包在正式设备上被安装器判定为测试包。
@@ -301,6 +309,7 @@ def build_unsigned(vn, vc, shell):
                 data = json.dumps(obj, ensure_ascii=False).encode("utf-8")
             elif item.filename == "pack.info":
                 obj = json.loads(data.decode("utf-8"))
+                obj["summary"]["app"]["bundleName"] = BUNDLE
                 obj["summary"]["app"]["version"] = {"code": vc, "name": vn}
                 api = obj["summary"]["modules"][0].get("apiVersion")
                 if isinstance(api, dict):
@@ -320,7 +329,7 @@ def ensure_official_keys(java, jar):
       - p12 里 release alias 自带证书是自签的，必须用模板 distribution-certificate 做叶子；
       - sign-app 不能带 -signCode，只传 -profileSigned 1。"""
     chain = os.path.join(OFFICIAL, "app-chain.pem")
-    p7b = os.path.join(OFFICIAL, "profile-release.p7b")
+    p7b = os.path.join(OFFICIAL, "profile-release-dev.p7b" if IS_DEV else "profile-release.p7b")
     if os.path.isfile(chain) and os.path.isfile(p7b):
         return chain, p7b
     lib = os.path.dirname(jar)
@@ -338,7 +347,7 @@ def ensure_official_keys(java, jar):
     now = datetime.datetime.now(datetime.timezone.utc)
     prof["validity"]["not-before"] = int((now - datetime.timedelta(days=1)).timestamp())
     prof["validity"]["not-after"] = int((now + datetime.timedelta(days=3650)).timestamp())
-    prof_path = os.path.join(OFFICIAL, "profile-release.json")
+    prof_path = os.path.join(OFFICIAL, "profile-release-dev.json" if IS_DEV else "profile-release.json")
     json.dump(prof, open(prof_path, "w", encoding="utf-8"), indent=4, ensure_ascii=False)
     if not leaf.endswith("\n"):
         leaf += "\n"
@@ -417,6 +426,8 @@ def verify(vn, vc):
         if packed[key] != open(full, "rb").read():
             fail("包内前端与本次生成的 www 不一致（注入未生效）：" + rel)
     m = mod["app"]
+    if str(m.get("bundleName") or "") != BUNDLE:
+        fail("包内 bundle=%s ≠ 本次变体 %s（签名 profile 与安装身份必须一致）" % (m.get("bundleName"), BUNDLE))
     if str(m.get("versionName")) != vn or int(m.get("versionCode")) != vc:
         fail("包内版本与本次发版不一致：%s / #%s ≠ %s / #%d" % (m.get("versionName"), m.get("versionCode"), vn, vc))
     # 目标设备兼容声明：target 不高于 KaihongOS 最新版（OpenHarmony 5.0.2 = API14），
@@ -434,8 +445,9 @@ def verify(vn, vc):
     mm = re.search(r"var KH_APP_CODE\s*=\s*(\d+)", alltext)
     if mm:
         code = int(mm.group(1))
-    if code is not None and code != vc:
-        fail("前端 KH_APP_CODE #%d ≠ 本次发版 #%d（疑似沿用旧前端）" % (code, vc))
+    base_code = vc - (DEV_VERSION_CODE_OFFSET if IS_DEV else 0)   # dev 前端仍写发版基础码
+    if code is not None and code != base_code:
+        fail("前端 KH_APP_CODE #%d ≠ 本次发版 #%d（疑似沿用旧前端）" % (code, base_code))
     print("  校验通过：v%s / #%d · 前端 %d B" % (vn, vc, len(alltext.encode("utf-8"))))
     return mod
 
@@ -501,6 +513,8 @@ def signed_is_fresh(vn, vc, ch, shell):
         if ENTRY not in packed:
             return False
         app = mod["app"]
+        if str(app.get("bundleName") or "") != BUNDLE:
+            return False   # 变体 bundle 变了，旧 dev 包不能复用
         if int(app.get("targetAPIVersion") or 0) != max(int(app.get("minAPIVersion") or 11), TARGET_API):
             return False   # API 声明未对齐，必须重签
         return str(app.get("versionName")) == vn and int(app.get("versionCode")) == vc
@@ -525,9 +539,15 @@ def main():
         print("  ✔ 材料齐全、bundle 匹配、证书在有效期内")
         sys.exit(0)
 
+    if chain_name == "official":
+        # official 链的 Profile 按变体现生成（client 一份 / dev 一份，bundle 不同），
+        # 必须先备料再走前置校验，否则 dev 首次出包会被「Profile 不存在」直接拦掉。
+        ensure_official_keys(find_java(), find_jar())
     shell = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else pick_shell()
     BASE = shell
     vn, vc = read_versions()
+    if IS_DEV:
+        vc += DEV_VERSION_CODE_OFFSET   # dev 独立 versionCode（客户 +0 / dev +100）
 
     probs = check_chain(chain_name, ch)
     if probs:

@@ -271,6 +271,16 @@ function get(pathname) {
       else pass(p + ' 内存档、自动下发与 OS 版本回传能力齐备');
     }
   }
+  /* 问题收集链路门禁：客户版默认不外发、外发必须显式开关 */
+  try {
+    const cfg = fs.readFileSync(path.join(ROOT, 'app', 'kh-config.js'), 'utf8');
+    const core = fs.readFileSync(path.join(ROOT, 'app', 'kh-core.js'), 'utf8');
+    if (!/enabled\s*:\s*\(window\.KH_DESKTOP && !window\.KH_UI_CLEAN/.test(cfg)) fail('客户版上报默认关闭失效（issueRemoteCfg.enabled）');
+    else if (cfg.indexOf('!window.KH_UI_CLEAN') < 0) fail('客户版未拦住清单 remoteUrl 下发');
+    else if (core.indexOf('issue-remote-toggle') < 0) fail('客户版缺少匿名上报开关');
+    else pass('问题收集：客户版默认只存本机、外发需显式开启，开关与拦截已就位');
+  } catch (e) { fail('问题收集链路检查失败：' + e.message); }
+
   try { srv.kill(); } catch (e) { /* 已退出 */ }
   if (errs.length) {
     console.error('\n打包前自检未通过（' + errs.length + ' 项），已阻断打包。');

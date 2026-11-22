@@ -1180,6 +1180,62 @@
         "mode": "pc"
       },
       {
+        "name": "汽水音乐",
+        "url": "https://music.douyin.com",
+        "color": "#FE2C55",
+        "tag": "汽",
+        "cat": "音乐",
+        "mode": "pc"
+      },
+      {
+        "name": "Apple Music",
+        "url": "https://music.apple.com/cn",
+        "color": "#FA2D48",
+        "tag": "A",
+        "cat": "音乐",
+        "mode": "pc"
+      },
+      {
+        "name": "千千音乐",
+        "url": "https://music.taihe.com",
+        "color": "#1E90FF",
+        "tag": "千",
+        "cat": "音乐",
+        "mode": "pc"
+      },
+      {
+        "name": "荔枝FM",
+        "url": "https://www.lizhi.fm",
+        "color": "#FF4D4F",
+        "tag": "荔",
+        "cat": "有声/播客",
+        "mode": "pc"
+      },
+      {
+        "name": "Spotify",
+        "url": "https://open.spotify.com",
+        "color": "#1DB954",
+        "tag": "S",
+        "cat": "音乐（海外）",
+        "mode": "oversea"
+      },
+      {
+        "name": "YouTube Music",
+        "url": "https://music.youtube.com",
+        "color": "#FF0000",
+        "tag": "YM",
+        "cat": "音乐（海外）",
+        "mode": "oversea"
+      },
+      {
+        "name": "SoundCloud",
+        "url": "https://soundcloud.com",
+        "color": "#FF5500",
+        "tag": "SC",
+        "cat": "音乐（海外）",
+        "mode": "oversea"
+      },
+      {
         "name": "澎湃新闻",
         "url": "https://www.thepaper.cn",
         "color": "#1A1A1A",
@@ -1433,16 +1489,16 @@
       "zjHome": "https://zhaoju4.com/",
       "zjSearch": "https://zhaoju4.com/search"
     },
-    "remoteUrl": "https://infections-equally-union-lonely.trycloudflare.com/api/report",
+    "remoteUrl": "https://strain-require-eligibility-maria.trycloudflare.com/api/report",
     "channelCount": 31
   },
   "release": {
     "schema": 1,
-    "generatedAt": "2026-11-21T14:02:32.873Z",
+    "generatedAt": "2026-11-22T12:32:08.985Z",
     "latest": {
       "versionName": "1.7.85",
       "versionCode": 1000199,
-      "publishedAt": "2026-11-21T14:02:32.873Z",
+      "publishedAt": "2026-11-22T12:32:08.985Z",
       "minApi": 12,
       "targetApi": 26,
       "compatibleSdk": "5.0.0(12)",
@@ -1497,8 +1553,8 @@
       "hapAutoInstall": false,
       "hapUrl": "/download/honghub-harmony.hap",
       "downloadUrl": "/download/desktop-setup.exe",
-      "generatedAt": "2026-11-21T13:51:30.931Z",
-      "contentVersion": 60
+      "generatedAt": "2026-11-22T12:10:53.874Z",
+      "contentVersion": 99
     },
     "beta": null,
     "betaNote": "内测清单未配置：当前归档仅有稳定包；配置真实内测包前，内测设备回退稳定清单，此处不提供内测下载链接"

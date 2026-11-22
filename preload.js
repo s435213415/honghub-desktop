@@ -28,6 +28,12 @@ contextBridge.exposeInMainWorld('khCast', {
   cast: (arg) => ipcRenderer.invoke('kh:dlna-cast', arg || {})
 });
 
+/* 页面匿名 ID（1.7.85）：主进程崩溃上报复用同一 ID，崩溃与页面错误才能按设备串起来。
+   纯网页 / HAP 环境没有这个桥，前端跳过。 */
+contextBridge.exposeInMainWorld('khDeviceId', {
+  set: (id) => ipcRenderer.invoke('kh:device-id-set', id)
+});
+
 /* 本机崩溃 / 异常日志（#95）：只读，供诊断报告并入；纯网页 / HAP 环境下 window.khCrashLog 为 undefined。 */
 contextBridge.exposeInMainWorld('khCrashLog', {
   get: () => ipcRenderer.invoke('kh:crash-log')

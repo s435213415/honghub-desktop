@@ -81,10 +81,21 @@ function readJsonl(p, max) {
 }
 /* 上报数据 = 本机 reports.jsonl + 公网隧道接收端 HongHubServer/data/reports.jsonl。
    客户端远程上报落在隧道端，开发端体检时合并读取，才能形成「上报→自愈→改码→发版」闭环。 */
-const TUNNEL_REPORTS = path.join(os.homedir(), 'HongHubServer', 'data', 'reports.jsonl');
+const TUNNEL_DIR = path.join(os.homedir(), 'HongHubServer', 'data');
+const TUNNEL_REPORTS = path.join(TUNNEL_DIR, 'reports.jsonl');
+function dailyReports(dir, days) {
+  const out = [];
+  for (let i = 0; i < (days || 2); i += 1) {
+    try {
+      const f = path.join(dir, 'reports-' + new Date(Date.now() - i * 86400000).toISOString().slice(0, 10) + '.jsonl');
+      if (fs.existsSync(f)) out.push(f);
+    } catch (e) {}
+  }
+  return out;
+}
 function readReportsMerged(max) {
-  const a = readJsonl(REPORTS, max);
-  const b = readJsonl(TUNNEL_REPORTS, max);
+  const a = readJsonl(REPORTS, max).concat(dailyReports(path.dirname(REPORTS), 2).map((f) => readJsonl(f, max)).flat());
+  const b = readJsonl(TUNNEL_REPORTS, max).concat(dailyReports(TUNNEL_DIR, 2).map((f) => readJsonl(f, max)).flat());
   const seen = new Set(), out = [];
   for (const r of a.concat(b)) {
     const k = String((r && (r.sig || r.deviceId)) || '') + '|' + String(r && r.receivedAt || '');
@@ -443,16 +454,19 @@ function scan() {
   reports.filter((r) => Number(r.receivedAt) >= dayAgo).forEach((r) => {
     (r.issues || []).forEach((i) => {
       if (i.sev !== 'error') return;
-      const k = (i.kind || 'unknown') + (i.code ? ':' + i.code : '');
+      /* 指纹与前端一致：类别|错误码|页面|域名|文案前 60 字，跨设备同类问题才能聚到一起 */
+      const k = [i.kind || 'unknown', i.code || '', i.view || '', i.host || '', i.ver || '', i.plat || '', String(i.msg || '').slice(0, 60)].join('|');
       const ts = Number(i.ts || r.receivedAt || 0);
       if (wm[k] && ts <= wm[k]) return;
-      errMap[k] = (errMap[k] || 0) + (i.n || 1);
+      const e = errMap[k] || (errMap[k] = { key: k, kind: i.kind || 'unknown', code: i.code || '',
+        host: i.host || '', ver: i.ver || '', plat: i.plat || '', n: 0 });
+      e.n += (i.n || 1);
     });
   });
-  const topErrors = Object.keys(errMap).map((k) => ({ kind: k, n: errMap[k] })).sort((a, b) => b.n - a.n).slice(0, 5);
+  const topErrors = Object.keys(errMap).map((k) => errMap[k]).sort((a, b) => b.n - a.n).slice(0, 5);
   if (topErrors.length) {
     bugs.push(bug('error-reports', 'medium', '近 24h 高频错误上报',
-      topErrors.map((x) => x.kind + '×' + x.n).join('、'), 'autoHandleReports', { _topErrors: topErrors, _reports: reports }));
+      topErrors.map((x) => x.kind + (x.code ? ':' + x.code : '') + (x.ver ? '@' + x.ver : '') + '×' + x.n).join('、'), 'autoHandleReports', { _topErrors: topErrors, _reports: reports }));
   }
 
   // 2.7 独立源码语法（.js/.py）：自动改码修复器。仅开发端(KH_DEV_MODE 或存在源码目录)启用。
@@ -586,11 +600,36 @@ function autoHandleReports(b) {
   const reports = b._reports || [];
   const wm = readJson(WM, {});
   let maxTs = 0;
-  reports.forEach((r) => (r.issues || []).forEach((i) => { if (i.sev === 'error') maxTs = Math.max(maxTs, Number(i.ts || r.receivedAt || 0)); }));
+  const fps = {};
+  reports.forEach((r) => (r.issues || []).forEach((i) => {
+    const ts = Number(i.ts || r.receivedAt || 0);
+    if (i.sev === 'error') maxTs = Math.max(maxTs, ts);
+    const k = i._fp || [i.kind || '', i.code || '', i.view || '', i.host || '', i.ver || '', i.plat || '', String(i.msg || '').slice(0, 60)].join('|');
+    const e = fps[k] || (fps[k] = { key: k, kind: i.kind || '', code: i.code || '', host: i.host || '',
+      msg: String(i.msg || '').slice(0, 80), n: 0, devices: new Set(), last: 0 });
+    e.n += (i.n || 1);
+    if (r.deviceId) e.devices.add(r.deviceId);
+    e.last = Math.max(e.last, ts);
+  }));
   const now = Date.now();
-  top.forEach((e) => { wm[e.kind] = maxTs || now; append(HANDLED, { at: now, kind: e.kind, count: e.n, action: '已自动归档，后续只报新增' }); });
+  const fpList = Object.keys(fps).map((k) => fps[k]).sort((x, y) => y.n - x.n).slice(0, 20);
+  /* 按指纹处置：同一指纹归档一次，后续只报新增；处置记录带设备数便于判断影响面 */
+  fpList.forEach((e) => {
+    wm[e.key] = maxTs || now;
+    append(HANDLED, { at: now, fp: e.key, kind: e.kind, code: e.code, host: e.host, msg: e.msg,
+      n: e.n, devices: e.devices.size, last: e.last, action: '按指纹归档，后续只报新增' });
+  });
+  top.forEach((e) => { if (!wm[e.kind]) wm[e.kind] = maxTs || now; });
   fs.writeFileSync(WM, JSON.stringify(wm, null, 2) + '\n');
-  return '已自动归档 ' + top.length + ' 类高频错误并写入水位线，后续只报新增（无需人工复核）';
+  /* 闭环率：已归档指纹 / 观测到的指纹总数 */
+  let closure = { at: now, observed: 0, archived: 0, rate: 0 };
+  try {
+    closure.observed = fpList.length;
+    closure.archived = fpList.filter((e) => !!wm[e.key]).length;
+    closure.rate = closure.observed ? Math.round((closure.archived / closure.observed) * 100) : 0;
+    fs.writeFileSync(path.join(path.dirname(WM), 'report-closure.json'), JSON.stringify(closure, null, 2) + '\n');
+  } catch (e) {}
+  return '已按指纹归档 ' + fpList.length + ' 条错误（闭环率 ' + closure.rate + '%），后续只报新增（无需人工复核）';
 }
 function autoFixScript(b) {
   const p = b._page;

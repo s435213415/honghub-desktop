@@ -137,6 +137,13 @@ var BUILTIN_SITES = [
 {name:"酷我音乐",url:"https://www.kuwo.cn",color:"#FFB800",tag:"酷",cat:"音乐",mode:"pc"},
 {name:"咪咕音乐",url:"https://music.migu.cn",color:"#E60012",tag:"咪",cat:"音乐",mode:"pc"},
 {name:"全民K歌",url:"https://kg.qq.com",color:"#FF4D4F",tag:"唱",cat:"音乐",mode:"pc"},
+{name:"汽水音乐",url:"https://music.douyin.com",color:"#FE2C55",tag:"汽",cat:"音乐",mode:"pc"},
+{name:"Apple Music",url:"https://music.apple.com/cn",color:"#FA2D48",tag:"A",cat:"音乐",mode:"pc"},
+{name:"千千音乐",url:"https://music.taihe.com",color:"#1E90FF",tag:"千",cat:"音乐",mode:"pc"},
+{name:"荔枝FM",url:"https://www.lizhi.fm",color:"#FF4D4F",tag:"荔",cat:"有声/播客",mode:"pc"},
+{name:"Spotify",url:"https://open.spotify.com",color:"#1DB954",tag:"S",cat:"音乐（海外）",mode:"oversea"},
+{name:"YouTube Music",url:"https://music.youtube.com",color:"#FF0000",tag:"YM",cat:"音乐（海外）",mode:"oversea"},
+{name:"SoundCloud",url:"https://soundcloud.com",color:"#FF5500",tag:"SC",cat:"音乐（海外）",mode:"oversea"},
 {name:"澎湃新闻",url:"https://www.thepaper.cn",color:"#1A1A1A",tag:"澎",cat:"资讯/门户",mode:"pc"},
 {name:"观察者网",url:"https://www.guancha.cn",color:"#C8102E",tag:"观",cat:"资讯/门户",mode:"pc"},
 {name:"36氪",url:"https://36kr.com",color:"#121212",tag:"36",cat:"资讯/门户",mode:"pc"},
@@ -331,6 +338,11 @@ var ISSUE_MERGE_MS = 60000;
 var ISSUE_KINDS = {'脚本':'error','资源':'warn','播放':'error','异步':'error','渲染':'error',
   '平台':'warn','源':'warn','清单':'warn','升级':'warn','兼容':'warn',
   '网页':'error','自检':'info','网络':'warn'};
+/* 风暴保护：同一类别 1 小时内累计超过该值后只加计数，不再新增条目 */
+var ISSUE_KIND_HOURLY = 120;
+/* 每日外发上限：非手动触发的自动上报一天最多这么多条，超限静默到次日；
+   手动「立即上报」不受限，避免客户想反馈却被拦住。 */
+var ISSUE_DAILY_MAX = 50;
 function issueCfg(){
   var c = getStore(ISSUE_CFG_KEY, null);
   if(!c || typeof c !== 'object') c = {auto:true, createdAt:Date.now()};
@@ -345,25 +357,74 @@ function issueDevice(){
   return (d.marketName || d.deviceType || '未知设备') + ' / ' + (d.osFullName || '开鸿') +
          ' API' + (d.apiVersion || '?') + ' / ' + (d.tier || 'mid') + '档 / v' + (d.appVersion || '?');
 }
+function issueVer(){
+  try{
+    var d = window.KH_DEVICE || {};
+    var v = d.appVersion || d.appCode || (typeof KH_APP_CODE !== 'undefined' ? KH_APP_CODE : '') || '?';
+    return String(v).slice(0, 12);
+  }catch(e){ return '?'; }
+}
+function issuePlat(){
+  try{
+    if(window.KH_HARMONY) return 'hap';
+    if(window.KH_DESKTOP) return 'desktop';
+    return 'web';
+  }catch(e){ return 'web'; }
+}
+/* 当日计数，键随日期滚动，跨天自动归零 */
+function issueDaily(){
+  var day = new Date().toISOString().slice(0, 10);
+  var d = getStore('kh_issue_daily_v1', null);
+  if(!d || typeof d !== 'object' || d.day !== day) d = {day: day, n: 0};
+  return d;
+}
+/* 外发 URL 再脱敏一层：去掉 query 里的签名 / token 键，路径只留到 160 字 */
+function issueSafeUrl(u){
+  try{
+    var x = new URL(String(u));
+    var banned = /^(token|auth|auth_key|authkey|sign|signature|sig|key|api_key|apikey|access_token|secret|password|pwd|expires|st|wssecret|wstime|e)$/i;
+    var qs = [];
+    x.searchParams.forEach(function(v, k){
+      if(banned.test(k)) return;
+      qs.push(k + '=' + (String(v).length > 12 ? '[v]' : v));
+    });
+    return (x.origin + x.pathname).slice(0, 160) + (qs.length ? '?' + qs.slice(0, 3).join('&') : '');
+  }catch(e){ return String(u || '').slice(0, 80).replace(/[?&#].*$/, ''); }
+}
 function issuePush(kind, msg, extra){
   try{
     if(!issueCfg().auto) return;
     var text = String(msg === undefined ? '' : msg).replace(/\s+/g, ' ').slice(0, 240);
     if(!text) return;
-    var key = kind + '|' + text.slice(0, 120);
+    var view = (typeof state !== 'undefined' && state) ? state.view : 'boot';
+    var host = (extra && extra.url) ? hostOf(extra.url) : '';
+    /* 指纹：类别|错误码|页面|域名|版本|平台|文案前 80 字。
+       带版本才能判断「新版是否已修好」，带平台才能区分桌面 / HAP / 网页。 */
+    var ver = issueVer(), plat = issuePlat();
+    var key = kind + '|' + String((extra && extra.code) || '') + '|' + view + '|' + host + '|' + ver + '|' + plat + '|' + text.slice(0, 80);
     var now = Date.now(), list = issueList(), hit = null;
     for(var i=0;i<list.length && i<40;i++){
       if(list[i].key === key && now - (list[i].ts || 0) < ISSUE_MERGE_MS){ hit = list[i]; break; }
     }
     if(hit){
-      hit.n = (hit.n || 1) + 1; hit.ts = now;
-      if(extra && extra.url) hit.url = String(extra.url).slice(0, 300);
+      hit.n = (hit.n || 1) + 1; hit.ts = now; hit.lastTs = now;
+      if(!hit.firstTs) hit.firstTs = hit.ts;
+      if(extra && extra.url) hit.url = issueSafeUrl(extra.url);
     } else {
-      var row = {key:key, ts:now, kind:kind, msg:text, n:1, sev:issueSev(kind),
-                 view:(typeof state !== 'undefined' && state) ? state.view : 'boot',
-                 dev:issueDevice()};
+      var sameKind = 0;
+      for(var j=0;j<list.length;j++){ if(list[j].kind === kind && now - (list[j].ts || 0) < 3600000) sameKind += (list[j].n || 1); }
+      if(sameKind >= ISSUE_KIND_HOURLY){
+        for(var m=0;m<list.length;m++){ if(list[m].kind === kind){ list[m].n = (list[m].n || 1) + 1; list[m].ts = now; list[m].lastTs = now; break; } }
+        setStore(ISSUE_KEY, list);
+        return;
+      }
+      var row = {key:key, ts:now, firstTs:now, lastTs:now, kind:kind, msg:text, n:1, sev:issueSev(kind),
+                 view:view, dev:issueDevice(), ver:ver, plat:plat};
       if(extra && extra.code !== undefined) row.code = String(extra.code).slice(0, 20);
-      if(extra && extra.url) row.url = String(extra.url).slice(0, 300);
+      if(extra && extra.url) row.url = issueSafeUrl(extra.url);
+      if(extra && extra.lv !== undefined) row.lv = Math.max(0, Number(extra.lv) || 0);
+      if(extra && extra.live) row.live = true;
+      if(extra && extra.buf !== undefined) row.buf = Math.max(0, Math.round(Number(extra.buf) || 0));
       list.unshift(row);
       if(list.length > ISSUE_MAX) list.length = ISSUE_MAX;
     }
@@ -530,6 +591,18 @@ function copyIssueText(txt, label){
 }
 /* 诊断报告导出文件（#96）：Blob 下载 .txt / .json；环境不支持下载时回退复制文本 */
 function downloadTextFile(name, text, mime){
+  /* 第十一轮：设备端（HAP/ArkWeb）没有下载目录，Blob + <a download> 静默无效，
+     以前只能退回「复制到剪贴板」。接上原生文件桥后优先选路径落盘。 */
+  if(window.khFile && typeof window.khFile.saveText === 'function'){
+    try{
+      window.khFile.saveText(name, text).then(function(r){
+        if(r && r.ok){ toast('已保存：' + (r.path || name)); return; }
+        if(r && r.reason === '已取消') return;
+        toast('保存失败：' + ((r && r.reason) || '未知原因'));
+      });
+      return true;
+    }catch(e){}
+  }
   try{
     var blob = new Blob([text], { type: (mime || 'text/plain') + ';charset=utf-8' });
     var url = URL.createObjectURL(blob);
@@ -550,14 +623,15 @@ function issueFileName(ext){
    默认端点由发版流水线写入 ISSUE_REMOTE_DEFAULT；用户可在问题中心改成自己的接口。
    只上报脱敏摘要 + 匿名设备 ID，本地完整记录始终保留，可随时暂停。 */
 var ISSUE_REMOTE_KEY = 'kh_issue_remote_v1';
-var ISSUE_REMOTE_DEFAULT = (function(){ try { var h = localStorage.getItem('khHub') || 'http://192.168.1.5:8787'; return h ? (h.replace(/\/+$/,'') + '/api/report') : ''; } catch(e){ return ''; } })();
+var ISSUE_REMOTE_DEFAULT = (function(){ try { var h = localStorage.getItem('khHub') || 'http://192.168.188.152:8787'; return h ? (h.replace(/\/+$/,'') + '/api/report') : ''; } catch(e){ return ''; } })();
 window.KH_HARMONY = true;
 var ISSUE_REMOTE_LAST_TRY = 0;
 function issueRemoteCfg(){
   var c = getStore(ISSUE_REMOTE_KEY, null);
   if(!c || typeof c !== 'object') c = {};
   return {
-    enabled: (window.KH_HARMONY ? !!localStorage.getItem('khHub') : (c.enabled === true)),   // 默认关闭：未明确开启时绝不外发
+    /* 客户纯净版（KH_UI_CLEAN=1）默认关闭，只有用户显式开启才外发；开发端默认开 */
+    enabled: (window.KH_DESKTOP && !window.KH_UI_CLEAN ? true : (c.enabled === true)),
     url: (typeof c.url === 'string' && /^https?:\/\//i.test(c.url)) ? c.url : ISSUE_REMOTE_DEFAULT,
     lastAt: c.lastAt || 0, sent: c.sent || 0, fails: c.fails || 0,
     err: typeof c.err === 'string' ? c.err : ''
@@ -569,13 +643,19 @@ function issueDeviceId(){
     v = 'kh-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
     setStore('kh_issue_devid', v);
   }
+  /* 同步给主进程：崩溃上报复用同一 ID，才能把崩溃与页面错误串成一台设备 */
+  if(!issueDeviceId._sent && window.khDeviceId && typeof window.khDeviceId.set === 'function'){
+    try{ window.khDeviceId.set(v); issueDeviceId._sent = true; }catch(e){}
+  }
   return v;
 }
 /* 消息里的完整 URL 只保留域名，避免把片源直链 / 带 token 的地址发到远端 */
 function issueSanitize(t){
   return String(t || '').replace(/https?:\/\/[^\s'"<>]+/gi, function(m){
     try{ return new URL(m).hostname; }catch(e){ return '[url]'; }
-  }).slice(0, 240);
+  }).replace(/(\+?86)?1[3-9]\d{9}/g, '[phone]')
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[mail]')
+    .slice(0, 240);
 }
 function issueRemoteIncrement(){
   var c = issueRemoteCfg(), list = issueList(), out = [];
@@ -583,8 +663,10 @@ function issueRemoteIncrement(){
     var it = list[i];
     if((it.ts || 0) < c.lastAt) continue;
     out.push({kind:it.kind, sev:it.sev, code:it.code || '', msg:issueSanitize(it.msg),
-              n:it.n || 1, ts:it.ts, view:it.view || '',
-              host:it.url ? hostOf(it.url) : ''});
+              n:it.n || 1, ts:it.ts, firstTs:it.firstTs || it.ts, lastTs:it.lastTs || it.ts,
+              view:it.view || '', host:it.url ? hostOf(it.url) : '',
+              ver:it.ver || issueVer(), plat:it.plat || issuePlat(),
+              lv:it.lv || 0, live:!!it.live, buf:it.buf || 0});
   }
   return out;
 }
@@ -592,6 +674,8 @@ function issueRemoteDone(at, n, via){
   var c = issueRemoteCfg();
   c.lastAt = at; c.sent = (c.sent || 0) + n; c.fails = 0; c.err = '';
   setStore(ISSUE_REMOTE_KEY, c);
+  var d = issueDaily(); d.n = (d.n || 0) + n; setStore('kh_issue_daily_v1', d);
+  setStore('kh_issue_pending_v1', null);
   window.KH_REMOTE_STATE = {ok:true, at:at, n:n, via:via || 'web'};
   if(typeof state !== 'undefined' && state && state.view === 'issues' && typeof render === 'function') render();
 }
@@ -599,6 +683,8 @@ function issueRemoteFail(msg){
   var c = issueRemoteCfg();
   c.fails = (c.fails || 0) + 1; c.err = String(msg).slice(0, 120);
   setStore(ISSUE_REMOTE_KEY, c);
+  /* 离线补发：记下待发水位，下次启动或恢复后重试 */
+  setStore('kh_issue_pending_v1', {since: c.lastAt || 0, at: Date.now(), fails: c.fails});
   if(typeof state !== 'undefined' && state && state.view === 'issues' && typeof render === 'function') render();
 }
 window.__khRemoteState = function(txt){
@@ -615,6 +701,12 @@ function issueRemoteSend(manual){
   if(!c.url){ if(manual) toast('请先填写远程收集地址'); return; }
   var inc = issueRemoteIncrement();
   if(!inc.length && !manual) return;
+  /* 每日上限只约束自动上报；手动立即上报始终放行 */
+  if(!manual && inc.length){
+    var dl = issueDaily();
+    if((dl.n || 0) >= ISSUE_DAILY_MAX) return;
+    if((dl.n || 0) + inc.length > ISSUE_DAILY_MAX) inc = inc.slice(0, ISSUE_DAILY_MAX - (dl.n || 0));
+  }
   var st = srcHealthStat(), m = srcMeta(), at = Date.now();
   var body = JSON.stringify({
     schema:1, app:'HongHubMovie', deviceId:issueDeviceId(),
@@ -633,19 +725,27 @@ function issueRemoteSend(manual){
     catch(e){ issueRemoteFail('原生通道不可用，改用网页通道'); }
   }
   try{
-    fetch(c.url, {method:'POST', cache:'no-store',
+    var ac = (typeof AbortController === 'function') ? new AbortController() : null;
+    var tm = ac ? setTimeout(function(){ try{ ac.abort(); }catch(e){} }, 8000) : null;
+    fetch(c.url, {method:'POST', cache:'no-store', signal: ac ? ac.signal : undefined,
       headers:{'Content-Type':'application/json'}, body:body})
       .then(function(r){
+        if(tm) clearTimeout(tm);
         if(!r.ok) throw new Error('HTTP ' + r.status);
         issueRemoteDone(at, inc.length, 'web');
       })
-      .catch(function(e){ issueRemoteFail(e && e.message ? e.message : '网络不可达'); });
+      .catch(function(e){
+        if(tm) clearTimeout(tm);
+        issueRemoteFail(e && e.message ? e.message : '网络不可达');
+      });
   }catch(e){ issueRemoteFail(e && e.message ? e.message : '请求发起失败'); }
 }
 function issueRemoteMaybe(){
   var c = issueRemoteCfg(), now = Date.now();
   if(!c.enabled || !c.url) return;
-  if(now - ISSUE_REMOTE_LAST_TRY < 60000) return;
+  /* 失败退避：30s → 2m → 10m → 1h 封顶，成功清零；服务端临时故障不再持续打 */
+  var wait = [30000, 120000, 600000, 3600000][Math.min(3, c.fails || 0)];
+  if(now - ISSUE_REMOTE_LAST_TRY < wait) return;
   ISSUE_REMOTE_LAST_TRY = now;
   setTimeout(function(){ issueRemoteSend(false); }, 1500);
 }
@@ -1810,7 +1910,7 @@ function applySiteData(data, from){
     window.KH_QUICK = data.quick;
   }
   /* 远程收集端点可随云端清单热更新下发；默认空 + 默认关闭，是否外发始终由用户决定 */
-  if(typeof data.remoteUrl === 'string' && /^https?:\/\//i.test(data.remoteUrl)){
+  if(!window.KH_UI_CLEAN && typeof data.remoteUrl === 'string' && /^https?:\/\//i.test(data.remoteUrl)){
     ISSUE_REMOTE_DEFAULT = data.remoteUrl.slice(0, 300);
   }
   setStore(SITES_CLOUD_KEY, {v:Number(data.v||0), sites:out,
@@ -2563,3 +2663,13 @@ function liveAction(act, node){
 var RATES = [0.75, 1, 1.25, 1.5, 2];
 var SAMPLE_STREAMS = [];
 
+
+
+/* ---------------- 启动补发（1.7.85 优化） ----------------
+   上次上报失败留下 pending 水位时，启动 8 秒后重试一次；无待发会自动跳过。
+   客户纯净版默认不在 enabled，只有用户显式开启才会走到这里。 */
+try{
+  if(getStore('kh_issue_pending_v1', null) && issueRemoteCfg().enabled){
+    setTimeout(function(){ issueRemoteSend(false); }, 8000);
+  }
+}catch(e){}

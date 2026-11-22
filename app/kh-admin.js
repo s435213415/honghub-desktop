@@ -540,11 +540,29 @@ function khImportPaste(){
   });
 }
 function khPickBackupFile(){
+  /* 第十一轮：设备端接上原生文件选择器（KHHap.openText）后优先走它。
+     ArkWeb 里 <input type="file"> 要点下去由内核 onShowFileSelector 回调给 uri 才会弹盘，
+     历史版本在设备上表现为「点了没反应」；原生选择器不依赖内核回调，更稳。 */
+  if(khIsDeviceWeb() && window.khFile && typeof window.khFile.openText === 'function'){
+    window.khFile.openText('.json').then(function(r){
+      if(!r || !r.ok){
+        if(r && r.reason === '已取消') return;
+        toast('读取备份失败：' + ((r && r.reason) || '未知原因'));
+        return;
+      }
+      var text = String(r.text || '');
+      if(text.length > 64 * 1024 * 1024){ toast('备份文件超过 64 MB，不是本软件的备份，已拒绝读取'); return; }
+      khAskImportMode(text, r.name || '', text.length);
+    }).catch(function(e){ toast('读取备份失败：' + ((e && e.message) || e)); });
+    return;
+  }
   var inp = document.createElement('input');
   inp.type = 'file'; inp.accept = '.json,application/json';
   inp.onchange = function(){
     var f = inp.files && inp.files[0];
     if(!f) return;
+    /* 1.7.85：备份是纯文本 JSON，正常几十 KB；超过 64 MB 直接拒绝，避免误选大文件把界面拖死 */
+    if(f.size > 64 * 1024 * 1024){ toast('备份文件超过 64 MB，不是本软件的备份，已拒绝读取'); return; }
     var rd = new FileReader();
     rd.onload = function(){ khAskImportMode(String(rd.result || ''), f.name || '', f.size || 0); };
     rd.onerror = function(){ toast('备份文件读取失败'); };
@@ -593,7 +611,22 @@ function khExportUserData(){
     settings: khBakSettings()
   };
   var text = JSON.stringify(data, null, 2);
-  if(khIsDeviceWeb()){ khExportFallback(text); return; }
+  if(khIsDeviceWeb()){
+    /* 第十一轮：设备端有原生文件桥时先选路径真正落盘（备份 JSON 常见上百 KB，
+       剪贴板方案容易粘不全）；保存失败或被取消再退回剪贴板面板。 */
+    if(window.khFile && typeof window.khFile.saveText === 'function'){
+      var ts0 = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      var fn = '鸿汇影备份 ' + ts0 + '.json';
+      window.khFile.saveText(fn, text).then(function(r){
+        if(r && r.ok){ toast('已保存备份文件：' + (r.path || fn)); return; }
+        if(r && r.reason === '已取消') return;
+        toast('保存文件失败，改为复制到剪贴板：' + ((r && r.reason) || '未知原因'));
+        khExportFallback(text);
+      }).catch(function(){ khExportFallback(text); });
+      return;
+    }
+    khExportFallback(text); return;
+  }
   var blob = new Blob([text], { type: 'application/json' });
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
@@ -615,7 +648,11 @@ function khExportUserData(){
 /* 用户数据导入还原（#110/#121）：读取备份 JSON 后先选冲突策略，再按策略落地
    merge = 合并（并集去重，同片进度以备份为准）/ skip = 只补缺（本机已有进度保留）/ overwrite = 覆盖（以备份为准） */
 function khImportUserData(){
-  if(khIsDeviceWeb()){ khImportPaste(); return; }
+  if(khIsDeviceWeb()){
+    /* 第十一轮：设备端接上原生文件选择器后先用文件导入；没有文件桥才落到粘贴面板 */
+    if(window.khFile && typeof window.khFile.openText === 'function'){ khPickBackupFile(); return; }
+    khImportPaste(); return;
+  }
   khPickBackupFile();
 }
 function khImportModeName(m){

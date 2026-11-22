@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-21T13:52:13.428Z",
+  "generatedAt": "2026-11-22T12:22:25.135Z",
   "followAllOSVersions": true,
   "families": {
     "windows": {
@@ -12,7 +12,7 @@
         "6.3",
         "11.0"
       ],
-      "devices": 213,
+      "devices": 295,
       "baseline": true
     },
     "unknown": {
@@ -136,8 +136,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "full",
@@ -145,7 +145,7 @@
         "note": "已是最新版本，内容仍自动同步"
       },
       "guarantee": "所有包不限设备、不限内存：任意系统 / 架构 / 内存都有可用成品，未知设备与低内存自动保底走免安装在线影站；Windows 各架构走原生包、深开鸿走轻量 HAP；播放缓冲与码率按内存档设硬上限；三条通道随发版自动更新，无需人工",
-      "devices": 82
+      "devices": 123
     },
     "windows-6.1": {
       "deviceId": "baseline-windows-6.1",
@@ -207,8 +207,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "full",
@@ -216,7 +216,7 @@
         "note": "已是最新版本，内容仍自动同步"
       },
       "guarantee": "所有包不限设备、不限内存：任意系统 / 架构 / 内存都有可用成品，未知设备与低内存自动保底走免安装在线影站；Windows 各架构走原生包、深开鸿走轻量 HAP；播放缓冲与码率按内存档设硬上限；三条通道随发版自动更新，无需人工",
-      "devices": 120
+      "devices": 161
     },
     "windows-26": {
       "deviceId": "dev-mwq6p3pe-fci6ep",
@@ -291,8 +291,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": true,
         "channel": "full",
@@ -362,8 +362,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "lite",
@@ -433,8 +433,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "full",
@@ -504,8 +504,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "full",
@@ -575,8 +575,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "hap",
@@ -646,8 +646,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "hap",
@@ -717,8 +717,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "hap",
@@ -788,8 +788,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "hap",
@@ -859,8 +859,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "hap",
@@ -930,8 +930,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "hap",
@@ -1001,8 +1001,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "lite",
@@ -1072,8 +1072,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "lite",
@@ -1143,8 +1143,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "lite",
@@ -1214,8 +1214,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "lite",
@@ -1285,8 +1285,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "lite",
@@ -1356,8 +1356,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "lite",
@@ -1427,8 +1427,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "lite",
@@ -1498,8 +1498,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "lite",
@@ -1569,8 +1569,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "lite",
@@ -1640,8 +1640,8 @@
           "versionCode": 1000199,
           "downloadUrl": "/download/desktop-setup.exe",
           "hapUrl": "/download/honghub-harmony.hap",
-          "desktopSha256": "c7f23de4ffc06a706ea37d02cabc6154ae2ad08eb084664bd1c53f834953ce0d",
-          "hapSha256": "2f0e67e267343f4896701e4bb4ca07c5ea4a3598556017b23bb5206f6ed3b8af"
+          "desktopSha256": "f5acfca33b0b8a882c564bb2b9143085b5c8024430eec45052812e25f9905695",
+          "hapSha256": "cca79fdcecc9ab8c93a3ceae2ab5af4b99147ddc30b83d04fe248063cbefa12c"
         },
         "needUpdate": false,
         "channel": "lite",
@@ -1653,11 +1653,11 @@
     }
   },
   "summary": {
-    "devices": 231,
-    "realReports": 210,
+    "devices": 313,
+    "realReports": 292,
     "families": 7,
     "osVersions": 22,
-    "fixesApplied": 300,
+    "fixesApplied": 423,
     "manual": 0,
     "unresolved": 0
   }
