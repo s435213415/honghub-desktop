@@ -42,10 +42,23 @@ const ENV = Object.assign({}, process.env, {
 // 签名口令与 PATH 兜底（Windows 上直接双击 cmd 时 PATH 常常没有 System32）
 ENV.PATH = 'C:\\Windows\\System32;C:\\Windows;C:\\Users\\admin\\Desktop\\command-line-tools\\tool\\jre\\bin;' + (process.env.PATH || '');
 try { require('./lib/env').apply(); } catch (e) {}
-for (const k of ['OH_KEY_PWD', 'PYTHON_BIN', 'KH_HDC', 'KH_DEPLOY_CMD']) if (process.env[k] && !ENV[k]) ENV[k] = process.env[k];
+/* ENV 在第 36 行就已快照 process.env，apply() 之后从 .env 新增的键进不来，
+   子进程就永远看不到 KH_KAIHONG_PWD —— 8.2 开鸿官方重签会因此告警失败（2026-11-24 实测）。
+   这里按「缺则补」全量合并一次；变体变量随后会被下面的隔离闸删掉。 */
+for (const k of Object.keys(process.env)) if (ENV[k] === undefined) ENV[k] = process.env[k];
+for (const k of ['OH_KEY_PWD', 'PYTHON_BIN', 'KH_HDC', 'KH_DEPLOY_CMD', 'KH_KAIHONG_PWD']) if (process.env[k] && !ENV[k]) ENV[k] = process.env[k];
 // 隔离闸：标准发版流水线强制客户纯净，忽略外层 shell 可能残留的开发端 / 诊断变体变量，
 // 杜绝客户包被打成 dev 变体（/admin 入口、扩展面板、诊断段不得进入客户成品）。
 for (const k of ['KH_DEVUI', 'KH_DIAG', 'KH_HAP_VARIANT']) delete ENV[k];
+
+/* --skip-hap 的语义必须传到下游：prebuild-check 2.5 段与 postpack 都会校验「HAP 是否本次产物」，
+   传不到就被判成「沿用旧 HAP」直接阻断 —— 于是形成「不重签就出不了包 / 出包又必须重签」的死锁。
+   这里是显式声明「本次不重签、沿用已有包」，下游只降级为告警并在 release.json 记 hapReused。 */
+if (SKIP_HAP) {
+  ENV.KH_HAP_UNCHANGED = '1';
+  process.env.KH_HAP_UNCHANGED = '1';
+  console.log('[hap] --skip-hap：本次沿用已有 HAP（下游按显式声明处理，release.json 会记 hapReused）');
+}
 
 /* ★ python 绝对路径兜底：开机自启 watcher 用系统 node 启动，PATH 里没有 WorkBuddy
    私有 python，裸 `python` 会 ENOENT —— 这是自动发版 4 连败的根因。
@@ -61,8 +74,8 @@ if (PY !== 'python') {
 }
 
 const STEPS = [];
-// retry=失败时自动重跑一次（仅给验收这类偶发时序步骤用）
-function step(label, cmd, argv, retry, soft) { STEPS.push({ label, cmd, argv, retry: !!retry, soft: !!soft }); }
+// retry=失败时自动重跑一次（仅给验收这类偶发时序步骤用）；env=该步额外环境变量
+function step(label, cmd, argv, retry, soft, env) { STEPS.push({ label, cmd, argv, retry: !!retry, soft: !!soft, env: env || null }); }
 
 step('0/8 环境预检', process.execPath, [path.join(__dirname, 'doctor.js')]);
 step('1/8 版本对齐' + (BUMP ? '（+1 位）' : '（不涨版本）'), process.execPath,
@@ -77,7 +90,16 @@ if (!SKIP_HAP) {
   step('3.2/8 签名链门禁（自持私钥检查）', process.execPath, [path.join(__dirname, 'check-sign-chain.js')]);
 }
 step('4/8 桌面端出包（含内置 HAP / 清单）', process.execPath, [path.join(__dirname, 'build-exe.js'), '--no-bump', '--skip-zip']);
-if (!NO_CLIENT) step('5/8 客户版 Setup（剥离 /admin 运维入口）', process.execPath, [path.join(__dirname, 'build-client-exe.js')]);
+if (!NO_CLIENT) {
+  step('5/8 客户版 Setup（剥离 /admin 运维入口）', process.execPath, [path.join(__dirname, 'build-client-exe.js')]);
+  /* 5.1/8 arm64 客户包：只有 build-archs 已产出 win-arm64-unpacked 时才补，
+     避免每次都白跑一遍 electron-builder；出了原生包，archs.json 才不会把 arm64 标成 fallback。 */
+  const ARM_UNPACKED = path.join(ROOT, 'dist', 'arch-arm64', 'win-arm64-unpacked');
+  if (fs.existsSync(ARM_UNPACKED)) {
+    step('5.1/8 客户版 Setup（arm64 原生包）', process.execPath,
+      [path.join(__dirname, 'build-client-exe.js')], false, false, { KH_CLIENT_ARCH: 'arm64' });
+  }
+}
 /* 6/8 去掉了 make-portable-zip：它从开发端 win-unpacked 打包，会把开发端页面下发成客户免安装包。
    客户免安装 zip 由 build-client-exe.js 在净化后直接从 win-unpacked 打，才是正确来源。 */
 if (!NO_RELEASE) {
@@ -167,12 +189,12 @@ const results = [];
 for (const s of STEPS) {
   say('\n=== ' + s.label + ' ===');
   const t0 = Date.now();
-  let r = spawnSync(s.cmd, s.argv, { cwd: ROOT, stdio: 'inherit', env: ENV });
+  let r = spawnSync(s.cmd, s.argv, { cwd: ROOT, stdio: 'inherit', env: s.env ? Object.assign({}, ENV, s.env) : ENV });
   // 偶发时序步骤失败时自动重跑一次（验收起临时中枢，紧跟公网下发易抖动）
   if (r.status !== 0 && s.retry) {
     say('  ↻ ' + s.label + ' 首次失败，3 秒后自动重试一次');
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 3000);
-    r = spawnSync(s.cmd, s.argv, { cwd: ROOT, stdio: 'inherit', env: ENV });
+    r = spawnSync(s.cmd, s.argv, { cwd: ROOT, stdio: 'inherit', env: s.env ? Object.assign({}, ENV, s.env) : ENV });
   }
   const ms = Date.now() - t0;
   const ok = r.status === 0;

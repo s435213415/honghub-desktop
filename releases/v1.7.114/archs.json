@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "versionName": "1.7.114",
+  "generatedAt": "2026-11-27T11:49:12.506Z",
+  "archs": {
+    "x64": {
+      "status": "ready",
+      "customer": true,
+      "file": "desktop-setup.exe",
+      "size": 110489563,
+      "sha256": "d09cfb7f7d7ec7eb5fba6bf903b8508618140226dfb285cb8097e137d88ceb9c",
+      "url": "/download/desktop-setup.exe",
+      "native": false
+    },
+    "ia32": {
+      "status": "unsupported",
+      "file": null,
+      "url": null,
+      "note": "Electron 45 起官方不再提供 32 位 Windows 二进制，本项目不再出 ia32 包；此前「自动回退 x64」属虚标，已移除"
+    },
+    "arm64": {
+      "status": "fallback",
+      "file": "鸿汇影桌面版 Setup 1.7.114-arm64.exe",
+      "url": "/download/desktop-setup.exe",
+      "fallbackTo": "x64",
+      "note": "无原生包，自动回退 x64 通用包（ARM64 Windows 可经系统模拟运行）"
+    }
+  },
+  "hap": {
+    "status": "ready",
+    "file": "honghub-harmony.hap",
+    "size": 2470310,
+    "sha256": "3d23caa392f31058575efca06600778c25acf705d13b621b45c916c96a0f2c09",
+    "url": "/download/honghub-harmony.hap"
+  },
+  "features": {
+    "count": 38,
+    "hash": "78c545d7ffe9ce9c",
+    "ids": [
+      "board",
+      "report",
+      "sourcespeed",
+      "fix",
+      "updatepublish",
+      "automation",
+      "updatecheck",
+      "govern",
+      "preset-open-dashboard",
+      "preset-dingtalk",
+      "preset-wecom",
+      "preset-feishu",
+      "preset-backup",
+      "preset-broadcast",
+      "feature-mine",
+      "auto-batch",
+      "arch-adaptive",
+      "play-smooth",
+      "mem-adaptive",
+      "auto-update",
+      "os-follow",
+      "ops-audit",
+      "ops-trend",
+      "ops-rollout",
+      "ops-publish",
+      "ops-smoke",
+      "ops-alerts",
+      "ops-catalog",
+      "ops-play",
+      "ops-issues",
+      "stats-heat",
+      "fail-top",
+      "kid-mode",
+      "handoff",
+      "handoff-take",
+      "search-all",
+      "rank-sources",
+      "upgrade-telemetry"
+    ]
+  },
+  "platforms": {
+    "win": {
+      "status": "ready",
+      "file": "desktop-setup.exe",
+      "size": 110489563,
+      "sha256": "d09cfb7f7d7ec7eb5fba6bf903b8508618140226dfb285cb8097e137d88ceb9c",
+      "note": "x64 安装包 + 免安装 zip"
+    },
+    "mac": {
+      "status": "external",
+      "note": "dmg 需 macOS 主机（electron-builder 不能跨平台产出），在 Mac 上执行 npm run pack"
+    },
+    "linux": {
+      "status": "external",
+      "note": "AppImage / deb 需 Linux 主机或 Docker 环境"
+    }
+  }
+}

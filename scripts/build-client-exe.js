@@ -29,7 +29,10 @@ const UNPACKED = process.env.KH_UNPACKED
   ? path.resolve(process.env.KH_UNPACKED)
   : (ARCH === 'arm64' ? path.join(DIST, 'arch-arm64', 'win-arm64-unpacked') : path.join(DIST, 'win-unpacked'));
 const OUT = path.join(DIST, 'client');
-const SUFFIX = ARCH === 'arm64' ? '-arm64' : '';
+/* 1.7.108 商店纯净变体：KH_STORE=1 出 -store 包（x64）。在客户净化基础上再清空
+   预置源 / 影视仓 / 直播 / 采集，注入 window.KH_STORE=true，剔除 kh-src.js。私发版不受影响。 */
+const STORE = process.env.KH_STORE === '1';
+const SUFFIX = STORE ? '-store' : (ARCH === 'arm64' ? '-arm64' : '');
 const CLI = path.join(ROOT, 'node_modules', 'electron-builder', 'cli.js');
 const SEVEN = path.join(ROOT, 'node_modules', '7zip-bin', 'win', 'x64', '7za.exe');
 const VER = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
@@ -49,6 +52,7 @@ function signFiles(targets, label) {
   if (r.status !== 0) log('[签名] ' + label + ' 签名脚本返回 ' + r.status + '（不阻断，报告见 dist/codesign.json）');
 }
 const { stripDevArtifacts } = require('./lib/client-strip');
+const clientStamp = require('./lib/client-stamp');
 /* 备份绝不能放在 win-unpacked 里：免安装 zip 是整目录打包，放同目录会把开发端页面一起塞进客户包
    （实测 1.7.36 客户 zip 里就漏过 index.html.dev-backup / electron-main.js.dev-backup）。 */
 const BAK_ROOT = path.join(os.tmpdir(), 'kh-client-backup-' + process.pid);
@@ -203,6 +207,37 @@ try {
   log('[2/4] 客户版 UI 净化完成：处理 ' + pageTargets.length + ' 个页面/脚本文件，改动 ' + purged +
     ' 个，剥离开发端 UI 段 ' + devuiBlocks + ' 处');
 
+  /* 1.7.108 商店变体二次净化（在备份之后、打包之前；finally 会还原 win-unpacked 为开发端）：
+     清空 kh-sources 预置 JSON、剔除 kh-src.js 解析器、注入 window.KH_STORE=true。
+     运行时 kh-config/kh-core/kh-app 的 KH_STORE 闸再清硬编码预置与隐藏入口。 */
+  if (STORE) {
+    let pg = fs.readFileSync(pagePath, 'utf8');
+    pg = pg.replace(/(<script id="kh-sources" type="application\/json">)[\s\S]*?(<\/script>)/,
+      '$1{"v":0,"updatedAt":"","count":0,"sites":[],"channels":[],"parses":[]}$2');
+    pg = pg.replace(/<script[^>]*src="kh-src\.js"[^>]*>\s*<\/script>/, '');
+    pg = pg.replace('<script src="kh-hap-bridge.js"></script>',
+      '<script>window.KH_STORE=true;</script>\n<script src="kh-hap-bridge.js"></script>');
+    if (!pg.includes('window.KH_STORE=true')) throw new Error('store 旗标注入失败');
+    fs.writeFileSync(pagePath, pg);
+    const srcJs = path.join(dstAppDir, 'kh-src.js');
+    if (fs.existsSync(srcJs)) fs.writeFileSync(srcJs, '/* store: 影视仓解析器已剔除 */\n');
+    /* 静态剔除硬编码预置数组（运行时虽会清空，但审核会 grep 包内文本，字面量必须物理移除） */
+    const cfgPath = path.join(dstAppDir, 'kh-config.js');
+    let cf = fs.readFileSync(cfgPath, 'utf8');
+    for (const name of ['BUILTIN_SITES', 'SEED_SITES', 'SEED_WH_APIS', 'LIVE_CHANNELS']) {
+      cf = cf.replace(new RegExp('var ' + name + ' = \\[[\\s\\S]*?\\];'), 'var ' + name + ' = [];');
+    }
+    fs.writeFileSync(cfgPath, cf);
+    /* 隐藏面板里的示例接口文案也物理抹掉（审核 grep 不放过任何 api.php 字样） */
+    for (const p of pageTargets) {
+      let t = fs.readFileSync(p, 'utf8');
+      const b = t;
+      t = t.replace(/api\.php\/provide\/vod/g, '（接口示例已移除）').replace(/api\?ac=videolist/g, '（接口示例已移除）');
+      if (t !== b) fs.writeFileSync(p, t);
+    }
+    log('[store] 已清空预置源 JSON / 剔除 kh-src.js / 注入 window.KH_STORE=true / 静态移除预置数组');
+  }
+
   // 2) 主程序先签名，再打免安装 zip：否则 zip 里躺的是未签名 exe，解压后照样被 SmartScreen 拦。
   //    未配置证书时 scripts/sign-windows.js 自己写 skipped 且不阻断，报告见 dist/codesign.json。
   signFiles([path.join(UNPACKED, '鸿汇影桌面版.exe')], '免安装主程序');
@@ -311,10 +346,28 @@ try {
   //    否则 electron-builder 还原后的旧哈希会让"发布校验"误报不一致。
   /* desktop-setup.exe 是 x64 专属别名（服务端下载直链与 verify 都认它），
      arm64 只同步带后缀的文件，绝不能覆盖 x64 别名。 */
-  if (ARCH === 'x64') fs.copyFileSync(dest, path.join(DIST, 'desktop-setup.exe'));
-  fs.copyFileSync(dest, path.join(DIST, setupName));
-  fs.copyFileSync(zipPath, path.join(DIST, '鸿汇影桌面版 Setup ' + VER + SUFFIX + '.zip'));
-  log('[5/5] dist 根产物已同步为纯净版（体检/清单读真实哈希）');
+  if (!STORE && ARCH === 'x64') {
+    fs.copyFileSync(dest, path.join(DIST, 'desktop-setup.exe'));
+    /* 权威哈希随客户版一起落盘：desktop-setup.exe.sha256 此前只在 ship 阶段重算，
+       中间任何一步（archive-release / auto-release / 验收）读到的都还是上一版或开发端的旧值，
+       会直接导致"归档错包"或"拒绝归档"。这是 1.7.87 归档把开发端 exe 当成客户包的真实原因。 */
+    fs.writeFileSync(path.join(DIST, 'desktop-setup.exe.sha256'),
+      sha(dest) + '  desktop-setup.exe\n', 'utf8');
+  }
+  /* 商店变体不碰 dist 根别名 / release.json / archs / 指纹——那些是私发主版的单一真相，
+     store 只是附加变体，产物留在 dist/client 带 -store 后缀即可。 */
+  if (!STORE) {
+    fs.copyFileSync(dest, path.join(DIST, setupName));
+    fs.copyFileSync(zipPath, path.join(DIST, '鸿汇影桌面版 Setup ' + VER + SUFFIX + '.zip'));
+    const stamp = clientStamp.write(DIST, ARCH, VER, dest, zipPath);
+    log('[5/5] 客户版指纹已写：dist/client/.client-build-' + ARCH + '.json（Setup ' +
+        stamp.setup.size + ' B · ' + String(stamp.setup.sha256).slice(0, 12) + '…' +
+        (stamp.zip ? ' · zip ' + stamp.zip.size + ' B' : '') + '）');
+    syncManifests(dest);
+    log('[5/5] dist 根产物已同步为纯净版（体检/清单读真实哈希）');
+  } else {
+    log('[5/5] store 变体：产物仅留 dist/client（-store），不改动私发主版清单/别名');
+  }
 
   log('\n客户版产物目录: ' + OUT + '（dist 根别名亦为纯净版，与交付夹一致）');
 } finally {
@@ -329,4 +382,38 @@ try {
   }
   if (adminBaks.length) log('[恢复] 运维页已还原 ' + adminBaks.length + ' 个');
   log('[恢复] win-unpacked 入口已还原为开发端版本');
+}
+
+/* 清单跟随真实成品：auto-release 写 release.json / archs.json 时用的是「开发端 exe」，
+   客户版随后覆盖 desktop-setup.exe —— 两处记录就停在旧哈希，7/8 的下发一致性总检必然报不一致。
+   1.7.88 起客户版一落盘就把这两份清单按本次产物改写（x64 写 release.json 的 artifacts.desktop
+   与 archs.x64；arm64 只写 archs.arm64，绝不碰 x64 别名）。 */
+function syncManifests(dest) {
+  const size = fs.statSync(dest).size;
+  const hash = sha(dest);
+  const rf = path.join(DIST, 'release.json');
+  if (ARCH === 'x64' && fs.existsSync(rf)) {
+    try {
+      const rel = JSON.parse(fs.readFileSync(rf, 'utf8'));
+      rel.artifacts = rel.artifacts || {};
+      rel.artifacts.desktop = { file: 'desktop-setup.exe', size: size, sha256: hash };
+      fs.writeFileSync(rf, JSON.stringify(rel, null, 2) + '\n', 'utf8');
+      log('[5/5] release.json 已对准客户版：' + size + ' B · ' + hash.slice(0, 12) + '…');
+    } catch (e) { log('[警告] release.json 同步失败：' + (e && e.message)); }
+  }
+  const af = path.join(DIST, 'archs.json');
+  if (fs.existsSync(af)) {
+    try {
+      const a = JSON.parse(fs.readFileSync(af, 'utf8'));
+      const slot = (a.archs || {})[ARCH];
+      if (slot) {
+        slot.size = size;
+        slot.sha256 = hash;
+        slot.customer = true;
+        if (ARCH === 'x64') slot.file = 'desktop-setup.exe';
+        fs.writeFileSync(af, JSON.stringify(a, null, 2) + '\n', 'utf8');
+        log('[5/5] archs.json ' + ARCH + ' 已对准客户版：' + size + ' B · ' + hash.slice(0, 12) + '…');
+      }
+    } catch (e) { log('[警告] archs.json 同步失败：' + (e && e.message)); }
+  }
 }

@@ -61,6 +61,17 @@
           }
         } catch (e) { ok = false; }
         return P({ ok: ok });
+      },
+      /* 设备端「用外部播放器打开」：startAbility + video/* 交给系统视频应用（系统自己弹选择器）。
+         返回 false 时由前端如实提示，不假装成功。 */
+      play: function (url, mime) {
+        var ok = false;
+        try {
+          if (window.KaihongBridge && typeof window.KaihongBridge.openVideo === 'function') {
+            ok = !!window.KaihongBridge.openVideo(String(url || ''), String(mime || 'video/*'));
+          }
+        } catch (e) { ok = false; }
+        return P({ ok: ok, via: 'system-player', reason: ok ? '' : '系统里没有能打开该片源的播放器（或未获授权）' });
       }
     };
   }
@@ -144,5 +155,47 @@
   window.khFile = {
     saveText: function (name, text) { return callFile('saveText', String(name || 'honghub.txt'), String(text || '')); },
     openText: function (accept) { return callFile('openText', String(accept || '.json'), ''); }
+  };
+  /* 本机视频：前端 khOpenLocalVideo / khScanLibrary 依赖 window.khLocalFile.pick / scanDir，
+     设备端此前没实现，商店首页两个主按钮只能提示「仅桌面版可用」。
+     原生 pickVideo / pickVideos 同步返回 {ok,id}，结果经 __KH_LOCAL_EVT 回推。 */
+  var localWait = {};
+  window.__KH_LOCAL_EVT = function (evt) {
+    try {
+      if (!evt) { return; }
+      var cb = localWait[evt.id];
+      if (cb) { delete localWait[evt.id]; cb(evt); }
+    } catch (e) { /* 单个回调异常不影响其它 */ }
+  };
+  function callLocal(method) {
+    return new Promise(function (resolve) {
+      if (!has(method)) { resolve({ ok: false, reason: '当前设备没有本机文件桥' }); return; }
+      var done = false;
+      function finish(v) { if (!done) { done = true; resolve(v); } }
+      var id = 0;
+      try {
+        var r = parse(window.KHHap[method](), null);
+        if (!r || !r.ok) { finish({ ok: false, reason: (r && r.reason) || '本机文件桥调用失败' }); return; }
+        id = r.id;
+      } catch (e) {
+        finish({ ok: false, reason: (e && e.message) || String(e) });
+        return;
+      }
+      localWait[id] = function (evt) {
+        finish({
+          ok: !!evt.ok, canceled: evt.reason === '已取消', reason: evt.reason || '',
+          path: evt.path || '', url: evt.url || '', name: evt.name || '',
+          items: (evt.items && evt.items.length) ? evt.items : []
+        });
+      };
+      setTimeout(function () {
+        if (localWait[id]) { delete localWait[id]; }
+        finish({ ok: false, reason: '没有收到系统文件选择结果（可能被系统拦下或已超时）' });
+      }, 180000);
+    });
+  }
+  window.khLocalFile = {
+    pick: function () { return callLocal('pickVideo'); },
+    scanDir: function () { return callLocal('pickVideos'); }
   };
 })();

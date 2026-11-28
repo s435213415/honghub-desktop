@@ -27,6 +27,7 @@ function customMovie(url){
 }
 function openPlayer(m, startIndex){
   clearWatchdog();
+  try{ if(typeof khCancelAutoNext === 'function') khCancelAutoNext(false); }catch(e0){}
   state.movie = m;
   state.srcIndex = 0;
   state.lastSave = 0;
@@ -37,6 +38,9 @@ function openPlayer(m, startIndex){
   state.playStats = { startMs: Date.now(), firstFrameMs: 0, buffering: 0, downgrades: 0, sourceSwitches: 0 };
   state.seekDragging = false;
   var isLive = !!m.live;
+  /* 记住最后看的直播频道（台账 #161 / 清单 34）：供「启动进上次看的直播」使用；
+     只存频道 id，不存地址，换源后仍能命中同一个台。 */
+  if(isLive){ try{ if(m.id) setStore('kh_last_live', String(m.id)); }catch(e){} }
   els.player.classList.add('show');
   els.player.classList.toggle('live-mode', isLive);
   /* 播放器面板强调色跟随影片封面主色（仅本容器局部变量，不改全局主题；非法色值回退默认） */
@@ -74,6 +78,13 @@ function openPlayer(m, startIndex){
   renderPlayerAside(m);
   // 允许指定起始片源：备用线路自检直接指定源序号，不产生换源竞态
   loadSource(startIndex === undefined ? 0 : startIndex);
+  /* 1.7.91 #31：切片先清上一条本地字幕，再按片名自动挂（直播不挂） */
+  state.subToken = (state.subToken || 0) + 1;
+  try{ khClearSub(); }catch(e1){}
+  if(!isLive){
+    var _st = state.subToken;
+    setTimeout(function(){ if(state.subToken === _st){ try{ khAutoSubtitle(m); }catch(e2){} } }, 120);
+  }
   // 自定义网址与直播频道都不写入影片历史，避免污染「观看历史」与进度存储
   if(!m.custom && !m.live){
     var hist = getHistory().filter(function(id){
@@ -83,7 +94,15 @@ function openPlayer(m, startIndex){
       return true;
     });
     hist.unshift(m.id);
-    setStore('kh_hist', hist.slice(0, KH_HIST_CAP));
+    /* 1.7.90：历史保留条数/天数可配（清单 #43），写入时顺手打时间戳 */
+    try{ if(typeof khHistTouch === 'function') khHistTouch(m.id); }catch(e0){}
+    if(typeof khTrimHist === 'function') hist = khTrimHist(hist);
+    var _cap = (typeof khPref === 'function') ? khPref().histCap : KH_HIST_CAP;
+    setStore('kh_hist', hist.slice(0, _cap));
+  }
+  /* 1.7.91 #48：儿童模式时长用完的会话里，换片也只放行起画面再暂停，避免换片绕过上限 */
+  if(state.kidLocked && typeof khKidOn === 'function' && khKidOn()){
+    setTimeout(function(){ try{ els.video.pause(); }catch(e){} toast('儿童模式时长已用完，家长可在设置里关闭儿童模式后继续观看'); }, 400);
   }
 }
 function updateFavBtn(){
@@ -92,6 +111,34 @@ function updateFavBtn(){
   els.favBtn.textContent = fav ? '★ 已收藏' : '☆ 收藏';
 }
 /* 播放页右栏「相关推荐」：同分类优先，点卡片直接换片（直播与自定义网址不展示）。 */
+/* 1.7.111 播放工具：跳片头片尾（B）/ 字幕偏移（D）/ 媒体信息（F）。全部本机存储。 */
+function khSkipKey(m){ return (m && m.lib && m.group) ? ('g:' + m.group) : ('id:' + (m && m.id)); }
+function khSkipCfg(m){ try{ var all = getStore('kh_skip', {}); return all[khSkipKey(m)] || {}; }catch(e){ return {}; } }
+function khSkipSet(m, patch){ try{ var all = getStore('kh_skip', {}); var k = khSkipKey(m); all[k] = Object.assign(all[k] || {}, patch); setStore('kh_skip', all); }catch(e){} }
+function khSubOffset(){ try{ return Number(getStore('kh_sub_offset', 0)) || 0; }catch(e){ return 0; } }
+function khPlayerToolsHtml(m){
+  var sk = khSkipCfg(m);
+  var intro = sk.intro ? (Math.round(sk.intro) + 's') : '未设';
+  var outro = sk.outro ? (Math.round(sk.outro) + 's') : '未设';
+  var off = khSubOffset();
+  var info = (m.subtitle || '') + (m.ext ? ' · ' + String(m.ext).toUpperCase() : '');
+  return '<div class="aside-item" style="cursor:default;display:block;padding:10px">' +
+    '<div style="font-weight:700;margin-bottom:6px">🛠 播放工具</div>' +
+    '<div style="font-size:12px;color:#9aa6bd;margin-bottom:6px">片头 ' + intro + ' · 片尾 ' + outro + '（按当前进度记录）</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' +
+      '<button class="cbtn" data-act="skip-intro-set">设片头跳过点</button>' +
+      '<button class="cbtn" data-act="skip-outro-set">设片尾跳过点</button>' +
+      '<button class="cbtn" data-act="skip-clear">清除</button>' +
+    '</div>' +
+    '<div style="font-size:12px;color:#9aa6bd;margin-bottom:6px">字幕偏移 ' + (off >= 0 ? '+' : '') + off.toFixed(1) + 's</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">' +
+      '<button class="cbtn" data-act="sub-offset" data-d="-0.5">−0.5s</button>' +
+      '<button class="cbtn" data-act="sub-offset" data-d="0.5">+0.5s</button>' +
+      '<button class="cbtn" data-act="sub-offset" data-d="0">复位</button>' +
+    '</div>' +
+    (info ? '<div style="font-size:12px;color:#9aa6bd">ℹ ' + esc(info) + '</div>' : '') +
+  '</div>';
+}
 function renderPlayerAside(m){
   if(!els.asideWrap) return;
   if(!m || m.live || m.custom){
@@ -107,7 +154,7 @@ function renderPlayerAside(m){
     return;
   }
   els.asideWrap.style.display = '';
-  var html = '';
+  var html = khPlayerToolsHtml(m);
   for(var i=0;i<list.length;i++){
     var x = list[i];
     var xc1 = (x.color && /^#[0-9a-fA-F]{6}$/.test(x.color)) ? x.color : '#3B456B';
@@ -265,6 +312,77 @@ window.KaihongHls = {
   ensure: ensureHlsLib,
   supported: function(){ return !!(window.Hls && window.Hls.isSupported()); }
 };
+/* ---- 1.7.91 音轨与字幕（台账 #167 · 清单 #30 #31）----
+   音轨：hls.js 的多音轨里按 kh_audio_lang 选一条，只有单轨时不动；
+   字幕：桌面端有 khB8 才生效，读 kh_sub_dir 里与片名同名的字幕，SRT 现场转 VTT 挂成 TextTrack。 */
+function khPickAudio(hls){
+  try{
+    var p = (typeof khPref === 'function') ? khPref() : { audioLang: 'auto' };
+    var tracks = (hls && hls.audioTracks) || [];
+    if(!tracks.length) return;
+    var idx = window.KHPREF ? window.KHPREF.pickAudioTrack(tracks, p.audioLang) : -1;
+    if(idx >= 0 && idx < tracks.length && hls.audioTrack !== idx){
+      hls.audioTrack = idx;
+      try{ var t = tracks[idx]; setDiag('audio', String((t && (t.lang || t.name)) || idx)); }catch(e){}
+    }
+  }catch(e){}
+}
+function khAttachSub(vtt, label){
+  try{
+    var v = els.video;
+    if(!v || typeof v.appendChild !== 'function') return;
+    var old = v.querySelector('track[data-kh-auto]');
+    if(old){ try{ var ou = old.getAttribute('src'); if(ou && ou.indexOf('blob:') === 0) URL.revokeObjectURL(ou); }catch(e0){} old.remove(); }
+    var blob = new Blob([String(vtt)], { type: 'text/vtt' });
+    var url = URL.createObjectURL(blob);
+    var tr = document.createElement('track');
+    tr.kind = 'subtitles';
+    tr.label = label || '本地字幕';
+    tr.srclang = 'zh';
+    tr.src = url;
+    tr.setAttribute('data-kh-auto', '1');
+    tr.setAttribute('default', '');
+    v.appendChild(tr);
+    try{
+      var tt = v.textTracks && v.textTracks[v.textTracks.length - 1];
+      if(tt) tt.mode = 'showing';
+    }catch(e1){}
+    try{ setDiag('sub', String(label || 'auto')); }catch(e2){}
+  }catch(e){}
+}
+function khClearSub(){
+  try{
+    var v = els.video;
+    var old = v && v.querySelector('track[data-kh-auto]');
+    if(old){ try{ var ou = old.getAttribute('src'); if(ou && ou.indexOf('blob:') === 0) URL.revokeObjectURL(ou); }catch(e0){} old.remove(); }
+  }catch(e){}
+}
+function khAutoSubtitle(m){
+  try{
+    if(!window.khB8 || typeof window.khB8.subs !== 'function') return;
+    var p = (typeof khPref === 'function') ? khPref() : { subAuto: 1, subDir: '' };
+    if(!p.subAuto) return;
+    var title = String((m && m.title) || '').trim();
+    if(!title) return;
+    var token = state.subToken;
+    window.khB8.subs(String(p.subDir || '')).then(function(r){
+      if(token !== state.subToken) return;
+      if(!r || !r.ok || !r.files || !r.files.length) return;
+      var hit = window.KHPREF ? window.KHPREF.pickSubtitle(r.files, title) : '';
+      if(!hit) return;
+      var file = null;
+      for(var i = 0; i < r.files.length; i++){ if(r.files[i] && r.files[i].name === hit){ file = r.files[i]; break; } }
+      if(!file) return;
+      if(/\.(ass|ssa)$/i.test(file.name)){ toast('找到字幕 ' + file.name + '；ASS 暂不自动挂载，请用 SRT / VTT'); return; }
+      return window.khB8.subRead(file.path).then(function(c){
+        if(token !== state.subToken || !c || !c.ok || typeof c.text !== 'string') return;
+        var body = /\.vtt$/i.test(file.name) ? c.text : (window.KHPREF ? window.KHPREF.srtToVtt(c.text) : c.text);
+        khAttachSub(body, file.name);
+      });
+    }).catch(function(){});
+  }catch(e){}
+}
+
 function setupHls(url){
   var v = els.video;
   var token = ++state.hlsToken;
@@ -373,6 +491,18 @@ function khHlsConfig(p){
   if(KH_PLAYER_OVERRIDE){
     for(var k in KH_PLAYER_OVERRIDE) if(Object.prototype.hasOwnProperty.call(KH_PLAYER_OVERRIDE,k) && KH_PLAYER_OVERRIDE[k] !== null) c[k] = KH_PLAYER_OVERRIDE[k];
   }
+  /* 直播默认清晰度（台账 #161 / 清单 34）：只对直播生效，点播仍按内存档位自动；
+     「优先高清」放开档位上限，「优先流畅」从最低档起步并收紧升档，省流量也稳。 */
+  try{
+    var liveNow = !!(state && state.movie && state.movie.live);
+    var lq = 'auto';
+    if (liveNow && window.KHP2 && typeof khP2Cfg === 'function') lq = window.KHP2.liveQuality(khP2Cfg().liveQuality);
+    if (liveNow && lq === 'hd') { c.startLevel = -1; c.autoLevelCapping = -1; }
+    else if (liveNow && lq === 'sd') {
+      c.startLevel = 0; c.autoLevelCapping = 0;
+      c.abrBandWidthFactor = 0.7; c.abrBandWidthUpFactor = 0.5;
+    }
+  }catch(e){}
   return c;
 }
 window.KHPlayer = {
@@ -417,7 +547,12 @@ function startHls(url){
   hls.on(window.Hls.Events.MANIFEST_PARSED, function(){
     try { if(isFinite(cfg.autoLevelCapping) && cfg.autoLevelCapping >= 0) hls.autoLevelCapping = cfg.autoLevelCapping; } catch(e){}
     try { khRestoreQuality(hls); } catch(e){}
+    try { khPickAudio(hls); } catch(e){}          /* 1.7.91 #30：多音轨按首选语言挑一条 */
     playVideo();
+  });
+  hls.on(window.Hls.Events.AUDIO_TRACKS_UPDATED, function(){
+    if(state.hls !== hls) return;
+    try { khPickAudio(hls); } catch(e){}
   });
   hls.on(window.Hls.Events.ERROR, function(_, data){
     if(state.hls !== hls) return;
@@ -461,7 +596,7 @@ function startHls(url){
         khNotifyAutoDown();
       }
     }catch(e){}
-    if(state.stalls >= 3){ destroyHls(); nextSource(); }
+    if(state.stalls >= khLiveStallLimit()){ destroyHls(); nextSource(); }
   };
   state.hlsStallHandler = onStall;
   try { els.video.addEventListener('waiting', onStall); els.video.addEventListener('stalled', onStall); }catch(e){}
@@ -477,10 +612,22 @@ function clearWatchdog(){
   if(state.watchdogTimer){ clearTimeout(state.watchdogTimer); state.watchdogTimer = 0; }
   state.watchdogToken++;
 }
+/* 直播切源阈值（1.7.90 / 清单 #33）：卡顿几次切下一路、起播多久算超时，都允许本机调；
+   不填就走设备档位（khTune），保持旧行为 */
+function khLiveStallLimit(){
+  var v = Number(getStore('kh_stall_limit', 3));
+  return (v >= 1 && v <= 10) ? Math.round(v) : 3;
+}
+function khLiveWatchMs(){
+  var v = Number(getStore('kh_watchdog_ms', 0));
+  if(v >= 3000 && v <= 20000) return Math.round(v);
+  try{ if(typeof khTune === 'function') return khTune().watchdogMs; }catch(e){}
+  return 6500;
+}
 function armWatchdog(s){
   clearWatchdog();
   var token = ++state.watchdogToken;
-  var limit = s && s.local ? 4000 : khTune().watchdogMs;
+  var limit = s && s.local ? 4000 : khLiveWatchMs();
   state.watchdogTimer = setTimeout(function(){
     if(!state.movie || token !== state.watchdogToken) return;
     var v = els.video;
@@ -497,15 +644,40 @@ function armWatchdog(s){
 function failReasonText(){
   var v = els.video;
   var code = state.lastVideoErr || (v && v.error ? v.error.code : 0);
-  if(typeof navigator !== 'undefined' && navigator.onLine === false) return 'E-OFFLINE · 本机已断网：先恢复网络连接，再点重试';
-  if(code === 1) return 'E-ABORT · 播放被中断（页面切换或线路中止）：点重试继续播放';
-  if(code === 2) return 'E-NET · 网络错误（线路连不上或被中断）：点重试，或换一条线路 / 换个频道';
-  if(code === 3) return 'E-DECODE · 解码失败（本机不支持该编码）：点重试会自动尝试其他线路；低配设备建议看标清源';
-  if(code === 4) return 'E-SRC · 片源无效或格式不支持（404 / 非视频内容）：这条线路大概率已失效，建议换台并等中枢换源';
-  if(state.lastHlsErr === 'networkError') return 'E-HLS-NET · 直播分片拉取失败：源站不稳定，点重试或换台';
-  if(state.lastHlsErr === 'mediaError') return 'E-HLS-MEDIA · 分片解码异常：点重试自动降档恢复';
-  if(state.watchdogFired > 0) return 'E-TIMEOUT · 全部线路加载超时：网络慢或源站限速，点重试，或稍后再看';
-  return 'E-UNKNOWN · 全部线路失败：点重试；反复失败请换台，中枢会自动收到失败上报并换源';
+  var r = '';
+  if(typeof navigator !== 'undefined' && navigator.onLine === false) r = 'E-OFFLINE · 本机已断网：先恢复网络连接，再点重试';
+  else if(code === 1) r = 'E-ABORT · 播放被中断（页面切换或线路中止）：点重试继续播放';
+  else if(code === 2) r = 'E-NET · 网络错误（线路连不上或被中断）：点重试，或换一条线路 / 换个频道';
+  else if(code === 3) r = 'E-DECODE · 解码失败（本机不支持该编码）：点重试会自动尝试其他线路；低配设备建议看标清源';
+  else if(code === 4) r = 'E-SRC · 片源无效或格式不支持（404 / 非视频内容）：这条线路大概率已失效，建议换台并等中枢换源';
+  else if(state.lastHlsErr === 'networkError') r = 'E-HLS-NET · 直播分片拉取失败：源站不稳定，点重试或换台';
+  else if(state.lastHlsErr === 'mediaError') r = 'E-HLS-MEDIA · 分片解码异常：点重试自动降档恢复';
+  else if(state.watchdogFired > 0) r = 'E-TIMEOUT · 全部线路加载超时：网络慢或源站限速，点重试，或稍后再看';
+  else r = 'E-UNKNOWN · 全部线路失败：点重试；反复失败请换台，中枢会自动收到失败上报并换源';
+  try{ khPlayLog(code, r, v); }catch(e){}
+  return r;
+}
+/* 1.7.104：播放失败事件环形日志（近 60 条，存 kh_play_log）
+   设备端没有 hdc 抓日志，这份记录是唯一能带回来的现场：错误码 + 当前地址 + 编码判定。
+   同一原因 5 秒内只记一条，避免重试风暴把缓冲冲光。 */
+function khPlayLog(code, reason, v){
+  try{
+    var arr = getStore('kh_play_log', []);
+    if(!arr || typeof arr.length !== 'number') arr = [];
+    var now = Date.now();
+    var src = '';
+    try{ src = (v && (v.currentSrc || v.src)) || ''; }catch(e){}
+    if(arr.length && (now - (arr[0].at || 0) < 5000) && arr[0].reason === reason) return;
+    arr.unshift({
+      at: now, code: (code || 0), reason: reason,
+      src: String(src).slice(0, 240),
+      hls: state.lastHlsErr || '',
+      watchdog: state.watchdogFired || 0,
+      online: (typeof navigator !== 'undefined' ? navigator.onLine : null)
+    });
+    if(arr.length > 60) arr = arr.slice(0, 60);
+    setStore('kh_play_log', arr);
+  }catch(e){}
 }
 /* 续播二选一：有历史进度时先问继续还是从头，不直接跳进度 */
 function showResumePrompt(saved){
@@ -609,6 +781,22 @@ function seekToPct(pct){
   v.currentTime = Math.max(0, Math.min(v.duration - 0.2, v.duration * pct));
   syncSeek();
 }
+/* 儿童模式时长上限（1.7.91 #48）：按真实播放秒数累计，到点暂停并提示。
+   kh_kid_min 为 0 表示不限；只在儿童模式开启时生效，切换影片不清零（一次会话内累计）。 */
+function khKidWatch(v){
+  try{
+    if(typeof khKidOn !== 'function' || !khKidOn()) return;
+    var min = Number((typeof khPref === 'function' ? khPref().kidMin : 0) || 0);
+    if(!(min > 0)) return;
+    state.kidSec = (state.kidSec || 0) + 1;
+    if(state.kidSec >= min * 60 && !state.kidLocked){
+      state.kidLocked = true;
+      try{ v.pause(); }catch(e){}
+      toast('儿童模式已到时长上限（' + min + ' 分钟），已暂停；家长可在设置里调整或关闭儿童模式');
+      try{ if(typeof khNotifyPush === 'function') khNotifyPush('儿童模式到时', '已暂停播放，本次观看达 ' + min + ' 分钟', 'other'); }catch(e2){}
+    }
+  }catch(e){}
+}
 function syncSeek(){
   var v = els.video;
   var d = isFinite(v.duration) ? v.duration : 0;
@@ -616,6 +804,7 @@ function syncSeek(){
     els.seek.value = String(d > 0 ? (v.currentTime / d) * 100 : 0);
   }
   els.timeText.textContent = fmtTime(v.currentTime) + ' / ' + fmtTime(d);
+  khKidWatch(v);
   if(d > 0 && isFinite(d) && v.buffered && v.buffered.length){
     var bufEnd = v.buffered.end(v.buffered.length - 1);
     var bufPct = Math.min(100, Math.round(bufEnd / d * 100));

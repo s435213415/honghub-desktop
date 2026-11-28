@@ -327,12 +327,29 @@ if (!NO_DESKTOP) {
 }
 
 /* 4.1) 终版归档刷新：流水线后段（签名/重出包/交付）可能改写 exe 字节，
-   交付前把回滚归档与索引对准最终成品，避免回滚装到中间产物 */
+   交付前把回滚归档与索引对准最终成品，避免回滚装到中间产物。
+   1.7.87 起改为硬门禁：归档失败或产物一致性总检失败，整条发版链中止——
+   宁可这版不出包，也不让客户拿回滚装到开发端包。 */
+let fatal = null;
 try {
   const ar = require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'archive-release.js')], { cwd: ROOT, encoding: 'utf8' });
-  if (ar.status === 0) log('  归档索引已对准终版成品');
-  else log('  ⚠ 终版归档刷新失败：' + String(ar.stderr || ar.stdout || '').trim().slice(0, 160));
-} catch (e) { log('  ⚠ 终版归档刷新异常：' + e.message); }
+  if (ar.status !== 0) fatal = '终版归档刷新失败（exit=' + ar.status + '）：' + String(ar.stderr || ar.stdout || '').trim().slice(0, 200);
+} catch (e) { fatal = '终版归档刷新异常：' + e.message; }
+
+if (!fatal) {
+  try {
+    const r = require(path.join(__dirname, 'check-artifacts.js')).run({ quiet: true });
+    if (r.code) fatal = '产物一致性总检未通过（' + r.fails.length + ' 项失败）：' + r.fails.slice(0, 3).join('；');
+  } catch (e) { fatal = '产物一致性总检无法执行：' + e.message; }
+}
+
+if (fatal) {
+  log('  ✗ ' + fatal);
+  log('  ✗ 出包链已中止：不确定的包不外发，不写回滚索引。');
+  if (!DRY) process.exit(1);
+} else {
+  log('  归档索引已对准终版成品，产物一致性总检通过');
+}
 
 log('[4/4] 完成');
 log('  版本 v' + VER + ' · exe ' + nf(bytes.exe) + ' B · hap ' + nf(bytes.hap) + ' B · bin ' + nf(bytes.bin) + ' B');

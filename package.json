@@ -1,6 +1,6 @@
 {
   "name": "honghub-desktop",
-  "version": "1.7.85",
+  "version": "1.7.114",
   "description": "鸿汇影 · 免费桌面版：双端隔离（开发端运维面板 / 客户端纯净影视页）+ 远程问题自动收集 + 实时更新 + 可扩展功能 + 一键自愈 + 换版免人工",
   "main": "electron-main.js",
   "scripts": {
@@ -24,6 +24,11 @@
     "signing:connect:check": "node scripts/signing-connect.js --check",
     "signing:connect:selftest-cert": "node scripts/signing-connect.js --make-selftest",
     "hap:sign": "node scripts/hap-sign.js",
+    "hap:cli": "node scripts/hap-cli.js",
+    "hap:status": "node scripts/hap-cli.js status",
+    "hap:build": "node scripts/hap-cli.js build all",
+    "hap:verify": "node scripts/hap-cli.js verify",
+    "hap:release": "node scripts/hap-cli.js release",
     "smoke:hap": "node scripts/smoke-hap.js",
     "hap:watch": "node scripts/hap-watch.js",
     "smoke:ui": "node scripts/smoke-ui.js",
@@ -81,7 +86,10 @@
     "productName": "鸿汇影桌面版",
     "asar": false,
     "compression": "maximum",
-    "electronLanguages": ["zh-CN", "en-US"],
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ],
     "icon": "assets/icon.ico",
     "files": [
       "app/**/*",

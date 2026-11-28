@@ -30,7 +30,17 @@ contextBridge.exposeInMainWorld('khCast', {
 
 /* 页面匿名 ID（1.7.85）：主进程崩溃上报复用同一 ID，崩溃与页面错误才能按设备串起来。
    纯网页 / HAP 环境没有这个桥，前端跳过。 */
-contextBridge.exposeInMainWorld('khDeviceId', {
+/* 局域网访问开关（1.7.104）：默认关闭，只绑本机；纯网页 / HAP 环境下为 undefined。 */
+contextBridge.exposeInMainWorld('khLanMode', {
+  get: () => ipcRenderer.invoke('kh:lan-mode'),
+  set: (open) => ipcRenderer.invoke('kh:lan-mode', { set: !!open })
+});
+
+/* 注意：这里不能叫 khDeviceId。页面脚本 kh-core.js 有一层同名函数 khDeviceId()，
+   contextBridge 暴露的属性在页面世界是不可配置的，两者相撞会让 kh-core.js 整个脚本
+   在实例化阶段报 "Identifier 'khDeviceId' has already been declared" 而一行都不执行，
+   结果就是窗口白屏（1.7.104 引入，1.7.106 才发现）。故改名为 khDeviceIdBridge。 */
+contextBridge.exposeInMainWorld('khDeviceIdBridge', {
   set: (id) => ipcRenderer.invoke('kh:device-id-set', id)
 });
 
@@ -117,7 +127,8 @@ contextBridge.exposeInMainWorld('khPlayHdr', {
 /* 本机视频（1.7.82）：打开文件对话框 + 路径转 file:// 地址；不做系统文件关联。 */
 contextBridge.exposeInMainWorld('khLocalFile', {
   pick: () => ipcRenderer.invoke('kh:pick-video'),
-  toUrl: (p) => ipcRenderer.invoke('kh:file-path-to-url', p)
+  toUrl: (p) => ipcRenderer.invoke('kh:file-path-to-url', p),
+  scanDir: () => ipcRenderer.invoke('kh:scan-media-dir')
 });
 
 /* 一键加载影视仓配置（1.7.85）：选本机 .json/.txt 配置文件读回文本，内容由用户确认导入。 */
@@ -125,8 +136,73 @@ contextBridge.exposeInMainWorld('khConfigFile', {
   pick: () => ipcRenderer.invoke('kh:pick-config')
 });
 
+/* 备份落盘（1.7.88 · 台账 #160）：自动备份要真写盘，而不是每次弹下载框。
+   save 传 {text,name,dir,keep,keepPrefix}，返回 {ok,path,dir,size}；纯网页 / HAP 环境没有这个桥。 */
+contextBridge.exposeInMainWorld('khBackupFile', {
+  save: (arg) => ipcRenderer.invoke('kh:backup-save', arg || {}),
+  pickDir: () => ipcRenderer.invoke('kh:backup-dir-pick'),
+  openDir: (arg) => ipcRenderer.invoke('kh:backup-open-dir', arg || {}),
+  defaultDir: () => ipcRenderer.invoke('kh:backup-default-dir')
+});
+
 /* 网络代理（1.7.82）：跟随系统 / 直连 / 手动 host:port。 */
 contextBridge.exposeInMainWorld('khProxy', {
   get: () => ipcRenderer.invoke('kh:proxy-get'),
   set: (arg) => ipcRenderer.invoke('kh:proxy-set', arg || {})
+});
+
+/* 客户版静默升级（1.7.95 · P1-07 / P1-08）：只暴露状态、模式与手动检查三件事，
+   真正的下载 / 校验 / 静默安装在主进程，前端拿不到也不该拿安装包路径以外的能力。 */
+contextBridge.exposeInMainWorld('khAutoUpdate', {
+  /** @returns Promise<{ok:boolean, state?:object, current?:string, devBuild?:boolean}> */
+  get: () => ipcRenderer.invoke('kh:auto-update-get'),
+  /** @param {{mode:'off'|'check'|'download'|'install'}} arg */
+  setMode: (arg) => ipcRenderer.invoke('kh:auto-update-mode', arg || {}),
+  /** 手动检查一次：只下载不安装 @returns Promise<{ok:boolean, plan?:object, reason?:string}> */
+  run: () => ipcRenderer.invoke('kh:auto-update-run'),
+  /** 下载就绪事件（kh:auto-update），返回取消订阅函数 */
+  onEvent: (cb) => {
+    if (typeof cb !== 'function') return function () {};
+    const h = (ev, payload) => { try { cb(payload || {}); } catch (e) {} };
+    ipcRenderer.on('kh:auto-update', h);
+    return function () { try { ipcRenderer.removeListener('kh:auto-update', h); } catch (e) {} };
+  }
+});
+
+/* 静默覆盖安装（1.7.86）：安装包先由服务端下载并校验 SHA256，拿到绝对路径后交给主进程。
+   主进程会退出自身 → setup /S 覆盖装到当前目录 → 重新拉起。免安装 zip 目录会拒绝并说明原因。 */
+contextBridge.exposeInMainWorld('khUpdater', {
+  /** @param {{file:string}} arg @returns Promise<{ok:boolean, dir?:string, reason?:string}> */
+  installSilent: (arg) => ipcRenderer.invoke('kh:install-silent', arg || {})
+});
+
+/* B 档本机能力（1.7.91 · 台账 #167）：音轨/字幕/通知策略/快捷键/外部播放器/置顶画中画。
+   纯网页 / HAP 环境下 window.khB8 为 undefined，前端据此隐藏「高级与本地能力」并标注不支持。 */
+contextBridge.exposeInMainWorld('khB8', {
+  /** @returns Promise<{ok:boolean, b8:{hotkeys,player,notify,top}, platform?:string}> */
+  get: () => ipcRenderer.invoke('kh:b8-get'),
+  /** @param {{hotkeys?:object, player?:{exe:string,args:string}, notify?:string, top?:boolean}} arg */
+  set: (arg) => ipcRenderer.invoke('kh:b8-set', arg || {}),
+  /** kind: 'exe' | 'dir' @returns Promise<{ok:boolean, path?:string, canceled?:boolean}> */
+  pick: (kind) => ipcRenderer.invoke('kh:b8-pick', { kind: kind || 'exe' }),
+  /** @returns Promise<{ok:boolean, dir?:string, files?:[{name,path,size}]}> */
+  subs: (dir) => ipcRenderer.invoke('kh:b8-subs', { dir: dir || '' }),
+  /** @returns Promise<{ok:boolean, text?:string, name?:string}> */
+  subRead: (p) => ipcRenderer.invoke('kh:b8-sub-read', { path: p }),
+  /** 1.7.94 #78 读外部主题目录里的 *.json @returns Promise<{ok:boolean, dir?:string, files?:[{name,text}]}> */
+  themes: (dir) => ipcRenderer.invoke('kh:b8-themes', { dir: dir || '' }),
+  /** 1.7.94 #37 网络族与 DNS @returns Promise<{ok:boolean, net:{mode,dns}, applied:{disableIpv6}}> */
+  netGet: () => ipcRenderer.invoke('kh:b8-net-get'),
+  /** @param {{mode:string, dns:string[]}} a @returns Promise<{ok:boolean, net:object, restart:boolean}> */
+  netSet: (a) => ipcRenderer.invoke('kh:b8-net-set', a || {}),
+  /** @param {{top?:boolean, pip?:boolean}} arg @returns Promise<{ok:boolean, top?:boolean, pip?:boolean}> */
+  win: (arg) => ipcRenderer.invoke('kh:b8-win', arg || {}),
+  /* 1.7.94 #75 跨进程一致：主进程配置（b8）被另一处改动（另一个窗口 / 托盘 / 主进程自己）后广播，
+     前端只重读并套用到界面，不再回推，避免两侧互相覆盖成死循环。返回取消订阅函数。 */
+  onChanged: (cb) => {
+    if (typeof cb !== 'function') return function () {};
+    const h = (ev, payload) => { try { cb(payload || {}); } catch (e) {} };
+    ipcRenderer.on('kh:b8-changed', h);
+    return function () { try { ipcRenderer.removeListener('kh:b8-changed', h); } catch (e) {} };
+  }
 });

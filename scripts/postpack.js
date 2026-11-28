@@ -49,6 +49,23 @@ if (!setupPath) {
   if (found) setupPath = path.join(DIST, found.n);
 }
 if (!setupPath) { console.error('未找到安装包 Setup.exe，已阻断'); process.exit(1); }
+/* 交付别名与 release.json 的 desktop 必须是**客户版**：dist 根的 Setup 是开发端（含运维面板），
+   1.7.88 首次发版就栽在这里 —— 清单写成开发端哈希，7/8 一致性总检与实物（客户版）对不上。
+   同版本客户版指纹存在时一律以指纹为准，指纹与实物不符直接阻断，不猜。 */
+let clientSetupPath = null;
+try {
+  const csMod = require(path.join(__dirname, 'lib', 'client-stamp'));
+  const cs = csMod.read(DIST, 'x64');
+  if (cs && cs.setup && String(cs.setup.file || '').indexOf(String(VERSION)) >= 0) {
+    const cand = path.join(DIST, 'client', cs.setup.file);
+    if (fs.existsSync(cand)) {
+      const v = csMod.verify(cs, cand);
+      if (!v.ok) { console.error('客户版指纹与实物不符：' + v.reason + '（先重跑 scripts/build-client-exe.js）'); process.exit(1); }
+      clientSetupPath = cand;
+    }
+  }
+} catch (e) { /* 指纹模块缺失时退回开发端逻辑 */ }
+if (clientSetupPath) setupPath = clientSetupPath;
 const how = alias(setupPath, 'desktop-setup.exe');
 const setupName = path.basename(setupPath);
 const setupSha = shaOf(setupPath);
@@ -62,8 +79,9 @@ console.log('  [校验] desktop sha256 ' + setupSha.slice(0, 24) + '…');
 let RELEASE_CODE = 0;
 try { RELEASE_CODE = Number(JSON.parse(fs.readFileSync(path.join(ROOT, 'server', 'manifest.json'), 'utf8')).release.latest.versionCode); } catch (e) {}
 const zipRead = require('./lib/zip-read');
-function freshHap(p) {
-  if (!fs.existsSync(p)) return false;
+/* 抽一层「包内事实」：版本号与适配标记分开返回，沿用判定与新鲜判定都要用，避免两处各写一套正则。 */
+function hapMeta(p) {
+  if (!fs.existsSync(p)) return null;
   /* 包内前端目录以实际壳包为准：v1.7.8 起统一为 resources/rawfile/www/，
      早期壳包曾用 movie-site，这里两个都试，避免路径变更把新鲜度判定打哑。
      1.7.72 起前端模块化：KH_APP_CODE 在 kh-app.js、KH_HARMONY 也在模块里，必须合并判定。 */
@@ -74,7 +92,11 @@ function freshHap(p) {
   }
   const text = parts.join('\n');
   const m = text.match(/var KH_APP_CODE\s*=\s*(\d+)/);
-  return !!(m && Number(m[1]) === RELEASE_CODE && text.indexOf('KH_HARMONY') >= 0);
+  return { code: m ? Number(m[1]) : 0, hasHarmony: text.indexOf('KH_HARMONY') >= 0 };
+}
+function freshHap(p) {
+  const meta = hapMeta(p);
+  return !!(meta && meta.code === RELEASE_CODE && meta.hasHarmony);
 }
 const buildStamp = (function () { try { return JSON.parse(fs.readFileSync(path.join(DIST, '.hap-build.json'), 'utf8')); } catch (e) { return null; } })();
 const builtSha = buildStamp && buildStamp.sha256;
@@ -88,15 +110,27 @@ const candidates = [
   path.join(os.homedir(), 'Desktop', 'HongHubMovie.hap')
 ];
 // 同版本重复签名会改变 sha256，所以「新鲜」必须由本次构建指纹判定，不能只看包内版本号
-let hap = null;
+const HAP_UNCHANGED = process.env.KH_HAP_UNCHANGED === '1';
+let hap = null, hapReused = false, hapVersion = 0;
 if (builtSha && (stampCode === 0 || stampCode === RELEASE_CODE)) {
   hap = candidates.find(p => freshHap(p) && shaOf(p) === builtSha) || null;
 }
+/* 声明沿用（oneclick --skip-hap）：接受「真实存在 + 结构完整 + 包内版本明确不是本次发版」的旧包，
+   但必须把实际版本记下来。沿用与新签在清单里必须可区分，否则就是伪装成新产物。 */
+if (!hap && HAP_UNCHANGED) {
+  const pick = candidates
+    .map(p => ({ p, meta: hapMeta(p) }))
+    .filter(x => x.meta && x.meta.hasHarmony && x.meta.code > 0 && x.meta.code !== RELEASE_CODE)
+    .sort((a, b) => b.meta.code - a.meta.code)[0];
+  if (pick) { hap = pick.p; hapReused = true; hapVersion = pick.meta.code; }
+}
 if (!hap) {
-  console.error('未找到与本次构建指纹一致的新鲜 HAP，已阻断（请先 npm run hap:sign，再重跑 pack）');
+  console.error('未找到与本次构建指纹一致的新鲜 HAP，已阻断（请先 npm run hap:sign，再重跑 pack）' +
+    (HAP_UNCHANGED ? '｜已声明沿用，但 dist 与签名源里没有包内版本明确的旧包' : ''));
   process.exit(1);
 }
-console.log('  [新鲜度] 已匹配本次构建指纹 ' + builtSha.slice(0, 16) + '…');
+if (hapReused) console.log('  [沿用] HAP #' + hapVersion + ' 未重签（本次发版 #' + RELEASE_CODE + '）· 清单记 hapReused=true');
+else console.log('  [新鲜度] 已匹配本次构建指纹 ' + builtSha.slice(0, 16) + '…');
 let hapSha = '';
 {
   const buf = fs.readFileSync(hap);
@@ -106,7 +140,8 @@ let hapSha = '';
   hapSha = crypto.createHash('sha256').update(buf).digest('hex');
   writeSha('HongHubMovie.hap', hapSha);
   writeSha('honghub-harmony.hap', hapSha);
-  console.log('  [开鸿] ' + path.basename(hap) + ' → honghub-harmony.hap (' + buf.length + ' B · 新鲜度 #' + RELEASE_CODE + ')');
+  console.log('  [开鸿] ' + path.basename(hap) + ' → honghub-harmony.hap (' + buf.length + ' B · 包内 #' +
+    (hapReused ? hapVersion : RELEASE_CODE) + (hapReused ? ' · 沿用未重签' : '') + ')');
   console.log('  [校验] hap sha256 ' + hapSha.slice(0, 24) + '…');
 }
 
@@ -122,9 +157,18 @@ const releaseInfo = {
   versionCode: latest.versionCode || null,
   publishedAt: latest.publishedAt || null,
   buildAt: new Date().toISOString(),
+  /* hapReused=true 表示本次未重签、沿用已有包；hapVersion 是其包内真实版本（≠ versionCode 即为沿用）。 */
+  hapReused: hapReused,
+  hapVersion: hapReused ? hapVersion : (RELEASE_CODE || null),
   artifacts: {
     desktop: { file: 'desktop-setup.exe', size: fs.statSync(setupPath).size, sha256: setupSha },
-    hap: hap ? { file: 'honghub-harmony.hap', size: fs.statSync(path.join(DIST, 'honghub-harmony.hap')).size, sha256: hapSha } : null
+    hap: hap ? {
+      file: 'honghub-harmony.hap',
+      size: fs.statSync(path.join(DIST, 'honghub-harmony.hap')).size,
+      sha256: hapSha,
+      versionCode: hapReused ? hapVersion : RELEASE_CODE,
+      reused: hapReused
+    } : null
   },
   features: {
     versionName: stamp && stamp.versionName,

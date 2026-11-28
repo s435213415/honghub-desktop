@@ -315,6 +315,22 @@ function req(pathname, method, body, extraHeaders, timeoutMs) {
     else ok('页面运行时冒烟通过（' + rep.mode + ' · data-act ' + rep.dataActs + ' · 正文 ' + (rep.dom ? rep.dom.text : '-') + ' 字）');
   } catch (e) { bad('页面冒烟执行异常：' + e.message); }
 
+  // 6) 真窗口冒烟（1.7.107）：真启客户免安装包（走完整 preload 链）+ CDP 断言。
+  //    浏览器模式（第 5 步）不经 preload，挡不住 contextBridge 与页面世界同名冲突这类白屏
+  //    （1.7.104 khDeviceId 事故：客户版白屏而 browser 冒烟全绿）。这一步真启 packaged exe 必经过 preload。
+  try {
+    const r = await new Promise((resolve) => {
+      const p = spawn(process.execPath, [at('scripts', 'smoke-desktop.js')], { cwd: ROOT, stdio: 'ignore' });
+      const timer = setTimeout(() => { try { p.kill(); } catch (e) {} resolve(-1); }, 200000);
+      p.on('exit', (code) => { clearTimeout(timer); resolve(code); });
+      p.on('error', () => { clearTimeout(timer); resolve(-1); });
+    });
+    const rep = j(path.join(DIST, 'desktop-smoke.json'), null);
+    if (r !== 0) bad('真窗口冒烟未通过（客户版白屏 / 核心函数未加载 / 上报地址未预置 / Uncaught），见 dist/desktop-smoke.json');
+    else if (!rep || !rep.ok) bad('真窗口冒烟报告不达标');
+    else ok('真窗口冒烟通过（' + (rep.dom ? '正文 ' + rep.dom.body + ' 字 · 核心函数 ' + (rep.dom.fns || []).length + '/3 · 上报地址' + (rep.dom.url ? '已预置' : '空') + ' · enabled=' + rep.dom.enabled : '-') + '）');
+  } catch (e) { bad('真窗口冒烟执行异常：' + e.message); }
+
   console.log('\n' + (errs.length ? '交付验收未通过（' + errs.length + ' 项）' : '交付验收全部通过'));
   process.exit(errs.length ? 1 : 0);
 })();

@@ -25,7 +25,8 @@ OFFICIAL = os.path.join(HERE, "keys-official")   # OpenHarmony 官方证书链�
 OFFICIAL_PWD = "123456"                          # SDK OpenHarmony.p12 公开口令
 BUNDLE_CLIENT = "com.honghub.harmony"
 BUNDLE_DEV = "com.honghub.harmony.dev"   # 开发端独立 bundle：与客户版并存，装一个顶不掉另一个
-BUNDLE = BUNDLE_CLIENT                    # 由下方 IS_DEV 切换成 dev 值
+BUNDLE_STORE = "com.honghub.store"       # 商店纯净版独立 bundle：与私发版并存，上架身份干净
+BUNDLE = BUNDLE_CLIENT                    # 由下方变体切换成 dev / store 值
 CHAIN_TAG = "official-openharmony"
 DIST = os.path.join(ROOT, "dist")
 # 壳包来源：优先 hvigor 刚编出来的未签名包（ArkTS 改动只有重新编译才生效），
@@ -44,12 +45,16 @@ TARGET_API = int(os.environ.get("KH_HAP_TARGET_API") or 14)
 # 全部与客户版分开，绝不覆盖客户 HongHubMovie.hap；默认（client）行为与现状一致。
 VARIANT = (os.environ.get("KH_HAP_VARIANT") or "client").strip().lower()
 IS_DEV = VARIANT == "dev"
+IS_STORE = VARIANT == "store"
+VAR_SUFFIX = "-dev" if IS_DEV else ("-store" if IS_STORE else "")
 # 开发端独立版本号：客户 #1000199 / dev #1000299。同 bundle 同版本会被系统视为同一个包、
 # 装不上去也不覆盖；换 bundle 后再给独立码，两边才能真正并存、各自升级。
 DEV_VERSION_CODE_OFFSET = 100
 if IS_DEV:
     BUNDLE = BUNDLE_DEV
-SIGNED = os.path.join(KEYS, "sign", "HongHubMovie-dev.hap" if IS_DEV else "HongHubMovie.hap")
+elif IS_STORE:
+    BUNDLE = BUNDLE_STORE
+SIGNED = os.path.join(KEYS, "sign", "HongHubMovie" + VAR_SUFFIX + ".hap")
 ENTRY = "resources/rawfile/www/index.html"
 PAGE = os.path.join(ROOT, "harmony", "entry", "src", "main", "resources", "rawfile", "www", "index.html")
 WWW = os.path.dirname(PAGE)   # 前端目录：壳页 + kh-*.js 模块（1.7.72 模块化）
@@ -103,7 +108,7 @@ CHAINS = {
         "keystore": "sdk",                       # SDK 内置 OpenHarmony.p12
         "alias": "openharmony application release",
         "cert": os.path.join(OFFICIAL, "app-chain.pem"),
-        "profile": os.path.join(OFFICIAL, "profile-release-dev.p7b" if IS_DEV else "profile-release.p7b"),
+        "profile": os.path.join(OFFICIAL, "profile-release" + VAR_SUFFIX + ".p7b"),
         "pwd": "123456",                          # 公开口令
         "note": "OpenHarmony SDK 公开密钥，不是自持私钥",
     },
@@ -329,7 +334,7 @@ def ensure_official_keys(java, jar):
       - p12 里 release alias 自带证书是自签的，必须用模板 distribution-certificate 做叶子；
       - sign-app 不能带 -signCode，只传 -profileSigned 1。"""
     chain = os.path.join(OFFICIAL, "app-chain.pem")
-    p7b = os.path.join(OFFICIAL, "profile-release-dev.p7b" if IS_DEV else "profile-release.p7b")
+    p7b = os.path.join(OFFICIAL, "profile-release" + VAR_SUFFIX + ".p7b")
     if os.path.isfile(chain) and os.path.isfile(p7b):
         return chain, p7b
     lib = os.path.dirname(jar)
@@ -347,7 +352,7 @@ def ensure_official_keys(java, jar):
     now = datetime.datetime.now(datetime.timezone.utc)
     prof["validity"]["not-before"] = int((now - datetime.timedelta(days=1)).timestamp())
     prof["validity"]["not-after"] = int((now + datetime.timedelta(days=3650)).timestamp())
-    prof_path = os.path.join(OFFICIAL, "profile-release-dev.json" if IS_DEV else "profile-release.json")
+    prof_path = os.path.join(OFFICIAL, "profile-release" + VAR_SUFFIX + ".json")
     json.dump(prof, open(prof_path, "w", encoding="utf-8"), indent=4, ensure_ascii=False)
     if not leaf.endswith("\n"):
         leaf += "\n"
@@ -458,6 +463,8 @@ def deliver(vn, vc, ch, shell):
     sha = hashlib.sha256(buf).hexdigest()
     if IS_DEV:
         names = ("HongHubMovie-dev.hap", "honghub-harmony-dev.hap")
+    elif IS_STORE:
+        names = ("HongHubMovie-store.hap", "honghub-harmony-store.hap")
     else:
         names = ("HongHubMovie.hap", "honghub-harmony.hap", "kaihongcinema-harmony.hap")
     for name in names:
@@ -465,10 +472,10 @@ def deliver(vn, vc, ch, shell):
             f.write(buf)
         with open(os.path.join(DIST, name + ".sha256"), "w", encoding="utf-8") as f:
             f.write(sha + "  " + name + "\n")
-    stamp_name = ".hap-build-dev.json" if IS_DEV else ".hap-build.json"
+    stamp_name = ".hap-build" + VAR_SUFFIX + ".json"
     with open(os.path.join(DIST, stamp_name), "w", encoding="utf-8") as f:
         json.dump({"schema": 1, "size": len(buf), "sha256": sha, "versionName": vn, "versionCode": vc,
-                   "variant": "dev" if IS_DEV else "client",
+                   "variant": VARIANT,
                    "chain": ch["tag"], "chainOwner": "self" if ch["own"] else "sdk-public",
                    "shell": os.path.basename(shell), "shellSha256": file_sha256(shell),
                    "targetApi": TARGET_API, "compatVersion": 11,
@@ -492,7 +499,7 @@ def signed_is_fresh(vn, vc, ch, shell):
     if not (os.path.isfile(SIGNED) and os.path.isfile(PAGE)):
         return False
     try:
-        stamp_name = ".hap-build-dev.json" if IS_DEV else ".hap-build.json"
+        stamp_name = ".hap-build" + VAR_SUFFIX + ".json"
         stamp = json.load(open(os.path.join(DIST, stamp_name), encoding="utf-8"))
         if stamp.get("chain") != ch["tag"]:
             return False   # 换了签名链，必须重签

@@ -34,6 +34,9 @@ const PKG = path.join(ROOT, 'package.json');
 const STAMP = path.join(ROOT, 'server', 'feature-version.json');
 const ENDPOINT = path.join(ROOT, 'server', 'public-endpoint.json');
 const INDEX = path.join(ROOT, 'releases', 'index.json');
+/* HAP 壳的元数据源：hvigor 打未签名包时读它，resign_hap.py 再用 manifest 覆盖 module.json。
+   2026-11-27 纳入一致性链，避免「源里写 1.7.0、包里是 1.7.112」这种两面账。 */
+const APPJSON = path.join(ROOT, 'harmony', 'AppScope', 'app.json5');
 /* 公网/发布清单：客户端更新真正读的是 dist/public/remote-manifest.json，
    历史上这类清单停在旧版会导致「永远提示已是最新」，必须纳入版本门禁。 */
 const PUB_MANIFEST = path.join(ROOT, 'dist', 'public', 'remote-manifest.json');
@@ -54,6 +57,24 @@ const SYNC = ARGS.includes('--sync');
 const BUMP = ARGS.find((a) => a === '--bump' || a.indexOf('--bump=') === 0);
 function read(p, fb) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return fb; } }
 function write(p, o) { fs.writeFileSync(p, JSON.stringify(o, null, 2) + '\n'); }
+// app.json5 是 JSON5 文本，直接按字段替换，保持原有缩进与键序（不做 parse/重排）
+function readAppJson() {
+  try {
+    const s = fs.readFileSync(APPJSON, 'utf8');
+    const vn = (s.match(/"versionName"\s*:\s*"([^"]*)"/) || [])[1] || null;
+    const vc = Number((s.match(/"versionCode"\s*:\s*(\d+)/) || [])[1]);
+    return { versionName: vn, versionCode: isFinite(vc) && vc > 0 ? vc : null };
+  } catch (e) { return { versionName: null, versionCode: null }; }
+}
+function syncAppJson(v) {
+  if (!fs.existsSync(APPJSON)) return false;
+  let s = fs.readFileSync(APPJSON, 'utf8');
+  const b = s;
+  s = s.replace(/("versionName"\s*:\s*")[^"]*(")/, '$1' + v.vname + '$2');
+  s = s.replace(/("versionCode"\s*:\s*)\d+/, '$1' + v.vcode);
+  if (s !== b) { fs.writeFileSync(APPJSON, s); return true; }
+  return false;
+}
 
 // ---- 采集各位置当前版本 ----
 function collect() {
@@ -66,6 +87,7 @@ function collect() {
   const st = read(STAMP, {}); add('feature-version.json', STAMP, st.versionName, st.versionCode);
   const ep = read(ENDPOINT, {}); add('public-endpoint.json', ENDPOINT, ep.versionName, ep.versionCode);
   const ix = read(INDEX, {}); const il = ix.latest || {}; add('releases/index.json.latest', INDEX, il.versionName, il.versionCode);
+  const hapMeta = readAppJson(); add('harmony/AppScope/app.json5（HAP 壳元数据）', APPJSON, hapMeta.versionName, hapMeta.versionCode);
   // 公网/发布清单（客户端更新与出包真相；文件不存在=未出包，跳过而非误报不一致）
   for (const [name, file] of [
     ['dist/public/remote-manifest.json', PUB_MANIFEST],
@@ -157,6 +179,8 @@ function syncAll(v) {
   }
   // pages
   for (const p of PAGES) if (syncPage(p, v)) touched.push(path.relative(ROOT, p));
+  // HAP 壳元数据（app.json5）
+  if (syncAppJson(v)) touched.push('harmony/AppScope/app.json5');
   return touched;
 }
 

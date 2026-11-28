@@ -37,29 +37,56 @@ function main() {
   const dir = path.join(REL, 'v' + v);
   fs.mkdirSync(dir, { recursive: true });
 
-  /* 客户 Setup 选源：绝不盲信 desktop-setup.exe 别名——开发端构建会短暂覆盖它，
-     且流水线后段（签名/重出包/交付）还会改写 exe 字节。权威哈希优先取
-     dist/desktop-setup.exe.sha256（postpack/ship 最后重算），其次 release.json。
-     候选里只收哈希与权威值一致的文件；含「开发端」的文件名一律拒收。 */
-  let expectSha = '';
-  try {
-    const sf = path.join(DIST, 'desktop-setup.exe.sha256');
-    if (fs.existsSync(sf)) expectSha = String(fs.readFileSync(sf, 'utf8')).trim().split(/\s+/)[0].toLowerCase();
-  } catch (e) {}
-  if (!expectSha) expectSha = String((release.artifacts && release.artifacts.desktop && release.artifacts.desktop.sha256) || '').toLowerCase();
+  /* 客户 Setup 选源（1.7.87 返工固化）：只认 build-client-exe 写下的客户版指纹，
+     不再拿 dist/desktop-setup.exe 或某个"权威哈希"去猜——那种猜法在 build-exe 阶段会读到
+     开发端值，结果把开发端包归档进回滚索引（客户回滚就装到带 /admin 的包）。
+     指纹缺失 / 版本不符 / 哈希不符，一律 exit 1。 */
+  const clientStamp = require('./lib/client-stamp');
   const setupName = '鸿汇影桌面版 Setup ' + v + '.exe';
-  const candidates = [
-    path.join(DIST, 'client', setupName),
-    path.join(DIST, setupName),
-    path.join(DIST, 'desktop-setup.exe')
-  ];
-  let setupSrc = null;
-  for (const c of candidates) {
-    if (c.indexOf('开发端') >= 0 || !fs.existsSync(c)) continue;
-    if (expectSha && sha(c) !== expectSha) continue;   /* 与权威哈希不符的候选（中间产物/开发端覆盖）一律跳过 */
-    setupSrc = c; break;
+  const clientSetup = path.join(DIST, 'client', setupName);
+  let setupSrc = clientSetup;
+  let expectSha = '';
+  let stamp = clientStamp.read(DIST, 'x64');
+  if (!stamp) {
+    if (!fs.existsSync(clientSetup)) {
+      console.error('✗ 缺少客户版指纹，且 dist/client 下没有「' + setupName + '」。');
+      console.error('  请先跑 node scripts/build-client-exe.js（归档只接受客户纯净包，不接受开发端产物）。');
+      process.exit(1);
+    }
+    stamp = clientStamp.write(DIST, 'x64', v, clientSetup, null);
+    console.log('  已补写客户版指纹（旧环境兼容）：dist/client/.client-build-x64.json');
   }
-  if (!setupSrc) { console.error('✗ 找不到与权威哈希一致的客户版 Setup（期望 ' + (expectSha || '未知').slice(0, 12) + '…），拒绝归档'); process.exit(1); }
+  if (String(stamp.version) !== v) {
+    console.error('✗ 客户版指纹记录的版本是 ' + stamp.version + '，与当前 ' + v + ' 不一致（客户包是上一版残留）。');
+    console.error('  请重跑 node scripts/build-client-exe.js 再归档。');
+    process.exit(1);
+  }
+  const alias = path.join(DIST, 'desktop-setup.exe');
+  const vr = clientStamp.verify(stamp, clientSetup);
+  let devMode = false;
+  if (!vr.ok) {
+    if (process.env.KH_ARCHIVE_ALLOW_DEV !== '1') {
+      console.error('✗ dist/client/' + setupName + ' 与客户版指纹不符：' + vr.reason);
+      console.error('  拒绝归档：不确定是不是客户版，就绝不写进回滚索引。');
+      process.exit(1);
+    }
+    /* 仅调试历史留档：显式放行，改用 dist 根产物，并在索引里标 channel=dev */
+    const devSrc = [path.join(DIST, setupName), alias].find(p => fs.existsSync(p));
+    if (!devSrc) { console.error('✗ 允许开发端归档，但 dist 根也找不到 ' + setupName); process.exit(1); }
+    setupSrc = devSrc; expectSha = clientStamp.sha256File(devSrc); devMode = true;
+    console.log('  [调试] KH_ARCHIVE_ALLOW_DEV=1：按开发端产物归档 ' + path.relative(ROOT, devSrc) + '（索引标 channel=dev）');
+  } else {
+    expectSha = vr.sha256;
+    if (fs.existsSync(alias) && clientStamp.sha256File(alias) !== expectSha) {
+      console.log('  提示：dist/desktop-setup.exe 与客户版不一致（多半是开发端中间产物），归档以 dist/client 为准。');
+    }
+  }
+  if (!fs.existsSync(setupSrc)) { console.error('✗ 归档源消失：' + setupSrc); process.exit(1); }
+  /* 显式放行开发端归档（仅调试历史留档）：KH_ARCHIVE_ALLOW_DEV=1 时才回退，且索引标 channel=dev */
+  if (process.env.KH_ARCHIVE_ALLOW_DEV === '1' && vr.ok === false) {
+    const devSrc = [path.join(DIST, setupName), alias].find(p => fs.existsSync(p));
+    if (devSrc) { setupSrc = devSrc; expectSha = clientStamp.sha256File(devSrc); console.log('  [调试] 按 KH_ARCHIVE_ALLOW_DEV=1 归档开发端产物：' + path.relative(ROOT, devSrc)); }
+  }
   const setupDest = path.join(dir, setupName);
   fs.copyFileSync(setupSrc, setupDest);
   const setupSha = sha(setupDest), setupSize = fs.statSync(setupDest).size;
@@ -83,23 +110,45 @@ function main() {
     if (fs.existsSync(s)) { fs.copyFileSync(s, path.join(dir, to)); n++; }
   }
 
-  /* 1.7.80：arm64 与 x64 同为客户版产物，归档一并留档，避免 ARM 设备回滚时无原生包可下 */
+  /* 1.7.80：arm64 与 x64 同为客户版产物，归档一并留档，避免 ARM 设备回滚时无原生包可下。
+     1.7.87 起同样走客户版指纹：指纹校验失败就跳过（arm64 缺失不阻断主线，但绝不写错包）。 */
   const armName = '鸿汇影桌面版 Setup ' + v + '-arm64.exe';
+  const armClient = path.join(DIST, 'client', armName);
+  let armCandidate = null;
+  let armVerified = false;
+  const armStamp = clientStamp.read(DIST, 'arm64');
+  if (fs.existsSync(armClient) && armStamp) {
+    const ar = clientStamp.verify(armStamp, armClient);
+    if (ar.ok) { armCandidate = armClient; armVerified = true; }
+    else console.log('  ⚠ arm64 客户包与指纹不符，跳过归档：' + ar.reason);
+  } else if (fs.existsSync(armClient) && !armStamp) {
+    try {
+      clientStamp.write(DIST, 'arm64', v, armClient, null);
+      armCandidate = armClient; armVerified = true;
+      console.log('  已补写 arm64 客户版指纹（旧环境兼容）');
+    } catch (e) { console.log('  ⚠ arm64 指纹补写失败：' + e.message); }
+  } else {
+    const armRoot = path.join(DIST, armName);
+    if (fs.existsSync(armRoot)) {
+      armCandidate = armRoot;
+      console.log('  ⚠ arm64 没有客户版产物，退回 dist 根 ' + armName + '（归档标 unverified，回滚前请人工核对）');
+    }
+  }
   let armArt = null;
-  for (const c of [path.join(DIST, 'client', armName), path.join(DIST, armName)]) {
-    if (!fs.existsSync(c)) continue;
+  if (armCandidate) {
     const destArm = path.join(dir, armName);
-    fs.copyFileSync(c, destArm);
-    armArt = { path: 'releases/v' + v + '/' + armName, size: fs.statSync(destArm).size, sha256: sha(destArm) };
-    console.log('arm64 安装包归档：' + path.relative(ROOT, c) + '（' + armArt.size + ' B · sha256 ' + armArt.sha256.slice(0, 12) + '…）');
+    fs.copyFileSync(armCandidate, destArm);
+    armArt = { path: 'releases/v' + v + '/' + armName, size: fs.statSync(destArm).size,
+               sha256: sha(destArm), verified: armVerified };
+    console.log('arm64 安装包归档：' + path.relative(ROOT, armCandidate) + '（' + armArt.size + ' B · sha256 ' + armArt.sha256.slice(0, 12) + '…' + (armVerified ? '' : ' · 未校验') + '）');
     n++;
-    break;
   }
 
   const cur = {
     versionName: v, versionCode: code,
     publishedAt: release.publishedAt || null,
     features: release.features || null,
+    channel: devMode ? 'dev' : 'client',
     dir: 'releases/v' + v,
     artifacts: {
       desktop: { path: 'releases/v' + v + '/' + setupName, size: setupSize, sha256: setupSha },

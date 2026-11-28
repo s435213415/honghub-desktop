@@ -1,14 +1,9 @@
 /* HongHub 前端模块：片单/平台基线/远程配置/直播/升级状态机
    由 app/index.html 单文件版拆分（1.7.72 模块化），按 <script> 顺序加载，顶层函数/常量共享全局作用域。 */
 /* ---------------- 片单数据：全部为真实网络片源，每部 3 路自动回退，应用不内置任何本地视频 ---------------- */
-var MOVIES = [
-  {id:"mv_bbb",title:"大雄兔 Big Buck Bunny",subtitle:"Blender 开放电影 · 动画短片",category:"动画",year:2008,rating:8.6,tags:["开源授权","动画","合家欢"],cast:"Blender Foundation",desc:"Blender 基金会开放电影计划的代表作，CC 授权可自由传播。",color:"#F2A65A",accent:"#C0392B",sources:[{label:"HLS 主源",url:"https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"}]},
-  {id:"mv_bbb_full",title:"大雄兔（完整版）",subtitle:"Blender 开放影库 · CC-BY 4.0",category:"动画",year:2008,rating:8.6,tags:["开放授权","完整版","合家欢"],cast:"Blender Foundation",desc:"249 MB 完整正片，W3C 官方镜像直连，可自由传播（CC-BY）。本机实测 206 可达。",color:"#E9A44B",accent:"#7A4A16",sources:[{label:"完整版 249MB",url:"https://media.w3.org/2010/05/bunny/movie.mp4"}]},
-  {id:"mv_ed",title:"大象之梦 Elephants Dream",subtitle:"Blender 首部开放电影 · 科幻动画",category:"动画",year:2006,rating:7.5,tags:["开放授权","科幻","动画"],cast:"Orange Open Movie",desc:"Blender 基金会首部开放电影（Orange 计划），两名机械师在奇异机械世界中的旅程；H.264/AAC MOV，本机实测 206 可达。",cover:"https://download.blender.org/ED/cover.jpg",color:"#4FA3A5",accent:"#1F5557",sources:[{label:"720P（MOV）",url:"https://download.blender.org/ED/elephantsdream-720-h264-st-aac.mov"},{label:"1024P（MOV）",url:"https://download.blender.org/ED/elephantsdream-1024-h264-st-aac.mov"},{label:"480P（MOV）",url:"https://download.blender.org/ED/elephantsdream-480-h264-st-aac.mov"}]},
-  {id:"mv_sintel",title:"辛特尔 Sintel（官方预告）",subtitle:"Blender 开放电影 · 动画短片",category:"动画",year:2010,rating:8.9,tags:["开源授权","动画","剧情"],cast:"Blender Foundation",desc:"少女与小龙的故事，Blender 开放电影计划第三部。内置为官方预告（完整正片为 1.18 GB MKV，浏览器无法流式播放）；两条公开直链互为备份。",color:"#5B8DEF",accent:"#1F3A6E",sources:[{label:"官方 480P",url:"https://download.blender.org/durian/trailer/sintel_trailer-480p.mp4"},{label:"W3C 镜像",url:"https://media.w3.org/2010/05/sintel/trailer.mp4"}]},
-  {id:"mv_tos",title:"钢铁之泪 Tears of Steel",subtitle:"Blender 开放电影 · 科幻实拍",category:"电影",year:2012,rating:8.1,tags:["开源授权","科幻","实拍合成"],cast:"Blender Foundation",desc:"真人与 CG 合成的开源科幻短片，画面复杂度高。HLS 在线转码版，无需下载大文件即可播放。",color:"#8E7CC3",accent:"#3B2E63",sources:[{label:"HLS 主源",url:"https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8"}]},
-  {id:"mv_tos_720",title:"钢铁之泪（完整 720P）",subtitle:"Blender 开放影库 · CC-BY 3.0",category:"电影",year:2012,rating:8.1,tags:["开放授权","完整版","科幻"],cast:"Blender Foundation",desc:"372 MB 完整正片（MOV / H.264），Blender 官方源本机实测 206；若 MOV 容器本机播放异常，会自动切到 HLS 主源。",color:"#8E7CC3",accent:"#3B2E63",sources:[{label:"完整版 720P（MOV）",url:"https://download.blender.org/demo/movies/ToS/tears_of_steel_720p.mov"},{label:"HLS 主源（自动转切）",url:"https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8"}]}
-];
+/* 1.7.102：不再预置任何样本片源。原 6 部开源电影 / 早年预告（含 2 部完整版）已整块移除；
+   片源全部来自「资源」页自建与平台入口，包内不带任何预置条目，也不留占位条目。 */
+var MOVIES = [];
 /* ---------------- 影视资源配置：内置资源 + 自建资源 ---------------- */
 var RES_CATEGORIES = ['电影','动画','短剧','剧集','纪录片','综艺'];
 function getRes(){
@@ -21,7 +16,16 @@ function getRes(){
   }
   return out;
 }
-function allMovies(){ return MOVIES.concat(getRes()); }
+/* 1.7.91 #53：儿童模式在数据源头过滤，首页 / 分类 / 搜索 / 推荐 / 自动下一部共用同一份结果 */
+function allMovies(){
+  var list = MOVIES.concat(getRes());
+  try{
+    if(typeof khKidOn === 'function' && khKidOn() && typeof khKidAllows === 'function'){
+      return list.filter(function(m){ return khKidAllows(m); });
+    }
+  }catch(e){}
+  return list;
+}
 /* 最近观看置顶：按本机历史顺序，最近看过的排前；未看过的保持原相对顺序（稳定排序）。 */
 function khRecentFirst(list){
   var hist = getHistory();
@@ -630,9 +634,17 @@ function issueRemoteCfg(){
   var c = getStore(ISSUE_REMOTE_KEY, null);
   if(!c || typeof c !== 'object') c = {};
   return {
-    /* 客户纯净版（KH_UI_CLEAN=1）默认关闭，只有用户显式开启才外发；开发端默认开 */
-    enabled: (window.KH_DESKTOP && !window.KH_UI_CLEAN ? true : (c.enabled === true)),
-    url: (typeof c.url === 'string' && /^https?:\/\//i.test(c.url)) ? c.url : ISSUE_REMOTE_DEFAULT,
+    /* 1.7.107：默认开启（含客户纯净版），用户点关闭后记 enabled=false 才停发。
+       1.7.108 商店变体（KH_STORE）：默认关闭，用户主动点开（enabled===true）才发——
+       上架审核口径，隐私政策同步声明。只外发脱敏摘要，不含账号、片源与完整 URL。 */
+    enabled: window.KH_STORE ? (c.enabled === true && !window.KH_LIMITED) : (c.enabled !== false),
+    /* url：用户手填的优先；否则用清单下发的（1.7.106：客户版也收）。开发端没人下发时回落同源
+       /api/report；客户版不回落——空着比指向本机自己更清楚，点了开关会提示「请先填写远程收集地址」，
+       不会白攒一堆「上次失败」。商店变体只认用户手填，不接受任何预置/下发地址。 */
+    url: (typeof c.url === 'string' && /^https?:\/\//i.test(c.url)) ? c.url
+       : (window.KH_STORE ? ''
+          : (/^https?:\/\//i.test(ISSUE_REMOTE_DEFAULT) ? ISSUE_REMOTE_DEFAULT
+             : (window.KH_UI_CLEAN ? '' : ISSUE_REMOTE_DEFAULT))),
     lastAt: c.lastAt || 0, sent: c.sent || 0, fails: c.fails || 0,
     err: typeof c.err === 'string' ? c.err : ''
   };
@@ -644,8 +656,8 @@ function issueDeviceId(){
     setStore('kh_issue_devid', v);
   }
   /* 同步给主进程：崩溃上报复用同一 ID，才能把崩溃与页面错误串成一台设备 */
-  if(!issueDeviceId._sent && window.khDeviceId && typeof window.khDeviceId.set === 'function'){
-    try{ window.khDeviceId.set(v); issueDeviceId._sent = true; }catch(e){}
+  if(!issueDeviceId._sent && window.khDeviceIdBridge && typeof window.khDeviceIdBridge.set === 'function'){
+    try{ window.khDeviceIdBridge.set(v); issueDeviceId._sent = true; }catch(e){}
   }
   return v;
 }
@@ -959,6 +971,7 @@ function whCleanOne(w, i) {
   };
 }
 function getWhList() {
+  if(window.KH_STORE) return [];   /* 商店变体：无影视仓 */
   var v = getStore(WH_KEY, null);
   var list = (v && Array.isArray(v.list)) ? v.list : [];
   var out = [];
@@ -1462,6 +1475,7 @@ var SEED_WH_APIS = [
   ['光速','https://ys.cxkjg.cn/api/provide/vod?source=4247318859']
 ];
 function khSeedBuiltin(){
+  if(window.KH_STORE) return;   /* 商店变体：不灌任何内置网站/影视仓种子 */
   try{
     if(Number(getStore(SEED_VER_KEY, 0)) >= SEED_VER) return;
     /* 1) 网站：并入自建站点，按 url 去重，跳过预置里已有的（如找剧AI） */
@@ -1582,9 +1596,17 @@ function applyMotionPref(){
 }
 
 var CATEGORIES = ['全部','电影','动画','短剧','剧集','纪录片','综艺'];
-var SECTIONS = [
-  {title:"今日推荐", sub:"打开就播 · 公开授权片源", ids:["mv_bbb","mv_ed","mv_tos"]},
-  {title:"开源动画", sub:"Blender 开放电影计划 · CC 授权", ids:["mv_bbb","mv_ed","mv_sintel"]}
+/* 1.7.102：默认不再有预置推荐分组（原两段指向已移除的样片 id）。
+   分组只来自「推荐位」的云端/本机配置，且 id 必须命中自有片源才渲染。 */
+var SECTIONS = [];
+
+/* 1.7.103 播放诊断探针用的三条公开测试流。
+   只在「问题中心 → 播放诊断」里手动跑，不参与片单 / 推荐 / 搜索 / 计数，也不算内置片源。
+   三条分别覆盖：H.264+mp4（最常见）、HLS 分片、VP9+webm（用来区分「是不是只缺 H.264 解码器」）。 */
+var DIAG_STREAMS = [
+  {id:"mp4_h264", label:"H.264 / mp4（约 1 MB 短样）", url:"https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4", note:"最常见编码，桌面端与多数设备应可解"},
+  {id:"hls_h264", label:"HLS / m3u8（分片）", url:"https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", note:"测分片链路与网络，需要浏览器支持 MSE"},
+  {id:"webm_vp9", label:"VP9 / webm（约 1 MB）", url:"https://test-videos.co.uk/vids/bigbuckbunny/webm/vp9/360/Big_Buck_Bunny_360_10s_1MB.webm", note:"这条能播而 H.264 不能，说明缺的是 H.264 解码器"}
 ];
 /* 首页分组：内置片单为基线；云端推荐位启用时覆盖首段标题与条目。
    云端条目 id 必须能在本机片单中命中才渲染，未命中的云端条目不展示（不凭空造片）。 */
@@ -1885,6 +1907,7 @@ var SITES_CLOUD_KEY = 'kh_sites_cloud_v1';
 /* 云端清单可同时下发内置平台、检索模板与红果直达地址；本地持久化，重启后仍生效。
    校验字段与 URL 协议，避免坏数据把页面打崩。 */
 function applySiteData(data, from){
+  if(window.KH_STORE) return 0;   /* 商店变体：不接受任何平台清单（含云端下发） */
   if(!data || !Array.isArray(data.sites) || !data.sites.length) return 0;
   var out = [];
   for(var i=0;i<data.sites.length && i<240;i++){
@@ -1909,8 +1932,12 @@ function applySiteData(data, from){
   if(data.quick && typeof data.quick === 'object' && !Array.isArray(data.quick)){
     window.KH_QUICK = data.quick;
   }
-  /* 远程收集端点可随云端清单热更新下发；默认空 + 默认关闭，是否外发始终由用户决定 */
-  if(!window.KH_UI_CLEAN && typeof data.remoteUrl === 'string' && /^https?:\/\//i.test(data.remoteUrl)){
+  /* 远程收集端点可随云端清单热更新下发。1.7.107 起默认开启外发（仅脱敏摘要），
+     用户在问题中心点关闭即停发；没有下发地址时 url 为空、不会盲发。
+     1.7.106：客户纯净版也接受清单下发的地址（此前被 KH_UI_CLEAN 挡掉，客户手上连地址都没有，
+     只能口头抄一段 URL，实际等于收不到）。注意这里只写「地址」，外发开关仍由
+     issueRemoteCfg().enabled 决定，客户版默认 false —— 客户点一下才真的发。 */
+  if(typeof data.remoteUrl === 'string' && /^https?:\/\//i.test(data.remoteUrl)){
     ISSUE_REMOTE_DEFAULT = data.remoteUrl.slice(0, 300);
   }
   setStore(SITES_CLOUD_KEY, {v:Number(data.v||0), sites:out,
@@ -1920,6 +1947,7 @@ function applySiteData(data, from){
   return out.length;
 }
 function applySourceData(data, from){
+  if(window.KH_STORE) return 0;   /* 商店变体：不接受直播/源清单下发 */
   if(!data || typeof data !== 'object' || !Array.isArray(data.channels)) return 0;
   var v = Number(data.v || 0);
   if(!isFinite(v) || v < 0) return 0;
@@ -2673,3 +2701,19 @@ try{
     setTimeout(function(){ issueRemoteSend(false); }, 8000);
   }
 }catch(e){}
+
+/* ---------------- 商店纯净变体（1.7.108）：清空一切预置内容 ----------------
+   本块在 kh-config.js 末尾执行（早于 kh-core / kh-app），把硬编码的预置平台、
+   直播频道、内置种子、搜索模板、快捷入口全部清空。配合各 apply / seed / getWhList
+   的 KH_STORE 闸，商店包内不残留任何在线内容入口。私发版不注入旗标，不受影响。 */
+if(window.KH_STORE){
+  try{
+    BUILTIN_SITES = [];
+    LIVE_CHANNELS = [];
+    SEED_SITES = [];
+    SEED_WH_APIS = [];
+    SEARCH_TPL = {};
+    window.KH_QUICK = {};
+    window.__KID_ALL_LIVE = [];
+  }catch(e){}
+}

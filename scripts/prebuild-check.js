@@ -14,8 +14,12 @@ const ROOT = path.join(__dirname, '..');
 const errs = [];
 // 静态模式供 CI / pre-commit 使用：不校验 dist 产物、不改写页面，纯只读断言
 const STATIC = process.env.KH_CHECK_STATIC === '1';
+/* 显式沿用：本次不重签 HAP（oneclick --skip-hap 会把该变量注入所有子步骤）。
+   只有「声明了沿用」才允许包内版本 ≠ 发版号；没声明仍然是硬阻断，不放行任何隐式旧包。 */
+const HAP_UNCHANGED = process.env.KH_HAP_UNCHANGED === '1';
 const fail = (m) => { errs.push(m); console.error('  [失败] ' + m); };
 const pass = (m) => console.log('  [通过] ' + m);
+const warn = (m) => console.log('  [告警] ' + m);
 const at = (p) => path.join(ROOT, p);
 
 const PAGES = ['app/index.html', 'harmony/entry/src/main/resources/rawfile/www/index.html'];
@@ -82,7 +86,15 @@ if (!STATIC) {
       const mm = bundle.match(/var KH_APP_CODE\s*=\s*(\d+)/) ||
                  bundle.match(/versionCode["'\s:=]+(\d{5,})/);
       if (!mm) fail('HAP 包内前端缺少 KH_APP_CODE');
-      else if (Number(mm[1]) !== targetCode) fail('HAP 包内前端 #' + mm[1] + ' ≠ 发版 #' + targetCode + '（疑似沿用旧 HAP）');
+      else if (Number(mm[1]) !== targetCode) {
+        /* 声明沿用（--skip-hap）时不阻断，但必须把「包内实际版本」摆明，避免旧包被当真新包。
+           真正的记账在 postpack：它会按包内版本写 release.json 的 hapReused / hapVersion。 */
+        if (HAP_UNCHANGED) {
+          warn('HAP 沿用 #' + mm[1] + '（本次发版 #' + targetCode + ' · 已声明 KH_HAP_UNCHANGED=1 不重签）');
+        } else {
+          fail('HAP 包内前端 #' + mm[1] + ' ≠ 发版 #' + targetCode + '（疑似沿用旧 HAP）');
+        }
+      }
       else if (bundle.indexOf('KH_HARMONY') < 0) fail('HAP 包内缺少深开鸿适配标记');
       else pass('HAP 新鲜度一致（#' + targetCode + ' · 包内前端为本次发版）');
     }
@@ -271,14 +283,18 @@ function get(pathname) {
       else pass(p + ' 内存档、自动下发与 OS 版本回传能力齐备');
     }
   }
-  /* 问题收集链路门禁：客户版默认不外发、外发必须显式开关 */
+  /* 问题收集链路门禁（1.7.108 口径）：私发/客户版默认开启、可点关；商店变体默认关闭；无预置地址不盲发 */
   try {
     const cfg = fs.readFileSync(path.join(ROOT, 'app', 'kh-config.js'), 'utf8');
     const core = fs.readFileSync(path.join(ROOT, 'app', 'kh-core.js'), 'utf8');
-    if (!/enabled\s*:\s*\(window\.KH_DESKTOP && !window\.KH_UI_CLEAN/.test(cfg)) fail('客户版上报默认关闭失效（issueRemoteCfg.enabled）');
-    else if (cfg.indexOf('!window.KH_UI_CLEAN') < 0) fail('客户版未拦住清单 remoteUrl 下发');
+    const onDefault = /c\.enabled\s*!==\s*false/.test(cfg);
+    const storeOffByDefault = /window\.KH_STORE\s*\?/.test(cfg) && /c\.enabled\s*===\s*true/.test(cfg);
+    if (!onDefault) fail('上报默认开启失效（issueRemoteCfg.enabled 应以 c.enabled !== false 为默认）');
+    else if (!storeOffByDefault) fail('商店变体默认关闭失效（KH_STORE 分支应要求 c.enabled === true）');
+    else if (cfg.indexOf("window.KH_UI_CLEAN ? '' : ISSUE_REMOTE_DEFAULT") < 0) fail('客户版无预置地址时会盲发（url 回落未拦住）');
     else if (core.indexOf('issue-remote-toggle') < 0) fail('客户版缺少匿名上报开关');
-    else pass('问题收集：客户版默认只存本机、外发需显式开启，开关与拦截已就位');
+    else if (core.indexOf('默认开启') < 0) fail('隐私文案未声明默认开启');
+    else pass('问题收集：默认开启、点关即停（enabled=false 持久化）、无地址不盲发，开关与文案已就位');
   } catch (e) { fail('问题收集链路检查失败：' + e.message); }
 
   try { srv.kill(); } catch (e) { /* 已退出 */ }

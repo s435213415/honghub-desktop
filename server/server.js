@@ -31,9 +31,16 @@ const catalog = require('./catalog');                // 资源目录 / 平台探
 const logRotate = require('./log-rotate');           // *.jsonl 超限自动切分压缩，避免磁盘被日志吃满
 const healthMonitor = require('./health-monitor');   // 磁盘/内存/日志水位监测与告警落盘
 const distribute = require('./distribute');         // 公网分发配置（未配置时保持本地局域网分发）
+const updateSources = require('./update-sources'); // 更新包多源候选与依次重试（#158）
 const featureTrack = require('./feature-track');    // 客户端功能追踪：每版功能清单与增删对比
 const insights = require('./insights');             // 维护决策：收视热度 / 失效源 TOP
 const extras = require('./extras');                 // 远程功能开关 / 升级遥测 / 儿童时段 / 双端接力 / 双指标选源 / 聚合搜索
+const cfgCenter = require('./config-center');        // 远端配置中心：#69 默认值 / #70 灰度 / #71 锁定 / #77 公告 / #66 云同步
+const shares = require('./shares');                 // 分享短链：#65 二维码 / 短链（/api/share + /s/<code>）
+/* 1.7.94 短链落地页要拼标题，统一转义一次，避免标题里带标签 */
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
 const buildStatus = require('./build-status');      // 发版流水线：版本四源 / 产物哈希 / 最近步骤 / 自动发版与出包锁
 const alertsCenter = require('./alerts-center');    // 告警中心：分级展示 / 去重 / Webhook 外发与留痕
 const releaseCenter = require('./release-center');  // 发布历史 / 发版闸门红绿 / 日志查看 / 操作审计
@@ -43,6 +50,7 @@ const sourceHealth = require('./source-health');    // 源体检与补备源：�
 const deviceQueue = require('./device-queue');      // 设备批量队列：待下发动作排期
 const distCleanup = require('./dist-cleanup');       // dist 体积治理：归档副本清理
 const opsConfig = require('./ops-config');           // 白名单 / 推荐位 / 更新通道可配置项
+const accountSync = require('./account-sync');       // 1.7.95 设备码账号 / 云同步 / 手机遥控
 const watchlist = require('./watchlist').watchlist;  // 追剧订阅（本机维度）
 const aiAdvisor = require('./ai-advisor');            // AI 辅助诊断（开发端，OpenAI 兼容协议，仅给建议）
 // 已安装客户端没有 dist/，校验值与新版本必须来自公网清单：启动拉一次并按周期刷新（失败静默回退）。
@@ -284,6 +292,7 @@ function withAdminBack(html) {
     ['/admin/alerts', '🔔 告警中心'],
     ['/admin/quality', '✅ 质量门禁'],
     ['/admin/extras', '🧩 开关台'],
+    ['/admin/config-center', '🎛 远端配置'],
     ['/admin/features', '🧩 功能追踪'],
     ['/admin/sites', '🌐 平台条目'],
     ['/admin/devices', '📱 设备能力表'],
@@ -296,7 +305,7 @@ function withAdminBack(html) {
   const bar = '<div id="khAdminBar" style="position:sticky;top:0;z-index:99999;margin:-22px -22px 16px;padding:9px 18px;'
     + 'background:#0B1622F2;border-bottom:1px solid #1E3450;display:flex;gap:8px;align-items:center;'
     + 'flex-wrap:wrap;backdrop-filter:blur(6px)">'
-    + '<a href="/admin" title="Alt+← 也能回看板" style="' + pill + ';background:#1B3A5B;color:#CFE3FF;border-color:#2A4E77">← 运维看板</a>'
+    + '<a href="/admin" title="Alt+← 也能回看板" style="' + pill + ';background:#1B3A5B;color:#CFE3FF;border-color:#2A4E77">← 返回运维看板</a>'
     + '<span id="khCurPage" style="font:600 13px/1.4 sans-serif;color:#E8F1FF;white-space:nowrap">开发端面板</span>'
     + '<select id="khNavSel" title="在面板之间直接切换，不用绕回看板" style="max-width:186px;padding:5px 8px;'
     + 'border-radius:10px;background:#12233B;color:#9CC5FF;border:1px solid #1E3450;font:12.5px/1.4 sans-serif">' + navOpts + '</select>'
@@ -590,6 +599,37 @@ function manifestForInstall() {
   return null;
 }
 
+/* 更新包候选列表（#158）：把"单一 downloadUrl"扩成按优先级的多源候选。
+   顺序：显式 env → 清单里的绝对地址 → 各镜像（版本目录优先、旧路径兜底）→ 本机镜像站。
+   清单给不出哈希时仍允许下载，此时只按体积闸校验，launchSetup 会再核一遍 SHA256。 */
+function installCandidates(manIn) {
+  const man = manIn || manifestForInstall() || {};
+  let mirrors = [];
+  try { mirrors = distribute.config().mirrors || []; } catch (e) { mirrors = []; }
+  let lat = {};
+  try { lat = readManifest().release.latest || {}; } catch (e) { lat = {}; }
+  const list = updateSources.candidates({
+    versionName: man.versionName || lat.versionName || '',
+    mirrors,
+    manifest: {
+      desktopUrl: man.downloadUrl || null,
+      desktopSha256: man.desktopSha256 || null,
+      desktopSize: man.desktopSize || null,
+      versionName: man.versionName || lat.versionName || null,
+      versionCode: man.versionCode || lat.versionCode || null
+    },
+    envUrl: process.env.KH_UPDATE_DOWNLOAD_URL || '',
+    envSha: process.env.KH_UPDATE_SHA256 || '',
+    envSize: Number(process.env.KH_UPDATE_SIZE) || 0
+  });
+  /* 显式指定源时只试它：调试 / 灰度场景不该被兜底源悄悄换掉，失败要能一眼看到 */
+  if (man.source === 'env-override') {
+    const only = list.filter((c) => c.from === 'env');
+    return only.length ? only : list;
+  }
+  return list;
+}
+
 /* 安装包下载进度（#115）：模块级只读状态，供前端轮询展示百分比；不存片源内容与身份信息。 */
 const updateProgress = { state: 'idle', received: 0, total: 0, at: 0, kind: '' };
 
@@ -670,6 +710,35 @@ function launchSetup(fp, res, extra) {
   }
   if (buf.length < 10 * 1024 * 1024) {
     send(res, 409, { ok: false, error: '安装包异常（体积过小）' });
+    return;
+  }
+  /* 静默安装（1.7.86）：校验通过后不在这里拉起向导，只把绝对路径交回渲染进程，
+     由 Electron 主进程退出自身后执行 setup /S 覆盖安装，再重新拉起。 */
+  if (extra && extra.silent) {
+    const lat0 = (function () { try { return readManifest().release.latest; } catch (e2) { return {}; } })() || {};
+    send(res, 200, {
+      ok: true, silent: true, launched: false, absPath: fp,
+      verified: expect ? 'sha256' : 'size-only', sha256: sha,
+      version: (extra.versionName) || lat0.versionName || null,
+      versionCode: (extra.versionCode) || lat0.versionCode || null,
+      file: path.basename(fp), from: extra.source ? extra.source : 'local',
+      message: '安装包已下载并校验，交由本机静默覆盖安装（装完会自动重新打开）'
+    });
+    return;
+  }
+  /* 只验不装（#158）：排障 / 自测时用 KH_UPDATE_DRYRUN=1，走完下载 + 校验就停，
+     不 spawn 安装包，把落盘路径与实测哈希交回。默认关闭，客户机上不生效。 */
+  if (String(process.env.KH_UPDATE_DRYRUN || '0') === '1') {
+    const lat1 = (function () { try { return readManifest().release.latest; } catch (e2) { return {}; } })() || {};
+    send(res, 200, {
+      ok: true, dryRun: true, launched: false, absPath: fp,
+      verified: expect ? 'sha256' : 'size-only', sha256: sha, size: buf.length,
+      version: (extra && extra.versionName) || lat1.versionName || null,
+      versionCode: (extra && extra.versionCode) || lat1.versionCode || null,
+      file: path.basename(fp), from: extra && extra.source ? extra.source : 'local',
+      attempts: (extra && extra.attempts) || [],
+      message: '仅校验未安装（KH_UPDATE_DRYRUN=1）：下载 + 校验通过，未拉起安装向导'
+    });
     return;
   }
   let launched = false;
@@ -2257,6 +2326,102 @@ function handleRequest(req, res) {
     });
     return;
   }
+  /* ---------- 远端配置中心（#69 / #70 / #71 / #77 / #66）：客户端只读，开发端可写 ---------- */
+  if (u.pathname === '/api/config/center' && req.method === 'GET') {
+    const q = u.searchParams;
+    send(res, 200, cfgCenter.view({ device: q.get('device') || '', version: q.get('ver') || '' }));
+    return;
+  }
+  if (u.pathname === '/api/config/center' && req.method === 'POST') {
+    if (!DEV_MODE) { send(res, 403, { ok: false, error: '仅开发端可改远端配置' }); return; }
+    readBody(req, (body) => {
+      let p; try { p = JSON.parse(body || '{}'); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      const r = cfgCenter.patch(p || {});
+      send(res, r.ok ? 200 : 500, r);
+    });
+    return;
+  }
+  if (u.pathname === '/api/config/schema' && req.method === 'GET') {
+    send(res, 200, cfgCenter.schemaInfo());
+    return;
+  }
+  if (u.pathname === '/api/sync/push' && req.method === 'POST') {
+    const cfg = cfgCenter.get();
+    if (cfg.sync && cfg.sync.enabled === false) { send(res, 403, { ok: false, error: '云同步已被关闭' }); return; }
+    readBody(req, (body) => {
+      let p; try { p = JSON.parse(body || '{}'); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      const r = cfgCenter.syncPush(p.device, p.payload || p.settings || {});
+      send(res, r.ok ? 200 : 400, r);
+    });
+    return;
+  }
+  if (u.pathname === '/api/sync/pull' && req.method === 'GET') {
+    const cfg = cfgCenter.get();
+    if (cfg.sync && cfg.sync.enabled === false) { send(res, 403, { ok: false, error: '云同步已被关闭' }); return; }
+    send(res, 200, cfgCenter.syncPull(u.searchParams.get('device') || ''));
+    return;
+  }
+  if (u.pathname === '/api/sync/peers' && req.method === 'GET') {
+    if (!DEV_MODE) { send(res, 404, { ok: false, error: 'not found' }); return; }
+    send(res, 200, cfgCenter.syncAll());
+    return;
+  }
+  if (u.pathname === '/admin/config-center' && req.method === 'GET') {
+    if (!DEV_MODE) { send(res, 404, { ok: false, error: 'not found' }); return; }
+    let html = '';
+    try { html = fs.readFileSync(path.join(__dirname, 'config-center-admin.html'), 'utf8'); }
+    catch (e) { send(res, 500, { ok: false, error: 'config-center-admin.html 缺失' }); return; }
+    html = withAdminBack(html);
+    cors(res);
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(html) });
+    res.end(html);
+    return;
+  }
+  /* ---------- 分享短链（1.7.94 · 清单 #65）：客户端发目标换短码，扫码走 /s/<code> ---------- */
+  if (u.pathname === '/api/share' && req.method === 'POST') {
+    readBody(req, (body) => {
+      let p; try { p = JSON.parse(body || '{}'); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      const r = shares.create(p && p.url, p && p.title);
+      if (!r.ok) { send(res, 400, r); return; }
+      const base = (p && typeof p.base === 'string' && /^https?:\/\//i.test(p.base)) ? p.base.replace(/\/+$/, '') : '';
+      send(res, 200, Object.assign({ ok: true }, r, { short: base ? base + '/s/' + r.code : '/s/' + r.code }));
+    });
+    return;
+  }
+  if (u.pathname === '/api/share/info' && req.method === 'GET') {
+    send(res, 200, Object.assign({ ok: true }, shares.info()));
+    return;
+  }
+  if (u.pathname === '/api/share/list' && req.method === 'GET') {
+    if (!DEV_MODE) { send(res, 404, { ok: false, error: 'not found' }); return; }
+    send(res, 200, { ok: true, items: shares.list(u.searchParams.get('limit')) });
+    return;
+  }
+  if (/^\/s\/[a-z0-9]{5,12}$/.test(u.pathname) && req.method === 'GET') {
+    const hit = shares.resolve(u.pathname.slice(3));
+    if (!hit) {
+      cors(res);
+      const html = '<!doctype html><meta charset="utf-8"><title>分享链接失效</title>' +
+        '<div style="font-family:system-ui;padding:40px;color:#E8EDF7;background:#0B0D16">' +
+        '<h2>分享链接不存在或已过期</h2><p style="color:#8F98B5">短链保留 180 天，过期后自动清理。</p></div>';
+      res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end(html);
+      return;
+    }
+    cors(res);
+    if (hit.target[0] === '#') {
+      /* 应用内路由：给出一个跳回应用的落地页，不自动跳外链 */
+      const html = '<!doctype html><meta charset="utf-8"><title>' + escapeHtml(hit.title || '鸿汇影分享') + '</title>' +
+        '<div style="font-family:system-ui;padding:40px;color:#E8EDF7;background:#0B0D16">' +
+        '<h2>' + escapeHtml(hit.title || '鸿汇影分享') + '</h2><p style="color:#8F98B5">这是应用内分享，请在鸿汇影客户端里打开。</p></div>';
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end(html);
+      return;
+    }
+    res.writeHead(302, { Location: hit.target, 'Cache-Control': 'no-store' });
+    res.end();
+    return;
+  }
   if (u.pathname === '/api/config/kid' && req.method === 'GET') {
     send(res, 200, Object.assign({ ok: true, config: extras.kid.get() }, extras.kid.stateAt()));
     return;
@@ -2306,6 +2471,69 @@ function handleRequest(req, res) {
       const r = opsConfig.promo.set(p || {});
       send(res, r.ok ? 200 : 500, r);
     });
+    return;
+  }
+
+  /* ---- 1.7.95 设备码账号 / 云同步 / 手机遥控（P1-01/02/03 · P2-B09/B10）
+     口径：设备码就是账号本身（8 位，无密码、无找回）；只收收藏/历史/片单/续播点，
+     不收链接与路径；遥控指令只进内存队列、20 秒过期。 */
+  if (u.pathname === '/api/account/create' && req.method === 'POST') {
+    readBody(req, (body) => {
+      let p; try { p = JSON.parse(body || '{}'); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      const r = accountSync.create(p && p.code);
+      send(res, r.ok ? 200 : 500, r);
+    });
+    return;
+  }
+  if (u.pathname === '/api/account/data' && req.method === 'GET') {
+    const r = accountSync.get(u.searchParams.get('code') || '');
+    if (!r) { send(res, 404, { ok: false, error: '没有这枚设备码' }); return; }
+    send(res, 200, { ok: true, account: r });
+    return;
+  }
+  if (u.pathname === '/api/account/sync' && req.method === 'POST') {
+    readBody(req, (body) => {
+      let p; try { p = JSON.parse(body || '{}'); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      if (!p || !p.code) { send(res, 400, { ok: false, error: '缺设备码' }); return; }
+      const r = accountSync.sync(p.code, p.profile, p.nick);
+      send(res, r.ok ? 200 : (r.missing ? 404 : 400), r);
+    });
+    return;
+  }
+  if (u.pathname === '/api/account/rename' && req.method === 'POST') {
+    readBody(req, (body) => {
+      let p; try { p = JSON.parse(body || '{}'); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      const r = accountSync.rename(p && p.code, p && p.nick);
+      send(res, r.ok ? 200 : 400, r);
+    });
+    return;
+  }
+  if (u.pathname === '/api/account/stats' && req.method === 'GET') {
+    if (!DEV_MODE) { send(res, 404, { ok: false, error: 'not found' }); return; }
+    send(res, 200, { ok: true, stats: accountSync.stats(), queues: accountSync.queueStats() });
+    return;
+  }
+  if (u.pathname === '/api/remote/cmd' && req.method === 'POST') {
+    readBody(req, (body) => {
+      let p; try { p = JSON.parse(body || '{}'); } catch (e) { send(res, 400, { ok: false, error: 'bad json' }); return; }
+      const r = accountSync.pushCmd(p && p.code, p && p.cmd);
+      send(res, r.ok ? 200 : 400, r);
+    });
+    return;
+  }
+  if (u.pathname === '/api/remote/poll' && req.method === 'GET') {
+    const r = accountSync.pollCmd(u.searchParams.get('code') || '', u.searchParams.get('since') || 0);
+    send(res, r.ok ? 200 : 400, r);
+    return;
+  }
+  if (u.pathname === '/remote' && req.method === 'GET') {
+    const proto = String(req.headers['x-forwarded-proto'] || 'http').split(',')[0].trim();
+    const host = String(req.headers.host || ('127.0.0.1:' + (PORT || 8787)));
+    const base = proto + '://' + host;
+    const html = accountSync.remotePage(base, u.searchParams.get('code') || '');
+    cors(res);
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Length': Buffer.byteLength(html) });
+    res.end(html);
     return;
   }
 
@@ -2703,7 +2931,8 @@ function handleRequest(req, res) {
         const d = hit.artifacts && hit.artifacts.desktop;
         const fp = archiveDesktopPath(hit);
         const extra = { source: 'archive', desktopSha256: (d && d.sha256) || null,
-          desktopSize: (d && d.size) || 0, versionName: hit.versionName, versionCode: hit.versionCode || null };
+          desktopSize: (d && d.size) || 0, versionName: hit.versionName, versionCode: hit.versionCode || null,
+          silent: !!p.silent };
         if (fp) { launchSetup(fp, res, extra); return; }
         if (hit.downloadUrl && /^https?:\/\//i.test(hit.downloadUrl)) {
           const dest = path.join(UPDATES_DIR, 'desktop-setup-' + wantVer.replace(/[^\w.\-]/g, '') + '.exe');
@@ -2725,7 +2954,7 @@ function handleRequest(req, res) {
           const sf = local + '.sha256';
           if (fs.existsSync(sf)) localSha = String(fs.readFileSync(sf, 'utf8')).trim().split(/\s+/)[0] || null;
         } catch (e) { /* 无校验文件则按体积闸 */ }
-        launchSetup(local, res, { source: 'local', desktopSha256: localSha });
+        launchSetup(local, res, { source: 'local', desktopSha256: localSha, silent: !!p.silent });
         return;
       }
       if (String(process.env.KH_UPDATE_ALLOW_DOWNLOAD || '1') === '0') {
@@ -2733,19 +2962,36 @@ function handleRequest(req, res) {
         return;
       }
       const man = manifestForInstall();
-      if (!man) {
+      const cands = installCandidates(man);
+      if (!cands.length) {
         send(res, 404, { ok: false, error: '本机没有安装包，公网清单也没有可用的下载地址（未配置镜像站？可先从下载页手动更新：' + MANUAL_DOWNLOAD_PAGE + '）' });
         return;
       }
-      const dest = path.join(UPDATES_DIR, 'desktop-setup.exe');
-      console.log('[更新] 本机无安装包，开始从镜像站下载：' + man.downloadUrl);
-      downloadToFile(man.downloadUrl, dest, (err, size) => {
+      console.log('[更新] 本机无安装包，按 ' + cands.length + ' 个候选源依次尝试，首个：' + cands[0].url);
+      updateSources.tryDownloadAll(cands, {
+        dir: UPDATES_DIR,
+        download: (u2, dest, cb2) => downloadToFile(u2, dest, cb2)
+      }, (err, hit) => {
         if (err) {
-          send(res, 502, { ok: false, error: '从镜像站下载安装包失败：' + (err.message || err) + '（可先从下载页手动更新：' + MANUAL_DOWNLOAD_PAGE + '）', url: man.downloadUrl });
+          console.error('[更新] 全部源失败：' + err.message + ' / ' + (err.attempts || []).map(a => a.label + ':' + a.error).join(' | '));
+          send(res, 502, {
+            ok: false,
+            error: '所有更新源都没拿到可用安装包（已试 ' + cands.length + ' 个源，可先从下载页手动更新：' + MANUAL_DOWNLOAD_PAGE + '）',
+            attempts: err.attempts || [],
+            candidates: cands.map(c => ({ label: c.label, url: c.url }))
+          });
           return;
         }
-        console.log('[更新] 下载完成 ' + size + ' B，开始校验');
-        launchSetup(dest, res, man);
+        console.log('[更新] 下载完成 ' + hit.size + ' B，来源 ' + hit.from
+          + (hit.attempts.length ? '（前 ' + hit.attempts.length + ' 个源失败）' : ''));
+        launchSetup(hit.file, res, Object.assign({}, man || {}, {
+          source: 'download:' + hit.from,
+          desktopSha256: hit.sha256,          // 以实际落盘内容为准，清单缺失也能校验
+          desktopSize: hit.size,
+          attempts: hit.attempts,
+          downloadFrom: hit.from,
+          silent: !!p.silent
+        }));
       });
     });
     return;

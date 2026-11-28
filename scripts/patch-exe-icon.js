@@ -59,14 +59,16 @@ function main() {
 
   const exeShaBefore = sha(exe);
   const iconSha = sha(icon);
+  /* 版本号也参与幂等判断：只改图标时代码换版本会漏更新属性 */
+  const ver = (() => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version; } catch (e) { return ''; } })();
 
-  // 幂等：上次改写后 exe 的 sha 与当前一致，且图标未变 → 跳过
+  // 幂等：上次改写后 exe 的 sha 与当前一致，且图标与版本号未变 → 跳过
   // 注意比较的是「改写后」的 sha：改写前 sha 每轮都会变，用它判断永远不会命中。
   try {
     if (fs.existsSync(STAMP)) {
       const s = JSON.parse(fs.readFileSync(STAMP, 'utf8'));
-      if (s.exeSha === exeShaBefore && s.iconSha === iconSha) {
-        log('PASSED 已是最新图标，跳过改写（' + path.basename(exe) + '）');
+      if (s.exeSha === exeShaBefore && s.iconSha === iconSha && (s.metaVer || '') === ver) {
+        log('PASSED 已是最新图标与版本信息，跳过改写（' + path.basename(exe) + '）');
         return;
       }
     }
@@ -76,7 +78,23 @@ function main() {
   if (!rcedit) { console.error('[图标] 未找到 rcedit（electron-builder 缓存缺失）'); process.exit(1); }
 
   const sizeBefore = fs.statSync(exe).size;
-  const r = spawnSync(rcedit, [exe, '--set-icon', icon], { encoding: 'utf8' });
+  /* 1.7.105：只改图标不改属性时，免安装包里的主程序右键「属性 → 详细信息」还是 Electron 默认的
+     Copyright (C) 2015 GitHub, Inc.，发给别人很扎眼。既然 rcedit 已经在手，顺手把版本信息一起写正。 */
+  const metaArgs = [];
+  if (ver) {
+    metaArgs.push('--set-file-version', ver, '--set-product-version', ver);
+  }
+  for (const [k, v] of [
+    ['ProductName', '鸿汇影桌面版'],
+    ['CompanyName', 'HongHub'],
+    ['FileDescription', '鸿汇影桌面版 · 本地影视播放器'],
+    ['LegalCopyright', 'Copyright © 2026 HongHub'],
+    ['InternalName', 'HongHub'],
+    ['OriginalFilename', '鸿汇影桌面版.exe']
+  ]) {
+    metaArgs.push('--set-version-string', k, v);
+  }
+  const r = spawnSync(rcedit, [exe, '--set-icon', icon, ...metaArgs], { encoding: 'utf8' });
   if (r.status !== 0) {
     console.error('[图标] rcedit 失败：' + (r.stderr || r.stdout || r.error));
     console.error('[图标] 若 exe 正被运行中的进程占用，请先停止程序和本地服务再执行');
@@ -94,11 +112,12 @@ function main() {
     exeShaBefore: exeShaBefore,
     sizeBefore: sizeBefore,
     sizeAfter: sizeAfter,
+    metaVer: ver,
     at: new Date().toISOString()
   }, null, 2) + '\n');
 
-  log('PASSED exe 图标已改写  ' + path.basename(exe) +
-    '  ' + sizeBefore + ' → ' + sizeAfter + ' B（+' + (sizeAfter - sizeBefore) + '）');
+  log('PASSED exe 图标与版本信息已改写  ' + path.basename(exe) +
+    '  ' + sizeBefore + ' → ' + sizeAfter + ' B（+' + (sizeAfter - sizeBefore) + '）' + (ver ? ' · v' + ver : ''));
   log('rcedit: ' + rcedit);
 }
 

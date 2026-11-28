@@ -46,7 +46,33 @@ els.main.addEventListener('keydown', function(e){
     khBootSync(true);
   } else if(act === 'play'){
     var m = findMovie(node.getAttribute('data-id'));
-    if(m) openPlayer(m);
+    if(!m) return;
+    /* 1.7.90 点击行为（清单 #51）：偏好「先看简介」时第一次点击只展开简介，第二次才播 */
+    try{
+      var _arm = (window.KHPREF && window.KHPREF.needsArm)
+        ? window.KHPREF.needsArm(khPref().openMode, !!node.getAttribute('data-armed'))
+        : (khPref().openMode === 'detail' && !node.getAttribute('data-armed'));
+      if(_arm && node.classList && node.classList.contains('card')){
+        node.setAttribute('data-armed', '1');
+        node.classList.add('card-armed');
+        toast('已展开简介，再点一次开始播放');
+        return;
+      }
+    }catch(e){}
+    openPlayer(m);
+  } else if(act === 'live-go'){
+    /* 搜索结果里的直播命中：按频道名回到内置频道表，找不到就提示 */
+    var _ln = node.getAttribute('data-name') || '';
+    var _lch = (window.LIVE_CHANNELS || []).filter(function(c){ return String(c.name) === _ln; })[0];
+    if(_lch && typeof openLiveChannel === 'function') openLiveChannel(_lch, 0);
+    else toast('这个频道已不在内置列表里');
+  } else if(act === 'autonext-now'){
+    var _nn = findMovie(state.pendingNext);
+    khCancelAutoNext(false);
+    if(_nn) openPlayer(_nn);
+  } else if(act === 'autonext-cancel'){
+    khCancelAutoNext(true);
+    toast('已取消自动播放');
   } else if(act === 'view'){
     state.view = node.getAttribute('data-view'); render();
   } else if(act === 'cat'){
@@ -67,6 +93,22 @@ els.main.addEventListener('keydown', function(e){
     /* 打开前再校验一次：只放行 http(s)，挡掉被篡改的 data-url（javascript:/data: 等） */
     var ou = node.getAttribute('data-url') || '';
     if(!/^https?:\/\//i.test(ou)){ toast('链接协议不合法，已拦截'); return; }
+    /* 1.7.95 平台入口域名守卫（台账 P0-04）：域名不在官方清单时第一次不打开，
+       提示真实 host，3 秒内再点同一个链接才放行，并把这个 host 记进本机信任表（上限 30）。 */
+    if(window.KHGUARD){
+      var gr = window.KHGUARD.check(ou);
+      if(gr.bad){ toast(gr.reason || '地址不合法，已拦截'); return; }
+      if(gr.ask){
+        var pend = state.siteConfirm;
+        if(!pend || pend.url !== ou || (Date.now() - (pend.at || 0)) > 3000){
+          state.siteConfirm = { url: ou, host: gr.host, at: Date.now() };
+          toast('⚠ 域名 ' + gr.host + ' 不在平台官方清单 · 3 秒内再点一次才打开');
+          return;
+        }
+        try { window.KHGUARD.trust(gr.host); } catch(e0){}
+        state.siteConfirm = null;
+      }
+    }
     try { markSiteOpen(ou); } catch(e) {}
     openSite(ou, node.getAttribute('data-mode') || 'pc');
   } else if(act === 'plat-copy'){
@@ -108,6 +150,16 @@ els.main.addEventListener('keydown', function(e){
   } else if(act === 'cat-year'){
     state.catYear = node.getAttribute('data-y') || '全部';
     render();
+  } else if(act === 'cat-tag'){
+    state.catTag = node.getAttribute('data-t') || '全部';
+    render();
+  } else if(act === 'guard-clear'){
+    if(window.KHGUARD){
+      var _n = window.KHGUARD.trustList().length;
+      window.KHGUARD.clearTrust();
+      toast('已清空 ' + _n + ' 个已信任域名，下次打开会重新提示');
+      render();
+    }
   } else if(act === 'watchlater-del'){
     var wid = node.getAttribute('data-id');
     var wlist = getWatchLater().filter(function(x){ return x !== wid; });
@@ -159,6 +211,13 @@ els.main.addEventListener('keydown', function(e){
     var au = Number(auEl ? auEl.value : 0) === 1 ? 1 : 0;
     setStore('kh_auto_update', au);
     toast(au ? '自动升级已开启：发现新版自动下载+校验+进安装向导（安装仍需你确认，失败不重试）' : '自动升级已关闭（手动点更新横幅）');
+  } else if(act === 'silentins-save'){
+    var siEl = document.getElementById('khSilentIns');
+    var si = Number(siEl ? siEl.value : 0) === 1 ? 1 : 0;
+    setStore('kh_silent_install', si);
+    toast(si
+      ? '已开启静默安装：新版校验通过后自动退出 → 覆盖安装 → 自动重开（免安装版目录会自动回退弹向导）'
+      : '已改回弹向导安装：安装包校验通过后由你点「下一步」');
   } else if(act === 'autostart-save'){
     var asEl = document.getElementById('khAutostartSel');
     var want = Number(asEl ? asEl.value : 0) === 1;
@@ -188,14 +247,18 @@ els.main.addEventListener('keydown', function(e){
     setStore('kh_lang', lgEl ? String(lgEl.value) : 'zh');
     setStore('kh_senior', Number(seEl ? seEl.value : 0) === 1 ? 1 : 0);
     var szEl = document.getElementById('khSubSizeSel'), poEl = document.getElementById('khSubPosSel');
-    setStore('kh_sub_style', { size: (szEl && KH_SUB_SIZES[szEl.value]) ? szEl.value : 'm',
-      pos: (poEl && KH_SUB_POS[poEl.value]) ? poEl.value : 'mid' });
+    var selSize = (szEl && KH_SUB_SIZES[szEl.value]) ? szEl.value : 'm';
+    var selPos = Number(poEl ? poEl.value : 8);
+    if (KH_SUB_POS.indexOf(selPos) < 0) selPos = 8;
+    setStore('kh_sub_style', { size: selSize, pos: selPos });
+    if (window.KHP2) { try { khP2CfgSave({ subPos: selPos }); } catch(e0) {} }
     khApplyDisplay();
     khApplyLang();
     khApplySubStyle();
     toast('显示设置已保存并生效');
   } else if(act === 'settings-reset'){
     if(!confirm('恢复默认设置？\n还原：中枢地址、定时关闭、字号、倍速、自动升级、夜间/长辈模式、固定版本。\n不动：收藏、历史、稍后再看、自添加片源与平台、访问口令。')) return;
+    try{ khSnapPush('reset'); }catch(e){}
     khResetSettings();
     toast('已恢复默认设置（收藏/历史/片单未动）');
     render();
@@ -208,8 +271,12 @@ els.main.addEventListener('keydown', function(e){
   } else if(act === 'hub-save'){
     var hEl = document.getElementById('hubUrl');
     var hu = hEl ? normalizeSiteUrl(hEl.value) : '';
-    if(!hu){ setStore('kh_hub_url', ''); toast('已清空中枢地址（改回本机模式）'); render(); return; }
-    setStore('kh_hub_url', hu.replace(/\/$/, ''));
+    /* 1.7.105：桌面端读 kh_hub_url，设备端（HAP 变体）读 khHub —— 以前只写前者，
+       在设备上改了地址重启后又被构建时注入的地址盖回去，看起来像「存了没用」。两个键一起写。 */
+    if(!hu){ setStore('kh_hub_url', ''); try{ localStorage.removeItem('khHub'); }catch(e){} toast('已清空中枢地址（改回本机模式）'); render(); return; }
+    hu = hu.replace(/\/$/, '');
+    setStore('kh_hub_url', hu);
+    try{ localStorage.setItem('khHub', hu); }catch(e){}
     toast('中枢地址已保存，重启页面后生效');
     render();
   } else if(act === 'hub-test'){
@@ -217,7 +284,7 @@ els.main.addEventListener('keydown', function(e){
     var hu2 = hEl2 ? normalizeSiteUrl(hEl2.value) : '';
     if(!hu2){ toast('先填中枢地址，如 http://192.168.1.10:8890'); return; }
     toast('正在测试 ' + hu2 + ' …');
-    fetch(hu2.replace(/\/$/, '') + '/api/manifest', { cache: 'no-store' })
+    khFetch(hu2.replace(/\/$/, '') + '/api/manifest', { cache: 'no-store' })
       .then(function(r){ return r.json(); })
       .then(function(d){ toast('连上了：版本 ' + ((d && d.release && d.release.latest && d.release.latest.versionName) || '未知')); })
       .catch(function(e){ toast('连不上：' + (e && e.message || e) + '（检查地址、端口与口令）'); });
@@ -372,9 +439,11 @@ els.main.addEventListener('keydown', function(e){
   } else if(act === 'wh-src-ext'){
     var _eu = node.getAttribute('data-url') || '';
     if(!_eu){ toast('这条线路没有可用地址'); return; }
-    if(window.khExternal && window.khExternal.open){
-      window.khExternal.open(_eu).then(function(r){
-        toast(r && r.ok ? '已用外部播放器打开' : '拉起失败：' + ((r && r.reason) || '未找到可用播放器'));
+    if(window.khExternal && (typeof window.khExternal.play === 'function' || window.khExternal.open)){
+      var _devPlay = (typeof window.khExternal.play === 'function');
+      var _fn = _devPlay ? window.khExternal.play(_eu, 'video/*') : window.khExternal.open(_eu);
+      _fn.then(function(r){
+        toast(r && r.ok ? (_devPlay ? '已交给系统视频应用打开' : '已用外部播放器打开') : '拉起失败：' + ((r && r.reason) || '未找到可用播放器'));
       }).catch(function(){ toast('拉起失败'); });
     } else {
       whSrcCopy(_eu);
@@ -384,6 +453,31 @@ els.main.addEventListener('keydown', function(e){
     whSrcCopy(node.getAttribute('data-url') || '');
   } else if(act === 'open-file'){
     khOpenLocalVideo();
+  } else if(act === 'store-privacy'){
+    if(typeof khStorePrivacyShow === 'function') khStorePrivacyShow(true);
+  } else if(act === 'store-privacy-full'){
+    if(typeof khStorePrivacyFullShow === 'function') khStorePrivacyFullShow();
+  } else if(act === 'store-feedback'){
+    if(typeof khStoreFeedback === 'function') khStoreFeedback();
+  } else if(act === 'scan-library'){
+    khScanLibrary();
+  } else if(act === 'show-stats'){
+    khShowStats();
+  } else if(act === 'share-export'){
+    khShareExport();
+  } else if(act === 'share-import'){
+    khShareImport();
+  } else if(act === 'skip-intro-set'){
+    if(state.movie && els.video){ khSkipSet(state.movie, { intro: els.video.currentTime || 0 }); toast('已记录片头跳过点'); renderPlayerAside(state.movie); }
+  } else if(act === 'skip-outro-set'){
+    if(state.movie && els.video){ var d = els.video.duration || 0; var left = d - (els.video.currentTime || 0); if(left > 0){ khSkipSet(state.movie, { outro: left }); toast('已记录片尾跳过点（剩 ' + Math.round(left) + 's）'); renderPlayerAside(state.movie); } else { toast('先到片尾附近再记录'); } }
+  } else if(act === 'skip-clear'){
+    if(state.movie){ khSkipSet(state.movie, { intro: 0, outro: 0 }); toast('已清除跳过点'); renderPlayerAside(state.movie); }
+  } else if(act === 'sub-offset'){
+    var dd = Number(node.getAttribute('data-d')) || 0;
+    var nv = (dd === 0) ? 0 : Math.round((khSubOffset() + dd) * 10) / 10;
+    setStore('kh_sub_offset', nv); toast('字幕偏移 ' + (nv >= 0 ? '+' : '') + nv.toFixed(1) + 's');
+    if(state.movie) renderPlayerAside(state.movie);
   } else if(act === 'proxy-save'){
     khSaveProxy();
   } else if(act === 'dl-add'){
@@ -444,9 +538,15 @@ els.main.addEventListener('keydown', function(e){
     render();
   } else if(act === 'plat-cat'){
     state.platCat = node.getAttribute('data-cat') || '电影';
+    state.platShown = 60;   /* 换分类回到首批，避免沿用上一个分类的展开量 */
     render();
   } else if(act === 'plat-filter'){
     state.platFilter = node.getAttribute('data-f') || 'all';
+    state.platShown = 60;
+    render();
+  } else if(act === 'plat-more'){
+    /* 1.7.97 分批加载：默认每次 +60，带 data-all 一次全出 */
+    state.platShown = node.getAttribute('data-all') ? 9999 : (Number(state.platShown) || 60) + 60;
     render();
   } else if(act === 'issue-toggle'){
     var _cfg = issueCfg(); _cfg.auto = !_cfg.auto; saveIssueCfg(_cfg);
@@ -481,7 +581,21 @@ els.main.addEventListener('keydown', function(e){
     var _okJson = downloadTextFile(issueFileName('json'), state.issueReportText, 'application/json');
     if(!_okJson) copyIssueText(state.issueReportText, '问题 JSON'); else toast('诊断 JSON 已导出');
     render();
-  } else if(act === 'issue-export-txt'){
+  } else if(act === 'lan-toggle'){
+    khLanToggle();
+  } else if(act === 'update-check'){
+    khUpdateCheck();
+  } else if(act === 'playlog-copy'){
+    khPlayLogCopy();
+} else if(act === 'selfcheck-run'){
+    khSelfCheck();
+    toast('自检已启动，约 3 秒出结果');
+    if(state.view === 'issues') render();
+  } else if(act === 'diag-run'){
+    khDiagRun();
+  } else if(act === 'diag-copy'){
+    khDiagCopy();
+} else if(act === 'issue-export-txt'){
     state.issueReportText = issueReport();
     var _okTxt = downloadTextFile(issueFileName('txt'), state.issueReportText, 'text/plain');
     if(!_okTxt) copyIssueText(state.issueReportText, '诊断报告'); else toast('诊断报告已导出为文本文件');
@@ -515,9 +629,76 @@ els.main.addEventListener('keydown', function(e){
     clearSites(false);
   } else if(act === 'site-clear-yes'){
     clearSites(true);
+  } else if(act === 'plat-pin'){
+    /* 1.7.90 平台入口置顶（清单 #26）：只动本机顺序，不动内置清单 */
+    var _pn = String(node.getAttribute('data-name') || '');
+    if(_pn){
+      var _pp = khPlatPref(), _pi2 = _pp.pin.indexOf(_pn);
+      if(_pi2 >= 0) _pp.pin.splice(_pi2, 1); else _pp.pin.unshift(_pn);
+      setStore('kh_plat_pref', { hide: _pp.hide, pin: _pp.pin.slice(0, 30) });
+      toast(_pi2 >= 0 ? '已取消置顶' : '已置顶「' + _pn + '」');
+      render();
+    }
+  } else if(act === 'plat-hide'){
+    var _hn = String(node.getAttribute('data-name') || '');
+    if(_hn){
+      var _hp = khPlatPref();
+      if(_hp.hide.indexOf(_hn) < 0) _hp.hide.push(_hn);
+      setStore('kh_plat_pref', { hide: _hp.hide.slice(0, 200), pin: _hp.pin });
+      toast('已隐藏「' + _hn + '」，顶部可全部恢复');
+      render();
+    }
+  } else if(act === 'plat-hide-reset'){
+    var _rp = khPlatPref();
+    setStore('kh_plat_pref', { hide: [], pin: _rp.pin });
+    toast('已恢复全部隐藏的平台入口');
+    render();
   } else if(act === 'site-clear-no'){
     state.confirmClear = false; render();
+  } else if(act === 'wh-site-hide'){
+    /* 1.7.90 仓站点单条治理（清单 #57）：隐藏只写本机表，不删仓、不改仓配置 */
+    var _hu = String(node.getAttribute('data-url') || '');
+    if(_hu){
+      var _hm = khWhHide(); _hm[_hu] = 1;
+      var _hk = Object.keys(_hm);
+      if(_hk.length > 400){ for(var _hi = 0; _hi < _hk.length - 400; _hi++) delete _hm[_hk[_hi]]; }
+      setStore('kh_wh_hide', _hm);
+      toast('已隐藏这条仓站点（可在列表底部「全部恢复」）');
+      render();
+    }
+  } else if(act === 'wh-site-pin'){
+    var _pu = String(node.getAttribute('data-url') || '');
+    if(_pu){
+      var _pl = khWhPin(), _pi = _pl.indexOf(_pu);
+      if(_pi >= 0) _pl.splice(_pi, 1); else _pl.unshift(_pu);
+      setStore('kh_wh_pin', _pl.slice(0, 60));
+      toast(_pi >= 0 ? '已取消置顶' : '已置顶，排在这个仓最前面');
+      render();
+    }
+  } else if(act === 'wh-hide-reset'){
+    setStore('kh_wh_hide', {});
+    toast('已恢复全部隐藏的仓站点');
+    render();
   } else if(act.indexOf('res-') === 0){
+    resAction(act, node);
+  } else if(act.indexOf('bak-') === 0){
+    /* 备份与恢复（台账 #160）：和资源配置共用一套分发，避免在主链里再堆十几个分支 */
+    resAction(act, node);
+  } else if(act.indexOf('p2-') === 0){
+    /* 性能 / 无障碍 / 安全（台账 #161）：同上，走 resAction 的统一分发 */
+    resAction(act, node);
+  } else if(act.indexOf('pref-') === 0){
+    /* 偏好与行为（台账 #165 · 1.7.90）：同样走 resAction 的统一分发 */
+    resAction(act, node);
+  } else if(act.indexOf('b8-') === 0){
+    /* 高级与本地能力（台账 #167 · 1.7.91）：音轨 / 字幕 / 通知 / 快捷键 / 外部播放器 / 置顶画中画 / 儿童 / 体检 */
+    resAction(act, node);
+  } else if(act.indexOf('cfg-') === 0 || act.indexOf('theme-') === 0 || act.indexOf('share-') === 0 ||
+            act.indexOf('prof-') === 0 || act.indexOf('meta-') === 0 || act.indexOf('ai-') === 0 ||
+            act.indexOf('net-') === 0 || act.indexOf('r-') === 0 || act === 'sub-sites-save' ||
+            act.indexOf('au-') === 0 || act.indexOf('tv-') === 0 || act.indexOf('acct-') === 0){
+    /* 1.7.94 新增九组动作（台账 #58 #59 #60 #63 #65 #66 #37 #78）：配置总览 / 皮肤包 / 二维码分享 /
+       家庭多档案 / 元数据与海报来源 / 字幕站与 AI Key / 网络族与 DNS / 远端配置，统一走 resAction 分发 */
     resAction(act, node);
   } else if(act.indexOf('live-') === 0){
     liveAction(act, node);
@@ -875,7 +1056,17 @@ els.video.addEventListener('loadedmetadata', function(){
   var p = getProgress();
   var saved = p[state.movie.id] || 0;
   state.resumePos = 0;
-  if(saved > 0 && isFinite(els.video.duration) && saved < els.video.duration - 3){
+  /* 1.7.90 续播策略（清单 #28）：先问 / 直接跳 / 一律从头，决策在 KHPREF.resumePlan */
+  var _plan = { show: false, seek: false };
+  try{
+    _plan = (window.KHPREF && window.KHPREF.resumePlan)
+      ? window.KHPREF.resumePlan(saved, els.video.duration, khPref().resume)
+      : (saved > 0 && isFinite(els.video.duration) && saved < els.video.duration - 3 ? { show: true, seek: false } : { show: false, seek: false });
+  }catch(eP){}
+  if(_plan.seek){
+    try{ els.video.currentTime = saved; toast('已跳到上次看到的位置 ' + fmtTime(saved)); }
+    catch(eS){ state.resumePos = saved; showResumePrompt(saved); }
+  } else if(_plan.show){
     state.resumePos = saved;
     showResumePrompt(saved);
   }
@@ -915,7 +1106,64 @@ els.video.addEventListener('error', function(){
   setDiag('state','error');
   nextSource();
 });
-els.video.addEventListener('timeupdate', function(){ syncSeek(); saveProgress(false); });
+els.video.addEventListener('timeupdate', function(){
+  syncSeek(); saveProgress(false);
+  /* 1.7.111-B 跳片头片尾：本机记忆，按当前剧/目录生效 */
+  try{
+    var m = state.movie; if(!m || m.live) return;
+    var sk = khSkipCfg(m); var t = els.video.currentTime || 0; var d = els.video.duration || 0;
+    if(sk.intro && t < sk.intro && t > 0.3){ els.video.currentTime = sk.intro; }
+    else if(sk.outro && d && (d - t) <= sk.outro && (d - t) > 0.2){ els.video.currentTime = d; }
+  }catch(e){}
+});
+/* 1.7.90 自动下一部（清单 #29）：只在播完时提示，5 秒后自动播；随时可取消 */
+var khAutoNextTimer = null;
+function khCancelAutoNext(clearMsg){
+  if(khAutoNextTimer){ clearInterval(khAutoNextTimer); khAutoNextTimer = null; }
+  state.pendingNext = '';
+  if(clearMsg){ try{ els.msg.textContent = ''; }catch(e){} }
+}
+function khAutoNext(cur){
+  if(!cur || cur.live) return;
+  if(cur.custom && !cur.lib) return;
+  var on = 0;
+  try{ on = khPref().autoNext; }catch(e){}
+  if(!on) return;
+  var pool = allMovies();
+  var next = null;
+  /* 1.7.111-B 媒体库连播：同目录（剧季）内按文件名顺序取下一集 */
+  if(cur.lib && cur.group){
+    var sib = pool.filter(function(m){ return m.lib && m.group === cur.group; })
+      .sort(function(a,b){ return String(a.title).localeCompare(String(b.title), 'zh'); });
+    for(var i=0;i<sib.length;i++){ if(sib[i].id === cur.id && sib[i+1]){ next = sib[i+1]; break; } }
+  }
+  /* 候选挑选在 KHPREF.pickNext：同系列优先，其次同分类；不碰直播与自定义网址 */
+  if(!next){ try{
+    next = (window.KHPREF && window.KHPREF.pickNext) ? window.KHPREF.pickNext(cur, pool) : null;
+  }catch(eN){} }
+  if(!next) return;
+  state.pendingNext = next.id;
+  var left = 5;
+  var paint = function(){
+    try{
+      els.msg.innerHTML = '播放结束 · ' + (left > 0 ? left + ' 秒后播放「' + esc(next.title) + '」' : '正在接「' + esc(next.title) + '」') +
+        ' <button class="cbtn" data-act="autonext-now">▶ 立即播放</button>' +
+        ' <button class="cbtn" data-act="autonext-cancel">取消</button>';
+    }catch(e){}
+  };
+  paint();
+  khAutoNextTimer = setInterval(function(){
+    left--;
+    if(left <= 0){
+      clearInterval(khAutoNextTimer); khAutoNextTimer = null;
+      var nm = findMovie(state.pendingNext);
+      state.pendingNext = '';
+      if(nm) openPlayer(nm);
+      return;
+    }
+    paint();
+  }, 1000);
+}
 els.video.addEventListener('ended', function(){
   if(!state.movie) return;
   if(state.movie.live){   // 直播流到尾自动从头续播，模拟 24h 轮播
@@ -925,6 +1173,7 @@ els.video.addEventListener('ended', function(){
   var p = getProgress(); delete p[state.movie.id]; setStore('kh_prog', p);
   els.msg.textContent = '播放结束';
   syncPlayBtn();
+  try{ khAutoNext(state.movie); }catch(e){}
 });
 window.addEventListener('error', function(ev){
   setDiag('error', String(ev && ev.message ? ev.message : 'unknown').slice(0, 120));
@@ -934,6 +1183,8 @@ window.addEventListener('error', function(ev){
 /* 内置种子（客户首次打开自动导入网站 + 影视仓接口；幂等、用户删除后不灌回） */
 try{ khSeedBuiltin(); }catch(e){}
 applyVolume(1, false);
+/* 1.7.90 偏好生效：动效开关挂到 html 上，历史条数写进 data 属性供调试/冒烟读 */
+try{ khPrefApply(); }catch(e){}
 render();
 setDiag('boot', Date.now() - BOOT_AT);
 /* 打开即与中枢对齐：源清单 / 平台清单 / 功能清单 / 问题单；之后每 10 分钟再对一次 */
@@ -1122,7 +1373,7 @@ setDiag('state','ready');
 (function () {
   if (!window.KH_HARMONY) return;
   var KH_HUB_DEFAULT = 'http://192.168.188.152:8787';
-  var KH_HUB_CANDIDATES = ["http://192.168.188.152:8787", "http://192.168.188.152:8788", "http://192.168.188.152:8890", "http://172.22.32.1:8787", "http://172.22.32.1:8788", "http://172.22.32.1:8890"];   // 构建时写入的本机所有可达地址
+  var KH_HUB_CANDIDATES = ["http://192.168.188.152:8787", "http://192.168.188.152:8788", "http://192.168.188.152:8890", "http://172.25.64.1:8787", "http://172.25.64.1:8788", "http://172.25.64.1:8890"];   // 构建时写入的本机所有可达地址
   var KH_HUB = (function () {
     try { return (localStorage.getItem('khHub') || KH_HUB_DEFAULT || '').replace(/\/+$/, ''); }
     catch (e) { return (KH_HUB_DEFAULT || ''); }
@@ -1281,8 +1532,8 @@ setDiag('state','ready');
     // 接收所有最终成品：拉取中枢治理产出 + 自动反馈通道
     window.fetch(KH_HUB + '/api/feedback', { cache: 'no-store' }).then(function (r) { return r.json(); })
       .then(function (d) {
-        if (d && d.finalProducts) { khLastFinal = d.finalProducts; khRenderFinal(); }
-        if (d && Array.isArray(d.feedback)) { khFeedbacks = d.feedback; khRenderFinal(); }
+        if (d && d.finalProducts) { khLastFinal = d.finalProducts;    }
+        if (d && Array.isArray(d.feedback)) { khFeedbacks = d.feedback;    }
       }).catch(function () {});
   }
   khDiscoverHub(function () { sync(); });
@@ -1420,7 +1671,8 @@ setDiag('state','ready');
     khHarmonyOptimize();
   }
 
-  khHarmonyHubUI();
+  
+  
   khRenderHub();
 
   function khRenderHub() {
@@ -1431,96 +1683,11 @@ setDiag('state','ready');
   }
 
   // 接收所有最终成品：把中枢治理产出的「建议 / 优化 / 更新 / 发布 / 反馈」在深开鸿端呈现
-  function khRenderFinal() {
-    try {
-      var panel = document.getElementById('khFinalPanel');
-      if (!panel) return;
-      if (panel.style.display === 'none') return; // 用户收起时不刷新 DOM
-      var h = '';
-      if (khLastFinal) {
-        var f = khLastFinal;
-        var sugg = (f.suggestions || []).map(function (s) {
-          return '<li>💡 ' + esc(s.title) + (s.detail ? ' <span style="color:#8A8FA3">（' + esc(s.detail) + '）</span>' : '') + '</li>';
-        }).join('');
-        var upd = f.updated || {};
-        var pub = f.published || {};
-        h += '<div style="font-weight:700;margin:6px 0 2px">🧠 建议提取（' + ((f.suggestions || []).length) + '）</div><ul style="margin:2px 0;padding-left:18px">' + (sugg || '<li style="color:#8A8FA3">暂无</li>') + '</ul>';
-        h += '<div style="margin:4px 0;line-height:1.6">🔧 自动优化：<b style="color:#4ADE80">' + ((f.optimized && f.optimized.removed) || 0) + '</b> 条失效源已处理 · ' + ((f.optimized && f.optimized.channels) || 0) + ' 个频道<br>'
-          + '🛠️ 加更新（自愈）：' + (upd.ok ? '✅ 成功' : '—') + (upd.skipped ? '（跳过：无问题）' : '') + '<br>'
-          + '🚀 自动更新加发布：' + (pub.skipped ? '跳过（无实质变更，不发新版）' : (pub.ok ? ('已发布 v' + esc(pub.versionName) + ' #' + esc(pub.versionCode)) : '—')) + '</div>';
-      } else {
-        h += '<div style="color:#8A8FA3">尚未收到中枢产出，请先连接中枢或点击「🤖 优化」。</div>';
-      }
-      // 自动反馈通道（含深开鸿端回传）
-      var fb = (khFeedbacks || []).slice(0, 8).map(function (x) {
-        var t = khFmtTime(x.at || x.startedAt);
-        var s = x.suggestions ? ('建议 ' + ((x.suggestions || []).length) + ' 条') : '';
-        var ok = x.ok ? '✅' : '⚠️';
-        return '<li>' + ok + ' ' + esc(t) + ' ' + esc((x.type || 'govern')) + (s ? ' · ' + esc(s) : '') + '</li>';
-      }).join('');
-      h += '<div style="font-weight:700;margin:6px 0 2px">📡 自动反馈（' + (khFeedbacks || []).length + '）</div><ul style="margin:2px 0;padding-left:18px">' + (fb || '<li style="color:#8A8FA3">暂无</li>') + '</ul>';
-      panel.innerHTML = h;
-    } catch (e) {}
-  }
+  
+  
 
-  function khHarmonyHubUI() {
-    try {
-      var bar = document.createElement('div'); bar.id = 'khHubBar';
-      bar.setAttribute('style', 'position:fixed;left:8px;top:8px;z-index:9998;background:#1B2233;color:#E7ECF5;' +
-        'border:1px solid #3A4256;border-radius:10px;padding:6px 8px;font:12px/1.3 sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.4);max-width:94vw');
-      var autoOn = true; try { autoOn = localStorage.getItem('khAutoOptimize') !== '0'; } catch (e) {}
-      bar.innerHTML =
-        '🛰️ 中枢：<span id="khHubState" style="color:#9AA6C4">' + (KH_HUB || '未连接') + '</span> ' +
-        '<span id="khHubSet" style="color:#7FA8FF;cursor:pointer;margin-left:4px">设置</span><br>' +
-        '🤖 自动优化：<span id="khGovTime" style="color:#9AA6C4">—</span> (<span id="khGovOk" style="color:#9AA6C4">—</span>) ' +
-        '<label style="color:#9AA6C4;cursor:pointer;margin-left:4px"><input type="checkbox" id="khAutoChk"' + (autoOn ? ' checked' : '') + '>开</label> ' +
-        '<button id="khOptBtn" style="border:0;border-radius:8px;padding:2px 8px;background:#2563EB;color:#fff;cursor:pointer;margin-left:4px;font-size:11px">🤖 优化</button> ' +
-        '<button id="khFbBtn" style="border:0;border-radius:8px;padding:2px 8px;background:#16A34A;color:#fff;cursor:pointer;margin-left:4px;font-size:11px">📡 反馈</button> ' +
-        '<button id="khFinalBtn" style="border:0;border-radius:8px;padding:2px 8px;background:#7C3AED;color:#fff;cursor:pointer;margin-left:4px;font-size:11px">📋 成品</button> ' +
-        '<button id="khHubDiscover" style="border:0;border-radius:8px;padding:2px 8px;background:#334155;color:#fff;cursor:pointer;margin-left:4px;font-size:11px">🔄 重连</button> ' +
-        '<button id="khHubToken" style="border:0;border-radius:8px;padding:2px 8px;background:#B45309;color:#fff;cursor:pointer;margin-left:4px;font-size:11px">🔑 口令</button>';
-      document.body.appendChild(bar);
-      // 全部最终成品面板（默认收起，点 📋 成品 展开）
-      var panel = document.createElement('div'); panel.id = 'khFinalPanel';
-      panel.setAttribute('style', 'display:none;position:fixed;left:8px;top:64px;z-index:9997;background:#12141e;color:#E7ECF5;border:1px solid #3A4256;border-radius:12px;padding:12px 14px;font:12px/1.5 sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.55);max-width:min(92vw,420px);max-height:78vh;overflow:auto');
-      document.body.appendChild(panel);
-      var setBtn = document.getElementById('khHubSet');
-      if (setBtn) setBtn.onclick = function () {
-        var v = prompt('填写桌面中枢地址（支持局域网IP / 公网IP / DDNS）：', KH_HUB || 'http://');
-        if (v) { try { localStorage.setItem('khHub', v.replace(/\/+$/, '')); } catch (e) {} location.reload(); }
-      };
-      var disco = document.getElementById('khHubDiscover');
-      if (disco) disco.onclick = function () {
-        khShowToast('🛰️ 正在重新发现中枢…');
-        khDiscoverHub(function (ok) {
-          khShowToast(ok ? ('✅ 已连接中枢：' + KH_HUB) : '⚠️ 未发现中枢，可在「设置」里填写地址');
-          var st = document.getElementById('khHubState'); if (st) st.textContent = KH_HUB || '未连接';
-          sync();
-        });
-      };
-      var tokBtn = document.getElementById('khHubToken');
-      if (tokBtn) tokBtn.onclick = function () {
-        var v = prompt('填写中枢访问口令（中枢未开启口令时留空即可）：', khAccessToken());
-        if (v === null) return;
-        try { localStorage.setItem('khHubToken', v); } catch (e) {}
-        khShowToast(v ? '🔑 口令已保存' : '🔑 已清除口令');
-        sync();
-      };
-      khOptBtn = document.getElementById('khOptBtn');
-      if (khOptBtn) khOptBtn.onclick = function () { khHarmonyOptimize(); };
-      var fbBtn = document.getElementById('khFbBtn');
-      if (fbBtn) fbBtn.onclick = function () { khHarmonyFeedback(); };
-      var finalBtn = document.getElementById('khFinalBtn');
-      if (finalBtn) finalBtn.onclick = function () {
-        var p = document.getElementById('khFinalPanel');
-        if (!p) return;
-        if (p.style.display === 'none') { p.style.display = 'block'; khRenderFinal(); }
-        else { p.style.display = 'none'; }
-      };
-      var chk = document.getElementById('khAutoChk');
-      if (chk) chk.onchange = function () { try { localStorage.setItem('khAutoOptimize', chk.checked ? '1' : '0'); } catch (e) {} khShowToast(chk.checked ? '✅ 已开启自动优化' : '⏸️ 已关闭自动优化'); };
-    } catch (e) {}
-  }
+  
+  
 
   /* ===== TV / 遥控器空间焦点导航（无触摸屏设备可用方向键选条目，Enter 打开）===== */
   (function khTvSpatialNav() {
@@ -1621,9 +1788,25 @@ setDiag('state','ready');
   } catch (e) {}
 })();
 
-var KH_APP_CODE = 1000199;   // 当前客户端版本号（构建/发版时注入），用于自动更新比对
+var KH_APP_CODE = 1000228;   // 当前客户端版本号（构建/发版时注入），用于自动更新比对
 window.KH_APP_VERSION = window.KH_APP_VERSION || '1.7.70';   // 版本名（发版时同样会被注入覆盖），升级失败横幅按名字比较归档
 var KH_PRODUCT = '鸿汇影';   // 产品名（单点配置，改名只需改 build_desktop.py 顶部 PRODUCT_NAME）
+
+/* 更新源多路的可读文案（#158）：把服务端返回的 attempts 明说给用户，
+   让"为什么没更新成"不再只有一句"失败"，也便于客服按源定位。 */
+function khUpdAttemptsText(list) {
+  if (!list || !list.length) return '';
+  var parts = [];
+  for (var i = 0; i < list.length && i < 3; i++) parts.push((list[i].label || ('源' + (i + 1))) + '：' + list[i].error);
+  var head = list.length > 3 ? ('共 ' + list.length + ' 个源失败 —— ') : '';
+  return head + parts.join('；');
+}
+function khUpdSourceText(d) {
+  var from = d && (d.downloadFrom || d.source);
+  if (!from || from === 'local') return '本机已放包';
+  var n = (d && d.attempts && d.attempts.length) || 0;
+  return '来源 ' + from + (n ? '（自动换源 ' + n + ' 次）' : '');
+}
 
 /* 自动更新落地：校验安装包 SHA256 → 拉起安装向导（用户仍需在向导里确认） */
 function khInstallUpdate() {
@@ -1631,20 +1814,49 @@ function khInstallUpdate() {
   var pre;
   try { pre = khUpgradePrecheck(latest, {}); } catch (e) { pre = {ok:true}; }
   if (!pre.ok) { khUpgradeSetStage('failed', pre.reason, {failKind: pre.kind}); toast('⚠️ ' + pre.reason); return; }
-  if (!confirm('将校验最新安装包并以「覆盖安装」方式更新：\n· 无需先卸载当前版本，也无需手动删除任何文件；\n· 同目录覆盖安装，你的数据与设置都会保留；\n· 若提示程序被占用，请先退出本应用再继续。\n继续吗？')) { khUpgradeSetStage('failed', '用户在确认框取消安装', {failKind:'cancel'}); return; }
+  /* 1.7.86：设置里开了「静默装」就用静默通道 —— 服务端下包+校验后把绝对路径交回，主进程退出自身、/S 覆盖、自动重开。
+     免安装 zip 目录会被主进程拒绝（目录里没有卸载程序），这里如实提示并改回弹向导。 */
+  var silent = (Number(getStore('kh_silent_install', 0)) === 1) && !!window.khUpdater;
+  var msg = silent
+    ? '将校验最新安装包后静默覆盖安装：\n· 应用会自动关闭，约 10 秒后重新打开；\n· 同目录覆盖，数据与设置保留，无需先卸载；\n· 免安装版目录会自动拒绝并改回弹向导。\n继续吗？'
+    : '将校验最新安装包并以「覆盖安装」方式更新：\n· 无需先卸载当前版本，也无需手动删除任何文件；\n· 同目录覆盖安装，你的数据与设置都会保留；\n· 若提示程序被占用，请先退出本应用再继续。\n继续吗？';
+  if (!confirm(msg)) { khUpgradeSetStage('failed', '用户在确认框取消安装', {failKind:'cancel'}); return; }
   try { khMarkUpgradeAttempt('install'); } catch (e) {}
   khUpgradeSetStage('verify', '正在校验安装包 SHA256…');
   var fallbackUrl = latest && (latest.downloadPage || latest.downloadUrl || latest.hapUrl);
-  fetch('/api/update/install', { method: 'POST', cache: 'no-store' })
+  khFetch('/api/update/install', { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ silent: silent }) })
     .then(function (r) { return r.json(); })
     .then(function (d) {
+      if (d && d.ok && d.silent && d.absPath && window.khUpdater) {
+        khUpgradeSetStage('done', '校验通过（' + (d.verified === 'sha256' ? 'SHA256' : '体积') + '），正在静默安装 v' + (d.version || ''));
+        try { toast('✅ 校验通过，正在静默安装，应用会自动重开'); } catch (e0) {}
+        window.khUpdater.installSilent({ file: d.absPath }).then(function (r2) {
+          if (r2 && r2.ok) { return; }
+          setStore('kh_silent_install', 0);
+          var why = (r2 && r2.reason) || '静默安装未执行';
+          khUpgradeSetStage('failed', why, { failKind: khUpgradeFailKind(why) });
+          try { toast('⚠️ ' + why + '；已改回弹向导，请再点一次安装'); } catch (e3) {}
+        }).catch(function (e4) {
+          setStore('kh_silent_install', 0);
+          khUpgradeSetStage('failed', '静默安装调用失败：' + ((e4 && e4.message) || e4), { failKind: 'silent' });
+          try { toast('⚠️ 静默安装调用失败；已改回弹向导，请再点一次安装'); } catch (e5) {}
+        });
+        return;
+      }
       if (d && d.ok) {
-        khUpgradeSetStage('done', '安装向导已启动（v' + (d.version || '') + ' · ' + (d.verified === 'sha256' ? 'SHA256 校验通过' : '体积校验通过') + '）');
-        try { toast('✅ 安装向导已启动（v' + (d.version || '') + ' · ' + (d.verified === 'sha256' ? 'SHA256 校验通过' : '体积校验通过') + '）'); } catch (e) {}
+        var srcTxt = khUpdSourceText(d);
+        var okTxt = '安装向导已启动（v' + (d.version || '') + ' · ' + (d.verified === 'sha256' ? 'SHA256 校验通过' : '体积校验通过') + ' · ' + srcTxt + '）';
+        khUpgradeSetStage('done', okTxt);
+        try { toast('✅ ' + okTxt); } catch (e) {}
       } else {
         var reason = (d && d.error) || '未知错误';
+        var att = khUpdAttemptsText(d && d.attempts);
+        /* 遥测只带精简后的失败清单（label + 截断错误），不把整串 URL 塞进上报 */
+        var attBrief = ((d && d.attempts) || []).map(function (a) {
+          return { label: String(a.label || ''), error: String(a.error || '').slice(0, 80) };
+        });
         var kind = khUpgradeFailKind(reason);
-        khUpgradeSetStage('failed', reason, {failKind: kind});
+        khUpgradeSetStage('failed', reason + (att ? '（' + att + '）' : ''), {failKind: kind, attempts: attBrief});
         try { toast('⚠️ 未能启动安装：' + reason + '，已为你打开下载页'); } catch (e) {}
         khOpenUpdate(fallbackUrl);
       }
@@ -1660,6 +1872,7 @@ function khInstallUpdate() {
 
 function khShowUpdateBanner(lat) {
   try {
+    if (window.KH_STORE) return;   /* 商店版更新交给应用市场，不弹私发更新条 */
     if (document.getElementById('khUpdateBanner')) return;
     try { if (localStorage.getItem('khDismissedVer') === String(lat.versionCode)) return; } catch (e) {}
     var b = document.createElement('div'); b.id = 'khUpdateBanner';
@@ -1685,7 +1898,7 @@ function khShowUpdateBanner(lat) {
 /* 功能快照：发版时由 harmony/build_hap.py 注入真实功能清单，
    开发者端 / 深开鸿设备端即使中枢离线也能看到自动添加的新功能；在线清单随后覆盖。 */
 var KH_FEATURE_SNAPSHOT = [{"id": "board", "name": "远程问题看板", "desc": "查看所有用户自动上报的脱敏问题摘要与高频类别 Top", "action": "open", "url": "/"}, {"id": "report", "name": "生成诊断报告", "desc": "汇总设备 / 源清单 / 问题明细并复制到剪贴板，便于反馈", "action": "builtin:report"}, {"id": "sourcespeed", "name": "源线路排行", "desc": "按可用线路数对所有直播频道排序，快速定位弱信号频道", "action": "builtin:sourcespeed"}, {"id": "fix", "name": "一键自愈", "desc": "触发源体检重排并刷新线上清单（修复坏源 / 降级失效线路）", "action": "builtin:fix"}, {"id": "updatepublish", "name": "同步更新发布", "desc": "一键同时重排源（更新）+ 升级版本号（发布），所有桌面端实时拉取新版本", "action": "builtin:updatepublish"}, {"id": "automation", "name": "自动化运行", "desc": "查看定时更新+发布状态、运行历史，并立即触发一次自动化（与看板「⚙️ 自动化运行」一致）", "action": "builtin:automation"}, {"id": "updatecheck", "name": "检查新版本", "desc": "立即向服务查询是否有新版本，若有则弹出「下载并安装」横幅（自动更新）", "action": "builtin:updatecheck"}, {"id": "govern", "name": "智能自治", "desc": "一键运行自治循环：提取问题→修复坏源→优化清单→发布新版本→自动补装缺失的预设功能", "action": "builtin:govern"}, {"id": "preset-open-dashboard", "name": "打开在线看板", "desc": "一键打开远程问题看板（收集 / 自愈 / 自动化 / 功能管理），免记地址", "action": "open", "icon": "📊", "enabled": false, "confirm": false, "url": "/"}, {"id": "preset-dingtalk", "name": "钉钉通知", "desc": "向钉钉群机器人推送「自治完成 / 问题告警」消息。点「编辑」把机器人地址里的“在此粘贴”换成你的 Webhook 即可用。", "action": "webhook", "icon": "📨", "enabled": false, "confirm": false, "url": "https://oapi.dingtalk.com/robot/send?access_token=在此粘贴", "payload": {"msgtype": "text", "text": {"content": "HongHub 自治已完成，源清单已刷新"}}}, {"id": "preset-wecom", "name": "企业微信通知", "desc": "向企业微信群机器人推送通知。编辑时把地址里的“在此粘贴”换成你的 key。", "action": "webhook", "icon": "💬", "enabled": false, "confirm": false, "url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=在此粘贴", "payload": {"msgtype": "text", "content": {"content": "HongHub 自治已完成，源清单已刷新"}}}, {"id": "preset-feishu", "name": "飞书通知", "desc": "向飞书群机器人推送通知。编辑时把地址里的“在此粘贴”换成你的 Webhook。", "action": "webhook", "icon": "📲", "enabled": false, "confirm": false, "url": "https://open.feishu.cn/open-apis/bot/v2/hook/在此粘贴", "payload": {"msg_type": "text", "content": {"text": "HongHub 自治已完成，源清单已刷新"}}}, {"id": "preset-backup", "name": "每日自动备份清单", "desc": "运行一条命令把当前 manifest 源清单备份到 server/backup/（建议配合「自动化运行」一起用）。", "action": "script", "icon": "💾", "enabled": false, "confirm": true, "cmd": "node -e \"const fs=require('fs');fs.mkdirSync('server/backup',{recursive:true});fs.copyFileSync('server/manifest.json','server/backup/manifest.'+Date.now()+'.json');console.log('已备份清单到 server/backup')\""}, {"id": "preset-broadcast", "name": "定时播报可看内容", "desc": "运行命令生成本次可播放频道数摘要（可接自动化，或改成推到你自己的通知渠道）。", "action": "script", "icon": "📣", "enabled": false, "confirm": true, "cmd": "node -e \"const m=require('./server/manifest.json');const c=m.sources.channels.length;const s=m.sources.channels.reduce((a,b)=>a+(b.sources?b.sources.length:0),0);console.log('可播放：'+c+' 频道 / '+s+' 条线路')\""}, {"id": "feature-mine", "name": "反馈建议自动提取新功能", "desc": "自动从反馈 / 建议 / 上报里提取新功能诉求，去重后自动加入功能清单并随发版同步", "action": "builtin:mine", "enabled": true, "origin": "feedback-auto", "minedAt": "2026-11-14T12:04:11.574Z"}, {"id": "auto-batch", "name": "自动批量下发", "desc": "自动生成本次发版的批量分发清单（多架构安装包 / 开鸿 HAP / 校验值），两端自动按架构取包", "action": "builtin:batch", "enabled": true, "origin": "feedback-auto", "minedAt": "2026-11-14T12:04:11.576Z"}, {"id": "arch-adaptive", "name": "全架构自适应", "desc": "自动识别 x64 / ia32 / arm64 并选择对应安装包；无原生包时回退通用包，弱机自动降档播放", "action": "builtin:arch", "enabled": true, "origin": "feedback-auto", "minedAt": "2026-11-14T12:04:11.576Z"}, {"id": "play-smooth", "name": "自适应流畅播放", "desc": "按 CPU / 内存 / 架构自动调整缓冲与码率上限，卡顿自动降档与切换备用源", "action": "builtin:playback", "enabled": true, "origin": "feedback-auto", "minedAt": "2026-11-14T12:04:11.576Z"}, {"id": "mem-adaptive", "name": "不限内存大小都能看", "desc": "自动下发按内存档选免安装轻量版或完整安装包；播放缓冲字节数与码率按内存设硬上限，小内存机器也能流畅看", "action": "builtin:memory", "enabled": true, "origin": "feedback-auto", "minedAt": "2026-11-14T12:04:11.576Z"}, {"id": "auto-update", "name": "成品自动更新", "desc": "两端启动自动比对版本，自动拉取最新功能 / 播放档位 / 成品校验值；低内存免安装通道永远最新，不制造假更新", "action": "builtin:update", "enabled": true, "origin": "feedback-auto", "minedAt": "2026-11-14T12:04:11.576Z"}, {"id": "os-follow", "name": "跟随所有操作系统版本", "desc": "自动检测并回传 OS 版本 / API / 架构 / 内存，按系统版本自动优化兼容策略、自动修复漂移后下发同步更新", "action": "builtin:os", "enabled": true, "origin": "feedback-auto", "minedAt": "2026-11-14T12:19:13.749Z"}, {"id": "ops-audit", "name": "开发者端审计日志", "desc": "自愈 / 发布 / 功能增删 / 回滚 / 自动化全部留痕，可按条数与结果查询", "action": "builtin:audit", "enabled": true}, {"id": "ops-trend", "name": "数据趋势报表", "desc": "按天累积源可用率、更新成功率、设备回传与失败 Top，趋势面板直读", "action": "builtin:trend", "enabled": true}, {"id": "ops-rollout", "name": "灰度分批放量", "desc": "按匿名设备 ID 稳定落组（权重切片），失败率超阈值自动暂停，人工确认后恢复", "action": "builtin:rollout", "enabled": true}, {"id": "ops-publish", "name": "发布并校验闭环", "desc": "上传（配置上传命令才真传）→ 回读远端清单核对版本与 SHA256，不一致明确报「仅本地就绪」", "action": "builtin:publish", "enabled": true}, {"id": "ops-smoke", "name": "真机冒烟结果", "desc": "读取真机冒烟与热插拔巡检结果；没跑过就明确报 no-run，绝不假装通过", "action": "builtin:smoke", "enabled": true}, {"id": "ops-alerts", "name": "告警分级", "desc": "critical / warn / info 归并去重，同码同窗口合并计数，不再重复播报", "action": "builtin:alerts", "enabled": true}, {"id": "ops-catalog", "name": "全量资源目录与自动探测", "desc": "频道 + 网络平台统一成带版本号的目录，定时探测可达性；客户端按增量热更新，源修好不用发新版", "action": "builtin:catalog", "enabled": true}, {"id": "ops-play", "name": "播放回传与失败聚合", "desc": "客户端播放失败自动回传（只记资源与结果，不记内容与 IP），按资源聚合失败率与错误码", "action": "builtin:play", "enabled": true}, {"id": "ops-issues", "name": "问题自动建单与自动修复", "desc": "探测失败或失败率超阈值自动建单 → 频道自动换可用源 → 复检通过自动关单，全程无人工", "action": "builtin:issues", "enabled": true}, {"id": "kid-mode", "name": "儿童时段模式", "desc": "按时段屏蔽成人分组，带 4 位解锁码，家长可随时关闭", "action": "builtin:kidmode"}, {"id": "handoff", "name": "双端接力·推送", "desc": "把桌面端收藏打包成 6 位接力码，开鸿设备输码即可取回", "action": "builtin:handoff"}, {"id": "handoff-take", "name": "双端接力·接收", "desc": "输入接力码取回另一台设备推送的收藏，一次性 10 分钟有效", "action": "builtin:handofftake"}, {"id": "search-all", "name": "全网聚合搜索", "desc": "一个框搜遍 300+ 条目与 200+ 平台的远端全目录，可直开线路", "action": "builtin:searchall"}, {"id": "rank-sources", "name": "智能选源", "desc": "按成功率 60% + 时延 40% 给每条线路评分，首选线路自动置顶", "action": "builtin:rank"}, {"id": "upgrade-telemetry", "name": "升级状态上报", "desc": "检查/安装升级的结果自动上报，后台可看谁升成功谁卡住", "action": "builtin:updatecheck"}];
-var KH_FEATURE_SNAPSHOT_VERSION = {"versionName": "1.7.85", "versionCode": 1000199, "count": 36, "hash": "78c545d7ffe9ce9c", "inSync": true};
+var KH_FEATURE_SNAPSHOT_VERSION = {"versionName": "1.7.114", "versionCode": 1000228, "count": 36, "hash": "78c545d7ffe9ce9c", "inSync": true};
 
 window.__khLoadFeatures = function (list, ver) {
   if (KH_UI_CLEAN) return;   /* 客户纯净版：不建扩展工具入口，功能只随发版静默下发 */
@@ -1785,7 +1998,7 @@ function khRunFeature(f) {
     if (a === 'script' || a === 'webhook') {
       if (f.confirm) { try { if (!confirm('确认运行功能「' + (f.name || f.id) + '」？')) return; } catch (e) {} }
       toast('正在运行：' + (f.name || f.id) + ' …');
-      fetch('/api/feature/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: f.id }) })
+      khFetch('/api/feature/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: f.id }) })
         .then(function (r) { return r.json(); })
         .then(function (d) {
           if (!d || !d.ok) { toast('运行失败：' + String(d && d.error || '').slice(0, 120)); return; }
@@ -1817,11 +2030,11 @@ function khFeatureSourceSpeed() {
 
 function khFeatureFix() {
   toast('正在向收集服务请求一键自愈（重排源 / 刷新清单）…');
-  fetch('/api/fix', { method: 'POST', cache: 'no-store' }).then(function (r) { return r.json(); })
+  khFetch('/api/fix', { method: 'POST', cache: 'no-store' }).then(function (r) { return r.json(); })
     .then(function (d) {
       toast(d.ok ? ('自愈完成：' + String(d.msg || '').slice(0, 80)) : ('自愈失败：' + String(d.error || '').slice(0, 80)));
       setTimeout(function () {
-        fetch('/api/manifest', { cache: 'no-store' }).then(function (r) { return r.json(); })
+        khFetch('/api/manifest', { cache: 'no-store' }).then(function (r) { return r.json(); })
           .then(function (m) { if (m && m.sources) window.__khApplySources(JSON.stringify(m.sources)); });
       }, 1500);
     }).catch(function (e) { toast('自愈请求失败：' + (e && e.message || e)); });
@@ -1830,12 +2043,12 @@ function khFeatureFix() {
 function khFeatureUpdatePublish() {
   try { if (!confirm('确认同时执行「更新（重排源 / 刷新清单）+ 发布（升级版本号）」？\n所有桌面端将实时拉取新版本。')) return; } catch (e) {}
   toast('正在向收集服务请求：更新 + 发布…');
-  fetch('/api/update-publish', { method: 'POST', cache: 'no-store' }).then(function (r) { return r.json(); })
+  khFetch('/api/update-publish', { method: 'POST', cache: 'no-store' }).then(function (r) { return r.json(); })
     .then(function (d) {
       if (d && d.ok) {
         toast('已更新并发布 v' + d.publish.versionName + ' (#' + d.publish.versionCode + ') · 源清单 v' + d.update.v);
         setTimeout(function () {
-          fetch('/api/manifest', { cache: 'no-store' }).then(function (r) { return r.json(); })
+          khFetch('/api/manifest', { cache: 'no-store' }).then(function (r) { return r.json(); })
             .then(function (m) {
               if (m && m.sources) window.__khApplySources(JSON.stringify(m.sources));
               if (m && m.release) window.__khSetRelease(JSON.stringify(m.release));
@@ -1848,7 +2061,7 @@ function khFeatureUpdatePublish() {
 }
 
 function khFeatureAutomation() {
-  fetch('/api/automation', { cache: 'no-store' }).then(function (r) { return r.json(); })
+  khFetch('/api/automation', { cache: 'no-store' }).then(function (r) { return r.json(); })
     .then(function (d) {
       var s = (d.enabled ? '✅ 自动化已开启' : '⛔ 自动化已关闭') + '\n';
       s += '下次运行：' + new Date(d.nextRunAt || 0).toLocaleString('zh-CN', { hour12: false }) + '\n';
@@ -1857,7 +2070,7 @@ function khFeatureAutomation() {
       s += '运行次数：' + (d.recent ? d.recent.length : 0);
       if (!confirm(s + '\n\n是否立即触发一次自动化（更新+发布）？')) return;
       toast('正在触发自动化运行…');
-      fetch('/api/automation/run', { method: 'POST', cache: 'no-store' }).then(function (r) { return r.json(); })
+      khFetch('/api/automation/run', { method: 'POST', cache: 'no-store' }).then(function (r) { return r.json(); })
         .then(function (o) { toast(o.ok ? '自动化运行完成（更新 v' + (o.result && o.result.update && o.result.update.v) + ' / 发布 ' + (o.result && o.result.publish && o.result.publish.versionName) + '）' : ('自动化失败：' + String(o.error || '').slice(0, 100))); })
         .catch(function (e) { toast('触发失败：' + (e && e.message || e)); });
     }).catch(function (e) { toast('读取自动化状态失败：' + (e && e.message || e)); });
@@ -1866,7 +2079,7 @@ function khFeatureAutomation() {
 function khFeatureGovern() {
   try { if (!confirm('确认运行「智能自治循环」（自动提取问题→修复→优化→发布→新增功能）？')) return; } catch (e) {}
   toast('正在运行智能自治循环…');
-  fetch('/api/govern/run', { method: 'POST', cache: 'no-store' }).then(function (r) { return r.json(); })
+  khFetch('/api/govern/run', { method: 'POST', cache: 'no-store' }).then(function (r) { return r.json(); })
     .then(function (d) {
       var res = d.result || {};
       toast(d.ok ? ('自治完成：修复 ' + (res.fixed && res.fixed.ok ? '✅' : '❌') + ' / 优化剔除 ' + (res.optimized ? res.optimized.removed : 0) + ' / 新增功能 ' + (res.featuresAdded || []).length + ' / 发布 ' + (res.published && res.published.versionName || '-')) : ('自治失败：' + String(d.error || '').slice(0, 100)));
@@ -1874,7 +2087,7 @@ function khFeatureGovern() {
 }
 
 function khFeatureUpdateCheck() {
-  fetch('/api/manifest', { cache: 'no-store' }).then(function (r) { return r.json(); })
+  khFetch('/api/manifest', { cache: 'no-store' }).then(function (r) { return r.json(); })
     .then(function (d) {
       var rel = (d && d.release) || null;
       var ch = effectiveChannel();
@@ -1910,7 +2123,7 @@ function khFeatureUpdateCheck() {
             toast('自动升级：正在下载 v' + lat.versionName + ' 并校验（失败不重试）…');
             khUpgradeSetStage('verify', '自动升级：正在下载并校验 v' + lat.versionName + '…', {channel:'auto'});
             var autoFallback = lat && (lat.downloadPage || lat.downloadUrl || lat.hapUrl);
-            fetch('/api/update/install', { method: 'POST', cache: 'no-store' })
+            khFetch('/api/update/install', { method: 'POST', cache: 'no-store' })
               .then(function (r) { return r.json(); })
               .then(function (x) {
                 if (x && x.ok) {
@@ -1947,7 +2160,7 @@ function khFeatureUpdateCheck() {
 function khDoRollback(v, cb){
   cb = cb || function(){};
   if(!v){ toast('未指定回滚版本'); cb(false, '未指定版本'); return; }
-  fetch('/api/update/rollback?version=' + encodeURIComponent(v), { cache: 'no-store' })
+  khFetch('/api/update/rollback?version=' + encodeURIComponent(v), { cache: 'no-store' })
     .then(function(r){ return r.json(); })
     .then(function(d){
       if(!d || !d.ok){
@@ -1965,7 +2178,7 @@ function khDoRollback(v, cb){
       }
       try { khMarkUpgradeAttempt('rollback'); } catch (e) {}
       khUpgradeSetStage('verify', '回滚：正在校验 v' + v + ' 归档安装包…', {channel:'rollback'});
-      return fetch('/api/update/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: v }), cache: 'no-store' })
+      return khFetch('/api/update/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: v }), cache: 'no-store' })
         .then(function(r){ return r.json(); })
         .then(function(x){
           if(x && x.ok){
@@ -2010,7 +2223,7 @@ function khApplyDisplay(){
 /* 恢复默认设置：只还原设置项；收藏/历史/稍后再看/自添加片源/口令/自建直播不动
    1.7.83：补上代理（此前「恢复默认」不会清掉手动代理，表现为重置了却还是走代理） */
 function khResetSettings(){
-  ['kh_hub_url','kh_sleep_min','kh_font_scale','kh_rate','kh_vol','kh_mute','kh_quality','kh_auto_update','kh_theme','kh_night','kh_senior','kh_update_tried','khDismissedVer','kh_pinned_version','kh_sub_style','kh_upgrade_attempt','kh_channel','kh_channel_pick','kh_promo','kh_autostart','kh_compat_mode','kh_loudness_eq','kh_fit','kh_proxy'].forEach(function(k){
+  ['kh_hub_url','khHub','kh_sleep_min','kh_font_scale','kh_rate','kh_vol','kh_mute','kh_quality','kh_auto_update','kh_theme','kh_night','kh_senior','kh_update_tried','khDismissedVer','kh_pinned_version','kh_sub_style','kh_upgrade_attempt','kh_channel','kh_channel_pick','kh_promo','kh_autostart','kh_compat_mode','kh_loudness_eq','kh_fit','kh_proxy'].forEach(function(k){
     try{ localStorage.removeItem(k); }catch(e){}
   });
   /* 代理回「跟随系统」：只删偏好不够，主进程里的会话代理还在，必须重新下发 */
@@ -2047,7 +2260,7 @@ function khCheckUpgradePending(){
     document.getElementById('khUpdFailClose').onclick = function(){ b.style.display = 'none'; };
     document.getElementById('khUpdFailRollback').onclick = function(){
       b.style.display = 'none';
-      fetch('/api/releases', { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
+      khFetch('/api/releases', { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
         var vs = (d && d.versions) || [];
         /* 找比当前版本小、且归档可用的最近一版。老归档条目没有 versionCode，
            这里统一按 versionName 解析成可比较的整数组，两种都能排。 */
@@ -2088,7 +2301,7 @@ function khLoadRollbackOptions(){
   }
   var sel = document.getElementById('khRollbackSel');
   if(!sel) return;
-  fetch('/api/releases', { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
+  khFetch('/api/releases', { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){
     var vs = (d && d.versions) || [];
     if(!vs.length){ sel.innerHTML = '<option value="">暂无可用归档版本</option>'; return; }
     sel.innerHTML = '<option value="">选择历史版本…</option>' + vs.map(function(v){
@@ -2168,36 +2381,104 @@ function khParseSub(text){
   cues.sort(function(a, b){ return a.s - b.s; });
   return cues;
 }
-/* 字幕样式：字号三档 + 抬高避让控制条；纯本机 CSS 变量，不改字幕内容 */
+/* 字幕样式：字号三档 + 上下位置（1.7.93 #32 起扩到 5 档，按画面高度百分比）+ 字体 / 描边由 P2 面板接管。
+   位置与字体一样统一存 kh_p2.subPos，kh_sub_style.pos 保留旧值兼容（low/mid/high 自动折算）。 */
 var KH_SUB_SIZES = { s: 16, m: 20, l: 26 };
-var KH_SUB_POS = { low: '6%', mid: '12%', high: '19%' };
+var KH_SUB_POS = [4, 8, 12, 18, 26];
+var KH_SUB_POS_OLD = { low: 4, mid: 8, high: 18 };
 function khSubStyle(){
-  var d = { size: 'm', pos: 'mid' };
-  try{ var v = getStore('kh_sub_style', null); if(v && typeof v === 'object'){ d.size = KH_SUB_SIZES[v.size] ? v.size : 'm'; d.pos = KH_SUB_POS[v.pos] ? v.pos : 'mid'; } }catch(e){}
+  var d = { size: 'm', pos: 8, font: 'system', stroke: 'thin' };
+  try{
+    var v = getStore('kh_sub_style', null);
+    if(v && typeof v === 'object'){
+      d.size = KH_SUB_SIZES[v.size] ? v.size : 'm';
+      var pv = v.pos;
+      if (typeof pv === 'number' && KH_SUB_POS.indexOf(pv) >= 0) d.pos = pv;
+      else if (KH_SUB_POS_OLD[String(pv)]) d.pos = KH_SUB_POS_OLD[String(pv)];
+      if (window.KHP2) {
+        var ex = KHP2.subExtra({ subFont: v.font, subStroke: v.stroke });
+        d.font = ex.font; d.stroke = ex.stroke;
+      }
+    }
+  }catch(e){}
+  if (window.KHP2) {
+    var c = khP2Cfg();   // 设置页存 kh_p2，位置与字体描边都以这里为准
+    if (KH_SUB_POS.indexOf(Number(c.subPos)) >= 0) d.pos = Number(c.subPos);
+    if (d.font === 'system' && d.stroke === 'thin') {
+      d.font = c.subFont; d.stroke = c.subStroke;
+    }
+  }
   return d;
 }
 function khApplySubStyle(){
   var s = khSubStyle();
   try{
     document.documentElement.style.setProperty('--sub-fs', KH_SUB_SIZES[s.size] + 'px');
-    document.documentElement.style.setProperty('--sub-bottom', KH_SUB_POS[s.pos]);
+    document.documentElement.style.setProperty('--sub-bottom', window.KHP2 ? KHP2.subPosCss(s.pos) : (s.pos + '%'));
+    if (window.KHP2) {
+      document.documentElement.style.setProperty('--sub-font', KHP2.subFontCss(s.font));
+      document.documentElement.style.setProperty('--sub-shadow', KHP2.subStrokeCss(s.stroke));
+    }
   }catch(e){}
   var sz = document.getElementById('khSubSizeSel'); if(sz) sz.value = s.size;
-  var po = document.getElementById('khSubPosSel'); if(po) po.value = s.pos;
+  var po = document.getElementById('khSubPosSel'); if(po) po.value = String(s.pos);
+  var pf = document.getElementById('p2SubFont'); if(pf) pf.value = s.font;
+  var ps = document.getElementById('p2SubStroke'); if(ps) ps.value = s.stroke;
+  var pp = document.getElementById('p2SubPos'); if(pp) pp.value = String(s.pos);
 }
 function khSetSubStyle(kind, val){
   var s = khSubStyle();
   if(kind === 'size' && KH_SUB_SIZES[val]) s.size = val;
-  if(kind === 'pos' && KH_SUB_POS[val]) s.pos = val;
-  setStore('kh_sub_style', s);
+  if(kind === 'pos'){
+    var n = Number(val);
+    if (KH_SUB_POS.indexOf(n) >= 0) s.pos = n;
+  }
+  setStore('kh_sub_style', { size: s.size, pos: s.pos });
+  if (window.KHP2 && kind === 'font') khP2CfgSave({ subFont: val });
+  if (window.KHP2 && kind === 'stroke') khP2CfgSave({ subStroke: val });
+  if (window.KHP2 && kind === 'pos') khP2CfgSave({ subPos: s.pos });
   khApplySubStyle();
-  toast('字幕样式已保存：' + (s.size === 's' ? '小' : s.size === 'l' ? '大' : '中') + ' · ' +
-    (s.pos === 'low' ? '靠下' : s.pos === 'high' ? '抬高' : '居中'));
+  toast('字幕样式已保存：' + (s.size === 's' ? '小' : s.size === 'l' ? '大' : '中') + ' · 距底 ' + s.pos + '%');
+}
+
+/* P2 生效入口（台账 #161）：把 kh_p2 里的无障碍 / 卡片密度项落成 CSS 变量，
+   焦点框给键盘 / 遥控导航用，卡片密度直接换大厅网格的最小列宽。
+   notify=true 时额外提示已生效（保存按钮后调用）。 */
+function khP2Apply(notify){
+  if (!window.KHP2) return;
+  var c = khP2Cfg();
+  try{
+    var fg = KHP2.focus(c.focusRing);
+    var root = document.documentElement.style;
+    root.setProperty('--focus-ring', fg.color);
+    root.setProperty('--focus-w', fg.width + 'px');
+    root.setProperty('--focus-off', fg.offset + 'px');
+    root.setProperty('--grid-min', KHP2.cardMin(c.cardDensity) + 'px');
+    root.setProperty('--live-min', Math.max(120, KHP2.cardMin(c.cardDensity) + 32) + 'px');
+  }catch(e){}
+  khApplySubStyle();
+  if (notify) {
+    var nf = document.getElementById('p2Focus'); if(nf) nf.value = c.focusRing;
+    var nv = document.getElementById('p2Vol'); if(nv) nv.value = c.volKeys;
+    var nc = document.getElementById('p2NetConc'); if(nc) nc.value = String(c.netConc);
+  }
+}
+
+/* 带策略的 fetch：并发上限 / 超时 / 重试都读 kh_p2（清单 35 / 36）。
+   调用点与原 fetch 完全兼容；原始环境没有 KHP2 时退回原生 fetch。 */
+function khFetch(url, init){
+  try{
+    if (window.KHP2 && typeof KHP2.fetch === 'function') {
+      return KHP2.fetch(url, { init: init, cfg: khP2Cfg() });
+    }
+  }catch(e){}
+  return khFetch(url, init);
 }
 
 function khCurrentCue(){
   if(!KH_SUB.cues.length) return null;
   var t = els.video ? (els.video.currentTime || 0) : 0;
+  try{ t += (typeof khSubOffset === 'function' ? khSubOffset() : 0); }catch(e){}
   var lo = 0, hi = KH_SUB.cues.length - 1, at = -1;
   while(lo <= hi){
     var mid = (lo + hi) >> 1;
@@ -2489,18 +2770,56 @@ function khDlnaShow(list){
   });
   try{ wrap.querySelector('[data-dlna-cast]').focus(); }catch(e){}
 }
-/* 系统通知封装（#117）：桌面桥存在才推送；纯网页 / HAP 静默忽略，不报错。 */
-function khNotifyPush(title, body){
-  try{ if(window.khNotify) window.khNotify.send(title, body); }catch(e){}
+/* 系统通知封装（#117 / 1.7.91 #40）：桌面桥存在才推送；先过用户的通知策略，纯网页 / HAP 静默忽略。
+   kind：download（下载与更新）| other（其余），策略选「只留下载」时 other 被拦。 */
+function khNotifyPush(title, body, kind){
+  try{
+    if(typeof khNotifyShow === 'function'){ khNotifyShow(title, body, kind || 'other'); return; }
+    if(window.khNotify) window.khNotify.send(title, body, kind || 'other');
+  }catch(e){}
 }
-/* 外部播放器（#109）：仅桌面 Electron 桥存在时可用；纯网页 / HAP 环境隐藏入口。
-   取当前播放源直链交本机 VLC / mpv / 系统默认播放器打开。 */
+/* 快捷键切片（1.7.91 #52）：按当前片单顺序上一部 / 下一部，儿童模式下只在允许列表内跳 */
+function khStepMovie(dir){
+  try{
+    var all = allMovies();
+    if(!all || !all.length || !state.movie) return;
+    if(typeof khKidOn === 'function' && khKidOn()){
+      all = all.filter(function(m){ return khKidAllows(m); });
+    }
+    var idx = -1;
+    for(var i = 0; i < all.length; i++){
+      if(all[i] && state.movie && all[i].id === state.movie.id){ idx = i; break; }
+    }
+    if(idx < 0) return;
+    var t = all[idx + dir];
+    if(!t){ toast(dir > 0 ? '已经是最后一部了' : '已经是第一部了'); return; }
+    openPlayer(t);
+  }catch(e){}
+}
+/* 置顶开关键（1.7.91 #48）：翻转本机设置并推给主进程 */
+function khToggleTop(){
+  try{
+    var p = khPref();
+    var next = p.top ? 0 : 1;
+    setStore('kh_top', next);
+    khPrefApply();
+    if(typeof khB8Sync === 'function') khB8Sync();
+    toast(next ? '窗口已置顶（总在最前）' : '已取消置顶');
+  }catch(e){ toast('置顶切换失败'); }
+}
+/* 外部播放器（#109 / 1.7.86）：
+   桌面 Electron → VLC / mpv / 系统默认播放器；
+   设备端（HAP）→ 原生 openVideo（startAbility + video/*，交给系统视频应用），没有可用应用时如实提示。 */
 function khOpenExternal(){
   if(!window.khExternal){ toast('当前环境不支持外部播放器'); return; }
   var url = khCurrentPlayUrl();
   if(!url){ toast('当前没有可打开的片源（hls 内存播放无直链）'); return; }
-  window.khExternal.open(url).then(function(r){
-    if(r && r.ok){ toast('已用外部播放器打开' + (r.via ? '（' + r.via + '）' : '')); }
+  var viaDevice = (typeof window.khExternal.play === 'function');
+  var fn = viaDevice ? window.khExternal.play(url, 'video/*') : window.khExternal.open(url);
+  fn.then(function(r){
+    if(r && r.ok){
+      toast(viaDevice ? '已交给系统视频应用打开（若没反应请在系统里选一个播放器）' : ('已用外部播放器打开' + (r.via ? '（' + r.via + '）' : '')));
+    }
     else { toast('外部播放器拉起失败：' + ((r && r.reason) || '未找到可用播放器')); }
   }).catch(function(){ toast('外部播放器拉起失败'); });
 }
@@ -2736,6 +3055,29 @@ function khPlayUrlInApp(url, title, hdr){
 /* ---------------- 本机视频（1.7.82）：选择文件后直接进内置播放器 ----------------
    以前只能播网络地址，客户最常见的抱怨是「我硬盘里的片子放不进来看」。
    只做选文件 + file:// 地址，不注册系统文件关联（不改用户默认程序）。 */
+/* 本机文件目录白名单（台账 #161 / 清单 62）：
+   只在授权目录内可播。白名单为空时，用户亲手选中的文件所在目录自动授权并提示，
+   之后可在「设置 › 安全与权限」撤销 —— 既不挡住正常使用，也不会让任意路径任意可读。 */
+function khEnsureLocalAllowed(p){
+  if(!window.KHP2) return { ok: true };
+  var c = khP2Cfg();
+  var r = KHP2.pathAllowed(p, c.localDirs);
+  if(r.ok) return r;
+  var dirs = (c.localDirs || []).slice();
+  if(!dirs.length){
+    var np = KHP2.normPath(p);
+    var cut = np.lastIndexOf('/');
+    if(cut > 0){
+      var dir = KHP2.normPath(np.slice(0, cut));
+      dirs.push(dir);
+      khP2CfgSave({ localDirs: dirs });
+      toast('已自动授权本机目录（设置 › 安全与权限 可撤销）：' + dir);
+      return { ok: true, auto: true, dir: dir };
+    }
+    return { ok: false, reason: '无法确定文件所在目录' };
+  }
+  return r;
+}
 function khOpenLocalVideo(){
   if(!window.khLocalFile || typeof window.khLocalFile.pick !== 'function'){
     toast('当前环境不支持打开本机文件（仅桌面 Electron 版可用）');
@@ -2745,6 +3087,11 @@ function khOpenLocalVideo(){
     if(!r || !r.ok){
       if(r && r.canceled) return;
       toast('打开失败：' + ((r && r.reason) || '未知原因'));
+      return;
+    }
+    var gate = khEnsureLocalAllowed(r.path || r.url || '');
+    if(!gate.ok){
+      toast('已拒绝播放：' + (gate.reason || '不在已授权目录内') + '。到「设置 › 安全与权限」授权目录后再试');
       return;
     }
     khPlayLocalFile(r);
@@ -2763,6 +3110,130 @@ function khPlayLocalFile(f){
     if(typeof openPlayer === 'function') openPlayer(m);
     toast('已打开本机文件：' + (f.name || ''));
   }catch(e){ toast('播放失败：' + ((e && e.message) || e)); }
+}
+/* ---------------- 本地媒体库扫描 + 海报墙（1.7.111-A） ----------------
+   选文件夹递归扫视频，按相对目录分组入库（kh_vod_res），封面读本地 poster/folder/同名图。
+   入库后首页 / 资源页的海报墙自动呈现；纯本机，不上传。 */
+function khScanLibrary(){
+  if(!window.khLocalFile || typeof window.khLocalFile.scanDir !== 'function'){
+    toast('当前环境不支持扫描媒体库（仅桌面 Electron 版可用）'); return;
+  }
+  toast('正在选择媒体库文件夹…');
+  window.khLocalFile.scanDir().then(function(r){
+    if(!r || !r.ok){ if(r && r.canceled) return; toast('扫描失败：' + ((r && r.reason) || '未知原因')); return; }
+    var res = getStore('kh_vod_res', []); if(!Array.isArray(res)) res = [];
+    var have = {}; for(var i=0;i<res.length;i++){ var s=(res[i].sources||[])[0]; if(s&&s.url) have[s.url]=1; }
+    var added = 0;
+    for(var j=0;j<r.items.length;j++){
+      var it = r.items[j];
+      if(have[it.url]) continue;
+      var gate = (typeof khEnsureLocalAllowed==='function') ? khEnsureLocalAllowed(it.path) : {ok:true};
+      if(!gate.ok) continue;
+      res.push({
+        id: 'lib_' + it.group.replace(/[^\w\u4e00-\u9fa5]+/g,'_') + '_' + it.name.replace(/[^\w\u4e00-\u9fa5]+/g,'_'),
+        title: it.name, subtitle: it.ext.toUpperCase() + ' · ' + khDlFmt(it.size), year: (new Date()).getFullYear(),
+        rating: 0, category: '本机', tags: ['媒体库', it.group], group: it.group, cover: it.cover || '',
+        desc: '本机媒体库：' + it.path, cast: '—', color: '#2A3550', accent: '#5B7BC4',
+        custom: false, own: true, lib: true,
+        sources: [{ label: '本机文件', url: it.url, local: true }]
+      });
+      have[it.url] = 1; added++;
+    }
+    setStore('kh_vod_res', res);
+    try{ if(typeof posterCache!=='undefined') posterCache = {}; }catch(e){}
+    toast('媒体库已入库 ' + added + ' 部（共扫到 ' + r.count + '）· ' + r.dir);
+    render();
+  }).catch(function(e){ toast('扫描失败：' + ((e && e.message) || e)); });
+}
+/* 按文件夹/剧季分组的海报墙（媒体库视图用） */
+function khLibraryHtml(){
+  var libs = getRes().filter(function(m){ return m.lib; });
+  if(!libs.length) return '<div class="empty"><span class="ico">📁</span>还没有扫描媒体库。点上方「扫描媒体库」选一个文件夹。</div>';
+  var groups = {}, order = [];
+  for(var i=0;i<libs.length;i++){ var g = libs[i].group || '根目录'; if(!groups[g]){ groups[g]=[]; order.push(g); } groups[g].push(libs[i]); }
+  var h = '';
+  for(var k=0;k<order.length;k++){
+    var g = order[k];
+    h += '<div class="section-head"><h2>📁 ' + esc(g) + '</h2><span>' + groups[g].length + ' 部</span></div>' + cardsHtml(groups[g], true);
+  }
+  return h;
+}
+/* ---------------- 本机观看统计周报（1.7.111-C） ----------------
+   纯本机：基于历史时间戳 / 收藏 / 进度 / 播放日志统计，不上传。 */
+function khShowStats(){
+  var now = Date.now(), DAY = 86400000;
+  var at = (typeof khHistAt === 'function') ? khHistAt() : {};
+  var days = [0,0,0,0,0,0,0], week = 0, cats = {};
+  for(var id in at){
+    var dt = now - (at[id] || 0);
+    if(dt < 7 * DAY){ week++; var di = Math.floor(dt / DAY); if(di >= 0 && di < 7) days[6 - di]++; }
+    var m = (typeof findMovie === 'function') ? findMovie(id) : null;
+    if(m && m.category){ cats[m.category] = (cats[m.category] || 0) + 1; }
+  }
+  var fails = 0;
+  try{ var lg = getStore('kh_play_log', []); for(var i=0;i<lg.length;i++){ if(now - (lg[i].at || 0) < 7 * DAY) fails++; } }catch(e){}
+  var favN = (typeof getFav === 'function') ? getFav().length : 0;
+  var libN = getRes().filter(function(x){ return x.lib; }).length;
+  var progN = Object.keys((typeof getProgress === 'function') ? getProgress() : {}).length;
+  var max = Math.max.apply(null, days.concat([1]));
+  var labels = []; for(var d = 6; d >= 0; d--){ var dd = new Date(now - d * DAY); labels.push((dd.getMonth()+1) + '/' + dd.getDate()); }
+  var bars = '';
+  for(var b = 0; b < 7; b++){
+    var hgt = Math.round(days[b] / max * 60);
+    bars += '<div style="flex:1;text-align:center"><div style="height:64px;display:flex;align-items:flex-end;justify-content:center"><div style="width:60%;height:' + Math.max(2,hgt) + 'px;background:#e8542f;border-radius:3px"></div></div><div style="font-size:11px;color:#9aa6bd;margin-top:4px">' + labels[b] + '</div><div style="font-size:11px;color:#cfd6e4">' + days[b] + '</div></div>';
+  }
+  var catArr = Object.keys(cats).map(function(k){ return [k, cats[k]]; }).sort(function(a,b){ return b[1]-a[1]; }).slice(0,5);
+  var catHtml = catArr.length ? catArr.map(function(c){ return esc(c[0]) + ' ' + c[1]; }).join(' · ') : '暂无';
+  var ov = document.createElement('div');
+  ov.id = '__kh_stats';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:99998;background:rgba(6,9,16,.86);display:flex;align-items:center;justify-content:center;padding:20px';
+  ov.innerHTML = '<div style="width:min(560px,94vw);background:#141a28;border:1px solid #2a3348;border-radius:14px;padding:22px;color:#cfd6e4">' +
+    '<div style="font-size:17px;font-weight:700;color:#fff;margin-bottom:14px">📊 本机观看周报（近 7 天）</div>' +
+    '<div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">' +
+      '<div style="flex:1;min-width:90px;background:#1b2233;border-radius:10px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:700;color:#fff">' + week + '</div><div style="font-size:12px;color:#9aa6bd">观看次数</div></div>' +
+      '<div style="flex:1;min-width:90px;background:#1b2233;border-radius:10px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:700;color:#fff">' + libN + '</div><div style="font-size:12px;color:#9aa6bd">媒体库</div></div>' +
+      '<div style="flex:1;min-width:90px;background:#1b2233;border-radius:10px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:700;color:#fff">' + favN + '</div><div style="font-size:12px;color:#9aa6bd">收藏</div></div>' +
+      '<div style="flex:1;min-width:90px;background:#1b2233;border-radius:10px;padding:12px;text-align:center"><div style="font-size:22px;font-weight:700;color:#fff">' + fails + '</div><div style="font-size:12px;color:#9aa6bd">播放失败</div></div>' +
+    '</div>' +
+    '<div style="display:flex;gap:4px;margin-bottom:14px">' + bars + '</div>' +
+    '<div style="font-size:13px;margin-bottom:6px">分类偏好：' + catHtml + '</div>' +
+    '<div style="font-size:12px;color:#9aa6bd;margin-bottom:16px">续播进度 ' + progN + ' 条 · 全部数据仅存本机，不上传。</div>' +
+    '<div style="text-align:right"><button id="__kh_stats_close" style="padding:9px 22px;border-radius:9px;border:0;background:#e8542f;color:#fff;font-weight:600;cursor:pointer">关闭</button></div>' +
+  '</div>';
+  document.body.appendChild(ov);
+  document.getElementById('__kh_stats_close').onclick = function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); };
+}
+/* ---------------- 私发订阅源分享（1.7.111-G，仅私发版） ----------------
+   导出自建直链 + 影视仓为 JSON 供熟人导入；商店版不出现（保持纯净）。 */
+function khShareExport(){
+  if(window.KH_STORE){ toast('商店版不提供订阅源分享'); return; }
+  var payload = { kind: 'honghub-share', v: 1, at: new Date().toISOString(),
+    res: getRes().filter(function(x){ return !x.lib; }), wh: (typeof getWhList === 'function' ? getWhList() : []) };
+  var text = JSON.stringify(payload, null, 2);
+  if(window.khBackupFile && typeof window.khBackupFile.save === 'function'){
+    window.khBackupFile.save({ text: text, name: '鸿汇影订阅源分享.json' }).then(function(r){
+      toast(r && r.ok ? '已导出分享文件：' + (r.path || '') : '导出失败');
+    }).catch(function(){ toast('导出失败'); });
+  } else {
+    try{ var blob = new Blob([text], { type: 'application/json' }); var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = '鸿汇影订阅源分享.json'; a.click(); toast('已导出分享文件'); }catch(e){ toast('导出失败'); }
+  }
+}
+function khShareImport(){
+  if(window.KH_STORE){ toast('商店版不提供订阅源导入'); return; }
+  if(!window.khConfigFile || typeof window.khConfigFile.pick !== 'function'){ toast('当前环境不支持导入'); return; }
+  window.khConfigFile.pick().then(function(r){
+    if(!r || !r.ok){ if(r && r.canceled) return; toast('导入失败'); return; }
+    var data; try{ data = JSON.parse(r.text); }catch(e){ toast('不是有效的分享文件'); return; }
+    if(!data || data.kind !== 'honghub-share'){ toast('不是鸿汇影分享文件'); return; }
+    var res = getStore('kh_vod_res', []); if(!Array.isArray(res)) res = [];
+    var have = {}; for(var i=0;i<res.length;i++){ var s=(res[i].sources||[])[0]; if(s&&s.url) have[s.url]=1; }
+    var added = 0; var incoming = data.res || [];
+    for(var j=0;j<incoming.length;j++){ var it = incoming[j]; var u=(it.sources||[])[0]; if(!u||!u.url||have[u.url]) continue;
+      it.id = it.id || ('sh_' + Date.now() + '_' + j); res.push(it); have[u.url]=1; added++; }
+    setStore('kh_vod_res', res);
+    toast('已导入 ' + added + ' 条订阅源'); render();
+  }).catch(function(e){ toast('导入失败：' + ((e && e.message) || e)); });
 }
 /* ---------------- 下载队列：设置页列表渲染 + 状态推送 ---------------- */
 function khDlFmt(n){
@@ -3047,6 +3518,8 @@ function khApplyLang(){
     for(var i=0;i<navs.length;i++){
       var key = navs[i].getAttribute('data-view');
       if(D.nav[key]) navs[i].textContent = D.nav[key];
+      /* 商店变体：隐藏在线内容入口（直播/网站平台），只留本机/资源/收藏/历史/问题/设置/关于 */
+      if(window.KH_STORE && (key==='live' || key==='sites' || key==='category')) navs[i].style.display='none';
     }
   }catch(e){}
   /* 播放器控制条（保留原有图标语义） */
@@ -3141,6 +3614,8 @@ function khSuggestRender(){
   var q = String(els.search && els.search.value || '').trim().toLowerCase();
   var items = [];
   if(!q){
+    /* 1.7.91 #53：儿童模式下不展示任何历史搜索词（家长记录不出现在小孩手里） */
+    if(typeof khKidOn === 'function' && khKidOn()){ box.style.display = 'none'; return; }
     var hist = khSearchHistGet();
     if(!hist.length){ box.style.display = 'none'; return; }
     items = hist.slice(0, 8).map(function(h){ return { label: h, kw: h, kind: 'hist' }; });
@@ -3242,19 +3717,19 @@ function khSuggestBind(){
 /* 自动提取反馈建议里新功能 → 立即刷新工具面板（平时由服务自动跑，这里只是可选手动触发） */
 function khFeatureMine(){
   toast('🧠 正在自动提取反馈建议里的新功能…');
-  fetch('/api/features/mine', { method: 'POST', cache: 'no-store' })
+  khFetch('/api/features/mine', { method: 'POST', cache: 'no-store' })
     .then(function(r){ return r.json(); })
     .then(function(d){
       var r = d.result || {};
       toast('✅ 自动添加 ' + ((r.added || []).length) + ' 项新功能（扫描 ' + (r.scannedTexts || 0) + ' 条反馈，无需人工复核）');
-      return fetch('/api/features', { cache: 'no-store' });
+      return khFetch('/api/features', { cache: 'no-store' });
     })
     .then(function(r){ return r.json(); })
     .then(function(d){ if(d && Array.isArray(d.features)) window.__khLoadFeatures(d.features, d.version); })
     .catch(function(e){ toast('自动提取失败：' + (e && e.message || e)); });
 }
 function khFeatureBatch(which){
-  fetch('/api/batch', { cache: 'no-store' }).then(function(r){ return r.json(); })
+  khFetch('/api/batch', { cache: 'no-store' }).then(function(r){ return r.json(); })
     .then(function(d){
       var b = d.batch || {}, keys = Object.keys(b.archs || {});
       var parts = keys.map(function(a){
@@ -3276,8 +3751,22 @@ function khFeaturePlayback(){
 /* ---------------- 设置页交互 ---------------- */
 function khBindSettings(){
   function byId(id){ return document.getElementById(id); }
+  /* 1.7.94 配置总览搜索（清单 #63）：停顿 220ms 再重绘，光标回到输入框末尾，边打字边筛 */
+  var cq = byId('cfgQ');
+  if(cq){
+    cq.oninput = function(){
+      state.cfgQ = cq.value;
+      clearTimeout(state.cfgPaintTimer);
+      state.cfgPaintTimer = setTimeout(function(){
+        render();
+        var el = document.getElementById('cfgQ');
+        if(el){ try{ el.focus(); el.setSelectionRange(el.value.length, el.value.length); }catch(e){} }
+      }, 220);
+    };
+  }
   /* 版本与升级 / 显示与辅助：回填当前值并拉归档列表 */
   var au = byId('khAutoUpd'); if(au) au.value = String(getStore('kh_auto_update', 0));
+  var silEl = byId('khSilentIns'); if(silEl) silEl.value = String(getStore('kh_silent_install', 0) === 1 ? 1 : 0);
   var ns = byId('khNightSel'); if(ns) ns.value = String(getStore('kh_night', 0));
   var ss = byId('khSeniorSel'); if(ss) ss.value = String(getStore('kh_senior', 0));
   var asSel = byId('khAutostartSel');
@@ -3414,7 +3903,7 @@ function khApplyDeliveryPlan(){
     '&mem=' + encodeURIComponent(p.mem) + '&os=' + encodeURIComponent(p.os || '') +
     '&code=' + encodeURIComponent(KH_APP_CODE) +
     (window.KH_HARMONY ? '&platform=harmony' : '&platform=desktop');
-  fetch(q, { cache:'no-store' }).then(function(r){ return r.json(); }).then(function(d){
+  khFetch(q, { cache:'no-store' }).then(function(r){ return r.json(); }).then(function(d){
     if(!d || !d.ok) return;
     window.KH_DELIVERY_PLAN = d;
     // 播放档位随下发计划自动更新（下一次起播生效；正在播放的实例立即收紧码率上限）
@@ -3425,9 +3914,9 @@ function khApplyDeliveryPlan(){
     }
     // 内容永远自动最新：功能清单 / 源清单 / 播放档位，不需要重装
     if(d.update && d.update.autoContentUpdate){
-      fetch('/api/features/sync', {cache:'no-store'}).then(function(r){ return r.json(); })
+      khFetch('/api/features/sync', {cache:'no-store'}).then(function(r){ return r.json(); })
         .then(function(f){ if(f && Array.isArray(f.features)) window.__khLoadFeatures(f.features, f.version); }).catch(function(){});
-      fetch('/api/manifest', {cache:'no-store'}).then(function(r){ return r.json(); })
+      khFetch('/api/manifest', {cache:'no-store'}).then(function(r){ return r.json(); })
         .then(function(m){ if(m && m.sources) window.__khApplySources(JSON.stringify(m.sources)); }).catch(function(){});
     }
     // 仅完整包 / HAP 通道提示安装更新（安装仍需用户确认）；免安装通道天然永远最新
@@ -3473,7 +3962,7 @@ function khDevicePayload(){
 function khReportDevice(){
   if(!window.fetch) return;
   var payload = khDevicePayload();
-  fetch('/api/device/report', { method:'POST', headers:{'Content-Type':'application/json'},
+  khFetch('/api/device/report', { method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify(payload), cache:'no-store' })
     .then(function(r){ return r.json(); })
     .then(function(d){
@@ -3492,7 +3981,7 @@ function khReportDevice(){
       }
       // 同步更新：优化后功能快照可能刷新，立即拉一次最新功能清单
       if(d.features){
-        fetch('/api/features/sync', {cache:'no-store'}).then(function(r){ return r.json(); })
+        khFetch('/api/features/sync', {cache:'no-store'}).then(function(r){ return r.json(); })
           .then(function(f){ if(f && Array.isArray(f.features)) window.__khLoadFeatures(f.features, f.version); }).catch(function(){});
       }
       try{ khRenderTools(); }catch(e){}
@@ -3520,11 +4009,11 @@ function khFeatureOS(){
       marketName: '桌面版 Desktop', deviceType: 'desktop', model: 'HongHub-Desktop',
       abi: 'web', osFullName: navigator.userAgent, apiVersion: 26, minApi: 12, targetApi: 26,
       tier: 'high', screenW: window.innerWidth || 1280, screenH: window.innerHeight || 720,
-      densityDPI: 96, appVersion: '1.7.85-desktop', appCode: 1000199
+      densityDPI: 96, appVersion: '1.7.114-desktop', appCode: 1000228
     });
   } catch (e) {}
   function deskUpdate() {
-    fetch('/api/manifest', { cache: 'no-store' }).then(function (r) { return r.json(); })
+    khFetch('/api/manifest', { cache: 'no-store' }).then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && d.sources) window.__khApplySources(JSON.stringify(d.sources));
         if (d && d.release) window.__khSetRelease(JSON.stringify(d.release));
@@ -3532,7 +4021,7 @@ function khFeatureOS(){
   }
   deskUpdate();
   setTimeout(deskUpdate, 9000);
-  fetch('/api/features', { cache: 'no-store' }).then(function (r) { return r.json(); })
+  khFetch('/api/features', { cache: 'no-store' }).then(function (r) { return r.json(); })
     .then(function (d) { if (d && Array.isArray(d.features)) window.__khLoadFeatures(d.features, d.version); })
     .catch(function () {});
 })();
@@ -3544,13 +4033,13 @@ function khQueuePoller(){
   var id = '';
   try { id = localStorage.getItem('khDeviceId') || ''; } catch (e) {}
   if (!id) return;
-  fetch('/api/devices/queue/next?device=' + encodeURIComponent(id), { cache: 'no-store' })
+  khFetch('/api/devices/queue/next?device=' + encodeURIComponent(id), { cache: 'no-store' })
     .then(function (r) { return r.json(); })
     .then(function (d) {
       if (!d || !d.ok || !d.item) return;
       var it = d.item, result = 'done', note = '';
       function ackNow() {
-        fetch('/api/devices/queue/ack', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        khFetch('/api/devices/queue/ack', { method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ at: it.at, deviceId: id, result: result, note: String(note || '').slice(0, 200) }), cache: 'no-store' })
           .catch(function () {});
       }
@@ -3659,11 +4148,95 @@ try {
       else if(st.state === 'start'){ toast('开始下载：' + (st.filename || '')); }
     });
   }catch(e){}
-  // 全局媒体快捷键（#116）：播放/暂停转发；无桌面桥时不绑定
+  // 全局媒体快捷键（#116 / 1.7.91 #52）：播放暂停、上下部、静音、置顶；无桌面桥时不绑定
   try{
     if(window.khShortcut) window.khShortcut.on(function(action){
       if(action === 'playpause' && typeof togglePlay === 'function'){ togglePlay(); }
+      else if(action === 'next'){ khStepMovie(1); }
+      else if(action === 'prev'){ khStepMovie(-1); }
+      else if(action === 'mute' && typeof toggleMute === 'function'){ toggleMute(); }
+      else if(action === 'top'){ khToggleTop(); }
     });
+  }catch(e){}
+  // 1.7.91 本机能力同步：把快捷键 / 外部播放器 / 通知策略 / 置顶推给主进程（缺桥时自动跳过）
+  try{ if(typeof khB8Sync === 'function') khB8Sync(); }catch(e){}
+  // 1.7.94 #75：订阅主进程 b8 变更广播，另一处改了（另开窗口 / 托盘）界面立即跟上
+  try{ if(typeof khB8Watch === 'function') khB8Watch(); }catch(e){}
+  // 1.7.94 #37 网络族：把本机选择的模式/DNS 推给主进程落盘（IPv4-only 下次启动生效）
+  try{ if(typeof khNetPush === 'function') khNetPush(); }catch(e){}
+  // 1.7.94 远端配置：启动 8 秒后静默拉一次（公告 / 锁定 / 默认值 / 灰度 / 云端偏好），
+  // 之后每 6 小时再拉一次；中枢不可达就保持本机缓存，不弹错、不阻塞首屏。
+  // 1.7.95 自动升级（P1-07/08）：启动先同步一次主进程状态（面板要显示当前版本与上次结果），
+  // 主进程发现新版 / 下载完 / 校验失败时经 kh:auto-update 推事件，这里刷新并 toast 一次。
+  try{
+    if(window.khAutoUpdate){
+      khAuRefresh().then(function(){ try{ if(state.view === 'settings') render(); }catch(e){} });
+      window.__khAuOff = window.khAutoUpdate.onEvent(function(ev){
+        try{
+          var t = (ev && ev.type) || '';
+          if(t === 'ready') toast('新版本已下载并通过校验，重启应用后安装');
+          else if(t === 'update-available') toast('发现新版本（当前策略只提示，不自动下载）');
+          else if(t === 'verify-failed') toast('安装包校验不通过，已删除，不会安装');
+          else if(t === 'install-skipped') toast('未执行静默安装：' + ((ev.payload && ev.payload.reason) || ''));
+          else if(t === 'download-failed' || t === 'check-failed') toast('升级检查失败：' + ((ev.payload && (ev.payload.reason || ev.payload.attempts)) || ''));
+        }catch(e0){}
+        khAuRefresh().then(function(){ try{ if(state.view === 'settings') render(); }catch(e1){} });
+      });
+    }
+  }catch(e){}
+  // 1.7.95 电视与遥控（P0-03）：先按 kh_tv 判定形态打 body.kh-tv（决定字号与焦点环），
+  // 再绑遥控返回 / 菜单键；返回逻辑自下而上：播放器 → 非首页 → 都不吃就派发 Esc 兜底。
+  try{
+    if(window.KHTV){
+      window.KHTV.apply();
+      window.KHTV.onBack(function(){
+        if(els.player && els.player.classList.contains('show')){ closePlayer(); return true; }
+        if(state.view && state.view !== 'home'){ state.view = 'home'; try{ render(); }catch(e){} return true; }
+        return false;
+      });
+      window.KHTV.bind();
+      window.addEventListener('resize', function(){ try{ window.KHTV.apply(); }catch(e){} });
+    }
+  }catch(e){}
+  // 1.7.95 账号与遥控（P1-02/P2-B09）：启动后排空一次云端（默认开，可在设置里关），
+  // 再启动遥控轮询——手机发来的指令只走白名单，落到播放器动作上。
+  try{
+    if(window.KHACCT){
+      if(Number(getStore('kh_acct_auto', 1)) === 1){
+        setTimeout(function(){
+          try{
+            window.KHACCT.sync(window.KHACCT.hub()).then(function(){
+              try{ if(state.view === 'settings') render(); }catch(e0){}
+            }).catch(function(){});
+          }catch(e1){}
+        }, 20000);
+      }
+      window.__khAcctStop = window.KHACCT.startRemote(function(cmd){
+        var inPlayer = !!(els.player && els.player.classList.contains('show'));
+        if(cmd === 'playpause'){ if(inPlayer && typeof togglePlay === 'function') togglePlay(); return; }
+        if(cmd === 'seekback'){ if(inPlayer && typeof seekBy === 'function') seekBy(-10); return; }
+        if(cmd === 'seekfwd'){ if(inPlayer && typeof seekBy === 'function') seekBy(10); return; }
+        if(cmd === 'volup'){ if(typeof applyVolume === 'function') applyVolume(state.userVolume + 0.1, true); return; }
+        if(cmd === 'voldown'){ if(typeof applyVolume === 'function') applyVolume(state.userVolume - 0.1, true); return; }
+        if(cmd === 'next'){ if(typeof khStepMovie === 'function') khStepMovie(1); return; }
+        if(cmd === 'prev'){ if(typeof khStepMovie === 'function') khStepMovie(-1); return; }
+        if(cmd === 'back'){
+          if(inPlayer && typeof closePlayer === 'function'){ closePlayer(); return; }
+          if(state.view && state.view !== 'home'){ state.view = 'home'; try{ render(); }catch(e2){} }
+          return;
+        }
+      }, { period: 2500 });
+    }
+  }catch(e){}
+  try{
+    if(typeof khRemoteLoad === 'function'){
+      setTimeout(function(){ try{ khRemoteLoad(); }catch(e){} }, 8000);
+      if(!window.__khRemoteTimer){
+        window.__khRemoteTimer = setInterval(function(){
+          try{ if(!document.hidden) khRemoteLoad(); }catch(e){}
+        }, 6 * 3600 * 1000);
+      }
+    }
   }catch(e){}
   // 首启声明：未同意过条款则弹层，同意时间存本机
   try { khFirstRunConsent(); } catch(e){}
@@ -3675,9 +4248,11 @@ try {
     if(_px && window.khProxy) window.khProxy.set({ mode: _px.mode || 'system', server: _px.server || '' });
   } catch(e){}
   // 仓自带直播源：先用上次解析结果并入直播频道，再后台拉取刷新（不阻塞首屏）
-  try { khSyncWhLives(function(n){ if(n) setTimeout(function(){ try { render(); } catch(e){} }, 80); }); } catch(e){}
+  try { khSyncWhLives(function(n){ if(n) setTimeout(function(){ try { (typeof khSafeRender === 'function' ? khSafeRender : render)(); } catch(e){} }, 80); }); } catch(e){}
   // 夜间/长辈模式：恢复上次设置
   try { khApplyDisplay(); } catch(e){}
+  // 1.7.94 #78 皮肤包：把上次应用的配色包重新注入（无包就跟随内置皮肤）
+  try { if(typeof khThemePaint === 'function') khThemePaint(); } catch(e){}
   // 界面语言 + 搜索联想
   try { khApplyLang(); } catch(e){}
   try { khSuggestBind(); } catch(e){}
@@ -3693,6 +4268,32 @@ try {
   try { khCheckUpgradePending(); } catch(e){}
   // 字幕字号 / 位置
   try { khApplySubStyle(); } catch(e){}
+  // P2：焦点框 / 卡片密度 / 字幕字体描边（台账 #161）
+  try { khP2Apply(); } catch(e){}
+  // P2：音量键归属（遥控 / 键盘媒体键看是否接管）
+  try {
+    document.addEventListener('keydown', function(e){
+      var k = e && e.key ? String(e.key) : '';
+      var typing = e && e.target && e.target.tagName ? ['INPUT','TEXTAREA','SELECT'].indexOf(e.target.tagName) >= 0 : false;
+      if(k === 'MediaPlayPause'){
+        if(typing) return;
+        e.preventDefault();
+        if(els.player && els.player.classList.contains('show')) togglePlay();
+        return;
+      }
+      var volUp = (k === 'AudioVolumeUp' || k === 'VolumeUp' || k === 'MediaVolumeUp');
+      var volDn = (k === 'AudioVolumeDown' || k === 'VolumeDown' || k === 'MediaVolumeDown');
+      var volMu = (k === 'AudioVolumeMute' || k === 'VolumeMute');
+      if(!volUp && !volDn && !volMu) return;
+      var target = 'app';
+      try { target = window.KHP2 ? KHP2.volTarget(khP2Cfg().volKeys) : 'app'; } catch(e2){ target = 'app'; }
+      if(target === 'system') return;   // 交给系统：不拦截、不改应用音量
+      e.preventDefault();
+      if(volMu){ applyVolume(0, true); return; }
+      var cur = (isFinite(state.userVolume) ? state.userVolume : 1);
+      applyVolume(cur + (volUp ? 0.1 : -0.1), true);
+    });
+  } catch(e){}
   // 开机静默巡检：启动 20 秒后探测片源与自建站点可达性（复用 10 分钟缓存，不打扰用户；
   // 全部线路失效的片子会带「⚠ 线路不可用」角标，进入对应页面时可见）
   setTimeout(function(){
@@ -3710,14 +4311,39 @@ try {
    ?selftest=local 自动播放第一部的备用线路（验证换源链路）
    ?selftest=sites 落在网站管理视图 */
 if(/[?&]selftest=1/.test(location.search)){
-  setTimeout(function(){ openPlayer(allMovies()[0]); }, 60);
+  setTimeout(function(){ var a0 = allMovies()[0]; if(a0) openPlayer(a0); }, 60);
 }
 if(/[?&]selftest=local/.test(location.search)){
-  setTimeout(function(){ openPlayer(allMovies()[0], 2); }, 60);
+  setTimeout(function(){ var a0 = allMovies()[0]; if(a0) openPlayer(a0, 2); }, 60);
 }
 /* 预览入口：?view=live 只停在直播频道列表，不自动播放 */
 if(/[?&]view=live(?:&|$)/.test(location.search)){
   state.view = 'live'; render();
+}
+/* 启动进上次看的直播（台账 #161 / 清单 34）：开关默认关；开时 900ms 后直接起播上次的台。
+   自检入口（?selftest=）与显式 ?view=live 优先，不被自动起播抢走焦点。 */
+if(!/[?&](selftest|view)=/.test(location.search)){
+  try{
+    var _autoLive = !!(khP2Cfg() || {}).liveAutoStart;
+    var _lastLive = _autoLive ? String(getStore('kh_last_live', '') || '') : '';
+    if(_autoLive && _lastLive){
+      var _lch = null, _larr = window.LIVE_CHANNELS || [];
+      for(var _li = 0; _li < _larr.length; _li++){
+        if(_larr[_li] && String(_larr[_li].id) === _lastLive){ _lch = _larr[_li]; break; }
+      }
+      if(_lch){
+        setTimeout(function(){
+          try{
+            state.view = 'live'; render();
+            if(typeof liveMovieObj === 'function' && typeof openPlayer === 'function'){
+              openPlayer(liveMovieObj(_lch), 0);
+              toast('按上次记录进入直播：' + (_lch.name || _lch.title || _lastLive));
+            }
+          }catch(e){}
+        }, 900);
+      }
+    }
+  }catch(e){}
 }
 /* 直播自检：三条独立播放路径，不依赖频道库具体数量。
    live       = 第一个频道，从网络主源起播（验证点开直接播真实直播）
@@ -3760,11 +4386,11 @@ setInterval(function(){
   var X = window.KH_EXTRAS = window.KH_EXTRAS || {};
 
   function j(u){
-    try{ return fetch(u,{cache:'no-store'}).then(function(r){ return r.json(); }); }
+    try{ return khFetch(u,{cache:'no-store'}).then(function(r){ return r.json(); }); }
     catch(e){ return Promise.resolve(null); }
   }
   function jp(u,b){
-    try{ return fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})}).then(function(r){ return r.json(); }); }
+    try{ return khFetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b||{})}).then(function(r){ return r.json(); }); }
     catch(e){ return Promise.resolve(null); }
   }
   function say(s){ try{ if(typeof toast==='function') toast(s); else alert(s); }catch(e){} }
@@ -4072,6 +4698,8 @@ setInterval(function(){
   }
 
   loadKid();
+  /* 自动备份（台账 #160）：等首屏稳定后再跑，到期就静默写一份到备份目录；失败不打断使用 */
+  setTimeout(function(){ try{ khBakAutoTick(); }catch(e){} }, 4200);
   /* 启动拉取：云端推荐位 / 更新通道 / 本机追剧订阅；失败静默保留本机缓存 */
   try{ refreshPromo(); refreshChannel(); refreshWatchSubFromServer(); checkWatchSub(); }catch(e){}
   /* 每 5 分钟重判一次：进入/离开儿童时段自动生效，不用重启客户端 */
@@ -4091,3 +4719,313 @@ setInterval(function(){
     if(e && e.key === 'Escape'){ var p = document.getElementById('khSearchAllPanel'); if(p) p.style.display = 'none'; }
   });
 })();
+
+/* ---------------- 1.7.103 环境自检 ---------------- */
+function khSelfCheck(){
+  var r = { at: Date.now(), ua: (navigator.userAgent || ''), ver: ((window.KH_SERVICE && window.KH_SERVICE.release && window.KH_SERVICE.release.versionName) || ''), build: ((window.KH_SERVICE && window.KH_SERVICE.buildId) || ''), desktop: false, env: null, storage: null, hub: null };
+  try{
+    var k = 'kh_probe_' + Date.now();
+    localStorage.setItem(k, '1'); localStorage.removeItem(k);
+    r.storage = { ok: true };
+  }catch(e){ r.storage = { ok: false, msg: (e && e.message) || 'localStorage 不可用' }; }
+  setStore('kh_selfcheck', r); setStore('kh_selfcheck_at', r.at);
+  if(window.khEnvInfo && window.khEnvInfo.get){
+    r.desktop = true;
+    try{
+      window.khEnvInfo.get().then(function(info){
+        r.env = info || {};
+        setStore('kh_selfcheck', r);
+        if(state.view === 'issues') render();
+      }).catch(function(e){
+        r.env = { error: 'env-info 调用失败：' + ((e && e.message) || '未知') };
+        setStore('kh_selfcheck', r);
+        if(state.view === 'issues') render();
+      });
+    }catch(e){ r.env = { error: 'env-info 调用异常' }; setStore('kh_selfcheck', r); }
+  }
+  khHubProbe(r);
+  return r;
+}
+function khHubProbe(r){
+  var t0 = Date.now();
+  try{
+    khFetch('/health', { cache: 'no-store' }).then(function(res){
+      r.hub = { ok: !!res.ok, status: res.status, ms: Date.now() - t0 };
+      setStore('kh_selfcheck', r);
+      if(state.view === 'issues') render();
+    }).catch(function(e){
+      r.hub = { ok: false, msg: (e && e.message) || '不可达' };
+      setStore('kh_selfcheck', r);
+      if(state.view === 'issues') render();
+    });
+  }catch(e){ r.hub = { ok: false, msg: 'fetch 不可用' }; }
+}
+function khFirstCheck(){
+  if(getStore('kh_selfcheck_at', 0)) return;
+  try{ khSelfCheck(); }catch(e){}
+}
+/* ---------------- 1.7.103 播放诊断 ---------------- */
+function khDiagRun(){
+  var streams = (typeof DIAG_STREAMS !== 'undefined' && DIAG_STREAMS) ? DIAG_STREAMS : [];
+  if(!streams.length){ toast('诊断流清单缺失'); return; }
+  var out = [], ua = (navigator.userAgent || ''), i = 0;
+  toast('开始诊断：逐条试播，最长 12 秒一条');
+  function paint(){
+    if(state.view === 'issues') render();
+    var el = document.getElementById('khDiagOut');
+    if(el) el.textContent = '正在诊断 ' + out.length + ' / ' + streams.length + ' …';
+  }
+  function done(){
+    var rec = { at: Date.now(), ua: ua, ver: ((window.KH_SERVICE && window.KH_SERVICE.release && window.KH_SERVICE.release.versionName) || ''), items: out };
+    setStore('kh_diag_last', rec);
+    if(state.view === 'issues') render();
+    var bad = out.filter(function(x){ return !x.ok; }).length;
+    toast('诊断完成：' + (out.length - bad) + ' 条可加载 · ' + bad + ' 条失败，可点「复制诊断结果」带走');
+  }
+  function step(){
+    if(i >= streams.length){ done(); return; }
+    var st = streams[i];
+    var v = document.createElement('video');
+    var rec = { id: st.id, label: st.label, url: st.url, ok: false, code: null, msg: '', rs: null, ns: null, ms: 0 };
+    var t0 = Date.now(), finished = false, timer = null;
+    v.muted = true; v.preload = 'metadata'; v.setAttribute('playsinline', '');
+    v.style.position = 'absolute'; v.style.width = '1px'; v.style.height = '1px'; v.style.opacity = '0'; v.style.pointerEvents = 'none';
+    try{ document.body.appendChild(v); }catch(e){}
+    function fin(ok, msg){
+      if(finished) return;
+      finished = true;
+      if(timer){ clearTimeout(timer); timer = null; }
+      rec.ok = ok; rec.msg = msg || ''; rec.ms = Date.now() - t0;
+      try{ rec.rs = v.readyState; rec.ns = v.networkState; }catch(e){}
+      try{ if(v.error) rec.code = v.error.code; }catch(e){}
+      try{ v.pause(); v.removeAttribute('src'); v.load(); }catch(e){}
+      try{ if(v.parentNode) v.parentNode.removeChild(v); }catch(e){}
+      out.push(rec); paint(); i++; setTimeout(step, 250);
+    }
+    v.addEventListener('loadedmetadata', function(){ fin(true, '元数据已加载'); });
+    v.addEventListener('canplay', function(){ if(!finished) fin(true, '可开始播放'); });
+    v.addEventListener('error', function(){
+      var c = 0;
+      try{ c = v.error ? v.error.code : 0; }catch(e){}
+      fin(false, c ? ('媒体错误 code ' + c) : '媒体错误（无 code）');
+    });
+    timer = setTimeout(function(){ fin(false, '超时 12 秒'); }, 12000);
+    try{ v.src = st.url; v.load(); }catch(e){ fin(false, '设置 src 失败'); }
+  }
+  step();
+}
+function khDiagText(){
+  var rec = getStore('kh_diag_last', null);
+  if(!rec || !rec.items) return '';
+  var t = ['鸿汇影 · 播放诊断结果',
+    '时间：' + new Date(rec.at).toLocaleString('zh-CN', { hour12: false }),
+    '版本：' + (rec.ver || '未知'),
+    'UA：' + (rec.ua || ''), ''];
+  rec.items.forEach(function(it){
+    t.push((it.ok ? '[可加载] ' : '[失败] ') + it.label);
+    t.push('   URL ' + it.url);
+    t.push('   error.code ' + (it.code == null ? '无' : it.code) + ' · readyState ' + it.rs + ' · networkState ' + it.ns + ' · ' + it.ms + ' ms' + (it.msg ? ' · ' + it.msg : ''));
+  });
+  t.push('', '读法：code 2 = 网络 / 3 = 解码 / 4 = 源或格式不支持；VP9 能播而 H.264 不能 = 缺 H.264 解码器。');
+  return t.join('\n');
+}
+function khDiagCopy(){
+  var txt = khDiagText();
+  if(!txt){ toast('还没有诊断结果，先点「开始诊断」'); return; }
+  function fallback(){
+    try{
+      var ta = document.createElement('textarea');
+      ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      toast('诊断结果已复制到剪贴板');
+    }catch(e){ toast('复制失败，请到「导出报告 .txt」里带走'); }
+  }
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(function(){ toast('诊断结果已复制到剪贴板'); }).catch(fallback);
+      return;
+    }
+  }catch(e){}
+  fallback();
+}
+function khSelfCheckHtml(){
+  var r = getStore('kh_selfcheck', null);
+  if(!r || !r.at) return '<p class="platnote">还没跑过自检。点下面「重新自检」，约 3 秒。</p>';
+  var rows = [];
+  function add(k, v, bad){
+    rows.push('<div class="siteitem"><div class="siteico" style="background:' + (bad ? '#8C3A32' : '#2E7D5B') + '">' + (bad ? '✗' : '✓') + '</div>' +
+      '<div class="sitemeta"><div class="n">' + esc(k) + '</div><div class="u">' + esc(String(v == null ? '' : v)) + '</div></div></div>');
+  }
+  function gb(n){
+    try{ return (n / 1073741824).toFixed(1) + ' GB'; }catch(e){ return '未知'; }
+  }
+  add('版本', (r.ver || '未知') + (r.build ? (' · ' + r.build) : ''), false);
+  add('运行端', r.desktop ? '桌面端（Electron）' : '设备端 / 浏览器内核', false);
+  add('本机存储', (r.storage && r.storage.ok) ? '可写（设置与片源都能存住）' : ('不可写：' + ((r.storage && r.storage.msg) || '未知')), !(r.storage && r.storage.ok));
+  add('中枢 /health', r.hub ? (r.hub.ok ? ('可达 · HTTP ' + r.hub.status + ' · ' + r.hub.ms + ' ms') : ('不可达 · ' + (r.hub.msg || ('HTTP ' + r.hub.status)))) : '未检测', !(r.hub && r.hub.ok));
+  if(r.env){
+    if(r.env.error){ add('桌面环境桥', r.env.error, true); }
+    else{
+      add('系统', (r.env.platform || 'Windows') + (r.env.sysVersion ? (' · ' + r.env.sysVersion) : ''), !!r.env.oldSystem);
+      if(r.env.diskFreeBytes != null) add('磁盘剩余', gb(r.env.diskFreeBytes) + ((r.env.diskOk === false) ? ' · 不足' : ' · 充足'), r.env.diskOk === false);
+      add('数据目录可写', (r.env.writeOk === false) ? ('不可写 · ' + (r.env.writeMsg || '')) : (r.env.writeOk ? ('可写 · ' + (r.env.writeDir || '')) : '未测'), r.env.writeOk === false);
+      add('端口', r.env.portsExhausted ? '已耗尽（自动顺延失败）' : '正常', !!r.env.portsExhausted);
+      if(r.env.vcRuntime) add('VC++ 运行库', r.env.vcRuntime.ok ? '齐全（msvcp140 / vcruntime140 / vcruntime140_1）' : ('缺：' + ((r.env.vcRuntime.missing || []).join(' / ') || '未列出')), !r.env.vcRuntime.ok);
+      else add('VC++ 运行库', '未检测（主进程为旧版或无权限）', false);
+    }
+  } else { add('桌面环境桥', '未接入（设备端没有这项）', false); }
+  add('UA', (r.ua || '').replace(/\s+/g, ' ').slice(0, 120), false);
+  return '<div class="sitelist" style="margin-top:8px">' + rows.join('') + '</div>' +
+    '<p class="platnote">时间 ' + esc(new Date(r.at).toLocaleString('zh-CN', { hour12: false })) + ' · 首次启动会自动跑一次</p>';
+}
+function khDiagHtml(){
+  var rec = getStore('kh_diag_last', null);
+  if(!rec || !rec.items || !rec.items.length) return '<p class="platnote" id="khDiagOut">还没跑过。点「开始诊断」，约 30 秒。</p>';
+  var lines = rec.items.map(function(it){
+    var code = (it.code == null) ? 'code 无' : ('code ' + it.code);
+    return '<div class="siteitem"><div class="siteico" style="background:' + (it.ok ? '#2E7D5B' : '#8C3A32') + '">' + (it.ok ? '✓' : '✗') + '</div>' +
+      '<div class="sitemeta"><div class="n">' + esc(it.label) + '</div>' +
+      '<div class="u">' + (it.ok ? '可加载' : '失败') + ' · ' + code + ' · readyState ' + it.rs + ' · networkState ' + it.ns + ' · ' + it.ms + ' ms' + (it.msg ? (' · ' + esc(it.msg)) : '') + '</div></div></div>';
+  }).join('');
+  return '<div class="section-head" style="margin-top:10px"><h2>最近一次结果</h2><span>' + esc(new Date(rec.at).toLocaleString('zh-CN', { hour12: false })) + ' · ' + rec.items.length + ' 条</span></div><div class="sitelist">' + lines + '</div>';
+}
+
+/* 1.7.103 首启自检：装完第一次打开自动跑一次，结果进「问题中心 · 环境自检」 */
+try{
+  if(document.readyState === 'complete' || document.readyState === 'interactive'){
+    setTimeout(function(){ try{ khFirstCheck(); }catch(e){} }, 400);
+  } else {
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(function(){ try{ khFirstCheck(); }catch(e){} }, 400); });
+  }
+}catch(e){}
+
+/* 1.7.109 商店变体首启隐私同意闸：未同意先弹声明，同意后才放行（仅 KH_STORE） */
+try{
+  if(document.readyState === 'complete' || document.readyState === 'interactive'){
+    setTimeout(function(){ try{ khStorePrivacyGate(); }catch(e){} }, 300);
+  } else {
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(function(){ try{ khStorePrivacyGate(); }catch(e){} }, 300); });
+  }
+}catch(e){}
+
+/* ---------------- 1.7.104 局域网开关 / 更新检查 / 播放事件导出 ---------------- */
+function khLanHtml(){
+  if(!window.khLanMode) return '<p class="platnote">设备端没有本机中枢，这项只在桌面端出现。</p>';
+  var on = !!getStore('kh_lan_on', false);
+  return '<p>当前：<b>' + (on ? '局域网可访问（绑定 0.0.0.0，需要访问口令）' : '仅本机可访问（绑定 127.0.0.1）') + '</b></p>' +
+    '<p class="platnote">开启后同一局域网的手机 / 电视 / 另一台电脑才能连本机中枢；' +
+    '口令在「设置 · 本机中枢」里，或 server/data/access-token.txt。关掉即回到只有本机能用。' +
+    '切换会重启内置服务并重载页面，正在播放的内容会中断。</p>';
+}
+function khLanToggle(){
+  if(!window.khLanMode){ toast('这个开关只在桌面端可用'); return; }
+  var cur = !!getStore('kh_lan_on', false);
+  var want = !cur;
+  if(want && !confirm('开启后同一局域网内其他设备可以访问本机中枢（需要口令）。确定开启？')) return;
+  toast(want ? '正在开启局域网访问，服务重启中…' : '正在关闭局域网访问，服务重启中…');
+  try{
+    window.khLanMode.set(want).then(function(r){
+      if(r && r.ok){
+        setStore('kh_lan_on', !!r.lan);
+        toast(r.lan ? '已开启 · 绑定 0.0.0.0（需口令）' : '已关闭 · 绑定 127.0.0.1');
+      } else {
+        toast('切换失败：' + ((r && r.msg) || '未知原因'));
+      }
+      render();
+    }).catch(function(e){ toast('切换失败：' + ((e && e.message) || e)); });
+  }catch(e){ toast('切换失败：' + ((e && e.message) || e)); }
+}
+function khUpdateCheck(){
+  if(window.KH_STORE){ try{ toast('商店版由应用市场统一更新'); }catch(e){} return; }
+  var cur = ((window.KH_SERVICE && window.KH_SERVICE.release && window.KH_SERVICE.release.versionName) || '');
+  var out = { at: Date.now(), cur: cur, latest: '', state: 'checking', msg: '正在检查…' };
+  setStore('kh_update_check', out);
+  if(state.view === 'settings') render();
+  toast('正在检查更新…');
+  function finish(st, msg, latest){
+    out.state = st; out.msg = msg; out.latest = latest || '';
+    setStore('kh_update_check', out);
+    if(state.view === 'settings') render();
+    toast(msg);
+  }
+  try{
+    khFetch('/health', { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(h){
+      var rel = (h && h.release) || {};
+      var latest = rel.versionName || '';
+      if(!latest){ finish('ok', '中枢没有返回版本信息（可能未接中枢）', ''); return; }
+      var newer = !!(cur && latest && latest !== cur);
+      finish('ok', newer ? ('有新版：' + latest + '（当前 ' + cur + '）') : ('已是最新：' + latest), latest);
+    }).catch(function(e){
+      finish('fail', '检查失败：' + ((e && e.message) || '中枢不可达'), '');
+    });
+  }catch(e){ finish('fail', '检查失败：' + ((e && e.message) || '异常'), ''); }
+}
+function khUpdateHtml(){
+  if(window.KH_STORE) return '<p class="platnote">商店版由应用市场统一推送更新，无需在此检查；本应用不连接任何私发更新中枢。</p>';
+  var r = getStore('kh_update_check', null);
+  var onLan = !!window.khLanMode;
+  var tip = onLan
+    ? '<p class="platnote">桌面端：发现新版后走「设置 → 更新」的静默升级（下载 → 校验 SHA256 → 安装）。</p>'
+    : '<p class="platnote">设备端（HAP）不自动安装：发现新版后需要手动把新 HAP 传到设备点开安装，系统会提示覆盖升级，数据保留。</p>';
+  if(!r || !r.at) return '<p class="platnote" id="khUpdOut">还没检查过。点「检查更新」对比中枢版本。</p>' + tip;
+  var tone = (r.state === 'fail') ? '#8C3A32' : (r.state === 'ok' && r.latest && r.cur && r.latest !== r.cur ? '#8A6A1F' : '#2E7D5B');
+  return '<p class="platnote" id="khUpdOut"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + tone + ';margin-right:6px"></span>' +
+    esc(r.msg || '') + ' · ' + esc(new Date(r.at).toLocaleString('zh-CN', { hour12: false })) + '</p>' + tip;
+}
+function khPlayLogList(){
+  var arr = getStore('kh_play_log', []);
+  return (arr && typeof arr.length === 'number') ? arr : [];
+}
+function khPlayLogHtml(){
+  var arr = khPlayLogList();
+  if(!arr.length) return '<p class="platnote">还没有失败记录。播不动时这里会自动出现条目。</p>';
+  var rows = arr.slice(0, 20).map(function(it){
+    var t = '';
+    try{ t = new Date(it.at).toLocaleString('zh-CN', { hour12: false }); }catch(e){}
+    var tail = 'code ' + (it.code == null ? '无' : it.code) + (it.hls ? (' · HLS ' + esc(it.hls)) : '') +
+      (it.watchdog ? (' · 超时 ×' + it.watchdog) : '') + (it.online === false ? ' · 离线' : '');
+    return '<div class="siteitem"><div class="siteico" style="background:#8C3A32">✗</div>' +
+      '<div class="sitemeta"><div class="n" style="white-space:normal">' + esc(it.reason || '') + '</div>' +
+      '<div class="u" style="white-space:normal;line-height:1.5">' + esc(t) + ' · ' + tail +
+      (it.src ? ('<br>' + esc(it.src)) : '') + '</div></div></div>';
+  }).join('');
+  return '<div class="sitelist" style="margin-top:8px">' + rows + '</div>' +
+    '<p class="platnote">共 ' + arr.length + ' 条，显示最近 ' + Math.min(20, arr.length) + ' 条</p>';
+}
+function khPlayLogText(){
+  var arr = khPlayLogList();
+  if(!arr.length) return '';
+  var head = ['鸿汇影 · 播放事件日志',
+    '版本：' + ((window.KH_SERVICE && window.KH_SERVICE.release && window.KH_SERVICE.release.versionName) || '未知'),
+    'UA：' + (navigator.userAgent || ''),
+    '共 ' + arr.length + ' 条（新→旧）', ''];
+  var body = arr.map(function(it){
+    var t = '';
+    try{ t = new Date(it.at).toLocaleString('zh-CN', { hour12: false }); }catch(e){}
+    return [t + '  code=' + (it.code == null ? '无' : it.code) + (it.hls ? ('  hls=' + it.hls) : '') +
+      (it.watchdog ? ('  timeout=' + it.watchdog) : '') + (it.online === false ? '  offline' : ''),
+      '  ' + (it.reason || ''), '  ' + (it.src || '')].join('\n');
+  }).join('\n');
+  return head.join('\n') + body;
+}
+function khPlayLogCopy(){
+  var txt = khPlayLogText();
+  if(!txt){ toast('还没有播放事件，先复现一次失败'); return; }
+  function fallback(){
+    try{
+      var ta = document.createElement('textarea');
+      ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+      toast('播放事件已复制');
+    }catch(e){ toast('复制失败'); }
+  }
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(function(){ toast('播放事件已复制'); }).catch(fallback);
+      return;
+    }
+  }catch(e){}
+  fallback();
+}

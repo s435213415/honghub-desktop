@@ -199,8 +199,22 @@ function makeSetupZip() {
 }
 function refreshArtifacts() {
   log('\n=== 补丁：重算产物元数据 ===');
-  const exe = SETUP();
-  need(fs.existsSync(exe), '安装器不存在');
+  /* 交付口径：desktop-setup.exe 与 release.json 的 desktop 必须指向**客户版**
+     （dist/client + .client-build-x64.json），不是 ship 刚重建的开发端安装器。
+     1.7.88 之前这里无条件拿 dist 根 Setup（开发端），把 alias 覆盖回开发端，
+     于是 7/8 的下发一致性总检必报「release.json 与实际不一致」。 */
+  let cs = null, csMod = null;
+  try {
+    csMod = require(path.join(__dirname, 'lib', 'client-stamp'));
+    cs = csMod.read(DIST, 'x64');
+  } catch (e) {}
+  const useClient = !!(cs && cs.setup && String(cs.setup.file || '').indexOf(String(V)) >= 0);
+  const exe = useClient ? path.join(DIST, 'client', cs.setup.file) : SETUP();
+  need(fs.existsSync(exe), '安装器不存在' + (useClient ? '（客户版）' : ''));
+  if (useClient) {
+    const v = csMod.verify(cs, exe);
+    need(v.ok, '客户版指纹与实物不符：' + v.reason);
+  }
   const h = sha(exe), size = fs.statSync(exe).size;
   REL = jread(path.join(DIST, 'release.json'), {});
   need(REL && REL.artifacts, 'dist/release.json 缺 artifacts');
@@ -217,7 +231,7 @@ function refreshArtifacts() {
   if (fs.existsSync(UPDATES)) fs.writeFileSync(path.join(UPDATES, 'desktop-setup.exe.sha256'), txt);
   // 完整 release.json 只写回免安装目录（安装器里的版本保持去自引用哈希）
   jwrite(path.join(UPDATES, 'release.json'), REL);
-  record('重算产物元数据', 'passed', 'desktop sha256 ' + h.slice(0, 16) + '… / ' + size + ' B');
+  record('重算产物元数据', 'passed', (useClient ? '客户版' : '开发端') + ' desktop sha256 ' + h.slice(0, 16) + '… / ' + size + ' B');
 }
 async function patchInstaller() {
   // dry-run 绝不改写 win-unpacked / 包内元数据，避免「预演」产生构建副作用。

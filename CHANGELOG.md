@@ -1,6 +1,429 @@
 # 鸿汇影 · 变更日志
 
-版本号与 #code 以 `server/manifest.json` 的 `release.latest` 为唯一真相源，`scripts/version.js --check` 核对 13 处一致性。
+版本号与 #code 以 `server/manifest.json` 的 `release.latest` 为唯一真相源，`scripts/version.js --check` 核对 16 处一致性。
+
+## 补记：1.7.95 – 1.7.112（2026-11-27 追溯补录）
+
+本段为事后补录。1.7.95 起发布时未写入本文件，2026-11-27 依据桌面归档（`桌面\鸿汇影·历史归档`）与当前五夹/私发夹的说明文件回溯整理。
+
+三条口径：
+1. **不编内容**：归档目录与说明文件都不存在的版本，只记「无留存」，不写功能描述。
+2. **构建号**：已由说明文件证实的标注「证实」，其余按 1.7.94 = #1000208 逐版 +1 推算，标「推算」。
+3. **日期**取归档目录时间，非发布日原文；无目录者不写日期。
+
+## 1.7.112 / #1000226（推算）— 2026-11-27
+
+- **无逐版变更记录**：本版只在桌面五夹与私发夹留交付说明，未见变更文件。
+- 可核实事实：私发免安装 zip 145,969,036 B / `8a44bd93…`；HAP 2,449,138 B / `6fe5aee1…`。该 HAP 为 official 链自签（bundle `com.honghub.harmony`），在 KaihongOS 设备上会被系统拒绝启动；真机安装用备机验证夹的 `com.kaihong.movie` 原生包（开鸿平台证书）。
+
+## 1.7.108 – 1.7.111 / #1000222–#1000225（推算）
+
+- **无留存**：归档目录与说明文件均不存在。无法确认这四版是出过包后被清理，还是未出包，因此不写功能内容。
+
+## 1.7.107 / #1000221（推算）— 2026-11-24
+
+- **匿名诊断上报默认开启**（客户纯净版与设备端）：装机即回收，只外发脱敏摘要（错误码 / 次数 / 站点域名 / 匿名设备号），不含账号、片源与完整 URL；问题中心开关即停发并持久化；没有预置地址时不盲发；隐私文案与预检门禁同步改口径。
+- **真窗口冒烟门禁**：新增 `scripts/smoke-desktop.js`，解压客户免安装包 → 经 `Start-Process` 真启 Electron（走完整 preload）→ CDP 断言正文非空 / 核心函数已加载 / 上报地址已预置 / 无 Uncaught，纳入 `verify-release.js` 第 6 步。补上 1.7.104 白屏事故的检测盲区；本机 x64，冒烟只取 x64 包。
+- **镜像站守护加固**：`watchdog.ps1` 加单实例锁（两份守护互杀会打出 Cloudflare 429 死循环）+ 429 退避 600s；`修复DNS并启动.cmd` 同时换 IPv6 DNS（路由器 fe80::1 会把 argotunnel.com 解析成 NXDOMAIN 致隧道 530，只改 IPv4 无效）。
+
+## 1.7.106 / #1000220（证实）— 2026-11-23
+
+- **白屏修复（P0）**：preload 桥 `khDeviceId` 改名 `khDeviceIdBridge`。旧名与 `kh-core.js` 顶层函数相撞，contextBridge 属性不可配置 → `kh-core.js` 整脚本不执行 → 1.7.104/105 客户版窗口白屏。
+- **客户版上报**：清单 `remoteUrl` 不再被 `KH_UI_CLEAN` 挡掉；「远程收集」卡对客户版渲染（默认关闭）；出包链新增 `scripts/inject-report-url.js`，把隧道地址写进页面内嵌 `kh-sources` 基线（客户版启动读基线，不是云端清单）。
+- 设置页 `KH_SHOT_LOG` 裸访问加类型守卫，消掉一条 Uncaught TypeError。
+
+## 1.7.105 / #1000219（推算）— 2026-11-24
+
+- 中枢地址双键（`kh_hub_url` + `khHub`）持久化、设置页显示「当前生效」地址；免安装包 exe 属性补全。
+- 本版说明文件与 104 复用同一「这版新增」段，差异以 106 说明的承接段为准。
+
+## 1.7.104 / #1000218（推算）— 2026-11-24
+
+- 主进程 `kh:lan-mode`（get/set）：默认只绑 `127.0.0.1`，开启后 spawn 带 `KH_HOST=0.0.0.0`，`server.js` 自动要求访问口令；开关落 `userData/lan-mode.json`，切换重启服务并重载页面。
+- `preload` 暴露 `window.khLanMode { get, set }`（纯网页 / HAP 为 undefined）。
+- 播放失败日志 `khPlayLog(code, reason, video)` 写 `kh_play_log`（上限 60、同因 5 秒去重），字段含 at / code / reason / src / hls / watchdog / online，问题中心可查看与复制。
+- 检查更新 `khUpdateCheck()` 读 `/health` 的 `release.versionName` 与当前版本比对，结果存 `kh_update_check`。
+
+## 1.7.103 / #1000217（推算）— 2026-11-24
+
+- **无留存变更记录**：说明文件未含「相对上一版」段。
+
+## 1.7.102 / #1000216（推算）— 2026-11-24
+
+- **无留存变更记录**：同上。
+
+## 1.7.101 / #1000215（证实）— 2026-11-24
+
+- **桌面端逻辑代码未改**：`electron-main` / `kh-core` / `kh-app` / `kh-admin` 均为 1.7.97 原样；本版进 exe 的是前端与清单增量。
+- `app/index.html` 播放失败红条带 `video.error.code`（1 中断 / 2 网络 / 3 解码 / 4 源不支持），并附 `readyState` / `networkState`；SOURCE 元素回溯到父 video。
+- `kh-release` 内联清单 `minApi` 12 → 11，与 HAP 包内 `minAPIVersion` 对齐；`server/manifest.json` 的 minApi / KaihongOS apiMin / OpenHarmony apiMin 三处同步改 11。
+- 401 自动重试是 ArkTS 侧（`BrowserPage.ets`）改动，只在 HAP 里，Windows 端没有。
+- **客户版裁剪口径纠偏**（以此为准）：剥 14 个运维页 `*-admin.html`（159,532 B）、主进程 `CLIENT_ONLY=true`、`/admin` 死链清空；`server` 业务模块保留（38 个 js）。旧说明里「物理裁掉 server 目录」那句是错的。
+
+## 1.7.98–1.7.100 / #1000212–#1000214（推算）
+
+- **无留存**：归档目录与说明文件均不存在，不写功能内容。
+
+## 1.7.95–1.7.97 / #1000209–#1000211（推算；开发端 #1000309 与 #1000311 证实）— 2026-11-24
+
+- **无逐版变更记录**：三版开发端说明文件是同一模板（同一批新增代码文件、同一份 406 项单测说明），未区分版本差异，故不拆条。
+- 可核实事实：该批新增 `kh-guard.js`（平台入口域名守卫，三态 ok/ask/bad + 信任表上限 30）、`kh-tv.js`（电视形态 + 遥控返回/菜单键 + 焦点环）、`kh-hant.js`（简→繁显示层）、`kh-account.js`（设备码账号 / 云同步 / 跨端续播 / 手机遥控轮询）、`client-auto-update.js`（客户版静默升级四档 + SHA256 + 失败退避）、`server/account-sync.js`（账号与遥控队列）。
+- 单测：guard 31 · auto-update 35 · hant 24 · tv 23 · account(server) 29 · account(client) 20，加既有回归 pref 63 · p2 93 · b8 88，合计 406 项全绿。
+
+## 1.7.94 / #1000208 — 2026-11-23
+
+本轮把「鸿汇影双端」清单里剩下的 14 项（3 项部分已有 + 11 项待做）一次性做完，清单 67/3/11 → 81/0/0。
+分成四批：服务端远端配置中心 → 客户端远端配置与跨进程一致 → 配置总览 / 二维码 / 皮肤包 → 家庭档案 / 元数据 / 字幕站与 Key / 网络族。
+
+### 批 1 服务端远端配置中心（#69 公告位 · #70 锁定项 · #71 默认值下发 · #77 灰度开关 · #66 云同步）
+
+- 新增 `server/config-center.js`：一份 `server/data/config-center.json` 统管五件事，每次写入 `rev++`。
+  公告带起止时间与优先级；锁定项按「键名 + 原因」置灰；默认值只在客户端缺该键时下发；
+  灰度按 `FNV-1a(device|id) % 100` 分桶，版本区间用 `10000/100/1` 加权比较，同一设备同一开关结果稳定。
+- 云同步 `syncPush/syncPull`：只收 `kh_` 前缀键；禁用词（url/site/src/link/addr/host/exe/path/dir/file/args/token/pass/pwd/pin/secret/key 等）
+  与 http(s) 值直接拒收，对象串超过 4096 字符拒收；pull 只取「不是自己那台」且最近更新的一条。
+- `server/server.js` 新增 7 条 config/sync 路由 + `/admin/config-center` 页面（暗色四卡表单）与导航「🎛 远端配置」。
+
+### 批 2 客户端远端配置 + 存储载体 + 跨进程一致（#72 · #75 · #70 · #77 的客户端侧）
+
+- 新增 `app/kh-remote.js`（UMD）：容错归一远端视图、公告有效期判定、锁定命中、离线灰度求值（与服务端同算法）。
+- `kh-core.js` 远端块：拉取 / 应用 / 顶部公告条 `#khNoticeBar` / 锁定置灰 `🔒` / 存储载体信息 / 云同步推拉；
+  远端 `rev` 比本机旧时不覆盖本机较新视图；启动 8 秒后拉一次，之后每 6 小时轮询，中枢不可达就保持本机缓存、不弹错。
+- 设置页新增「远端配置与云端」面板：rev、锁定数、灰度数、公告状态、云同步开关、推送 / 拉取、结果行 `#rOut`。
+- #75 跨进程一致：`electron-main.js` 的 `b8Write()` 写完向所有窗口广播 `kh:b8-changed`，`preload.js` 暴露 `khB8.onChanged`，
+  客户端 `khB8Watch()` 收到后写回本机存储并重绘（不回推，避免两个窗口互相触发）。
+
+### 批 3 配置总览 / 二维码短链 / 皮肤包（#63 · #65 · #78）
+
+- `KH_CFG_REG` 38 键分 7 组（播放 11 / 界面 10 / 通知与启动 7 / 儿童 3 / 网络 3 / 数据 2 / 远端与云端 2），
+  设置页「配置总览（38 项）」支持搜索 `#cfgQ`、单键改、单键 ↺、单组恢复默认、全部恢复默认（写回默认值而不删键，保住封条口径）。
+- 新增 `app/kh-qr.js` 本地二维码编码器（版本 1–10、纠错 M、字节模式 UTF-8、8 掩码择优），不依赖任何第三方包。
+- 新增 `app/kh-theme.js` 皮肤包：只认 8 个白名单 CSS 变量、值只接受 `#hex` / `rgb()`，禁 `url()` / `expression()` / `var()` / 分号拼接；
+  上限 8 包，内置 `built-neon` / `built-jade` / `built-ember` 三个样例；面板可粘贴导入、从 URL 下载、打开主题目录。
+- 新增 `server/shares.js`：7 位短码、TTL 180 天、容量 500，只收 http(s) 公网地址或 `#` 应用内路由，拦内网 / 本地地址；
+  `POST /api/share` 建短链，`GET /s/<code>` 302 跳转。客户端分享面板出短链 + 二维码，建链失败退回原链接，只做扫码 / 复制，不跳系统浏览器。
+
+### 批 4 家庭多档案 / 元数据与海报来源 / 字幕站与 AI Key / 网络族（#58 · #59 · #60 · #37）
+
+- `app/kh-family.js` + `khProf*` 十函数：最多 4 个档案，切换时把 10 个键（收藏 / 稍后 / 历史 / 进度 / 片单 / 片单元数据 / 直播收藏 / 儿童开关 / 儿童 PIN / 儿童时长）
+  快照换挡，**不新增也不改任何既有存储键**，旧逻辑零改动；缺键写回各自默认值而不是删除，避免被判定为「存储损坏」。
+  改名用行内输入框（Electron 渲染进程没有 `window.prompt`）。
+- `app/kh-meta.js`：元数据来源 builtin / tmdb / douban / custom，自定义模板必须含 `{title}`，海报只认 http(s)，评分 0–10，
+  缓存按时间淘汰上限 50；字幕站只留 http(s) 上限 10 个，走应用内 WebView；AI Key 至少 8 位、界面只露后 4 位；
+  自定义 DNS 支持 IPv4 与域名两种写法，最多 3 个。
+- 刮削结果直接进卡片：有海报就优先显示，评分与简介同步以刮削为准，卡片底部标注「海报与简介来自刮削来源」。
+- **豆瓣刮削不实现**：没有公开 API，抓网页违反其条款，UI 里已写明；TMDB 需用户自备 API Key，不填只报原因、不假装成功。
+- #37 网络族：`electron-main.js` 落 `userData/kh-net.json`，IPv4-only 模式启动时 `appendSwitch('disable-ipv6')`；
+  自定义 DNS 只做记录 + 重启生效，**不替代系统解析器**，面板文案照实说明。
+
+### 本轮修掉的两个真问题
+
+- 新增的九组动作（`cfg-` / `theme-` / `share-` / `prof-` / `meta-` / `ai-` / `net-` / `r-` / `sub-sites-save`）原先只写了处理函数、
+  没接上点击分发，界面上按钮点了没反应；现在统一并进 `resAction` 分发链。
+- 后台刷新（启动后并入仓自带直播源）会在用户正填设置表单时整体重绘、抢走焦点。新增 `khSafeRender()`：
+  设置页里有输入控件聚焦时只标记待绘，等下一次正常重绘顺带生效。
+
+### 自测
+
+- 新增 7 个自测套件：`test-config-center` 57、`test-remote-kit` 65、`test-qr-kit` 41、`test-theme-kit` 48、
+  `test-cfg-kit` 31、`test-share-kit` 38、`test-family-meta-kit` 66；连同既有 `test-pref-kit` 63、`test-p2-kit` 93、`test-b8-kit` 88，
+  合计 **590 项 0 失败**。
+- `smoke-ui` 20 → 21 探针：新增「1.7.94 六个新面板真点生效」（配置总览搜索与清空、皮肤包应用与回退、档案新建 / 切回 / 删除、
+  网络族落盘、分享出二维码），真浏览器点击 176 个 `data-act` 控件，连跑三次 21/21、错误 0。
+
+## 1.7.93 / #1000207 — 2026-11-23
+
+本轮补清单里剩下的两项「便宜但一直没做」：关闭窗口行为（#54）与字幕上下位置（#32）。两项都不碰服务端。
+
+- 关闭行为 `kh_close_act`：`tray`（默认，收进托盘继续跑）/ `min`（最小化到任务栏）/ `quit`（直接退出）。
+  主进程 `mainWin.on('close')` 按配置拦截，退出路径（托盘菜单 / Ctrl+Q / 系统关机）先置 `quitting` 所以不被吞。
+  收进托盘首次给一次气泡提示（`trayBalloonShown` 持久化，之后静默），托盘右键仍可「退出」。
+- 字幕上下位置 `kh_p2.subPos`：4 / 8 / 12 / 18 / 26（画面高度百分比），`KHP2.subPosCss()` 转 CSS，
+  落成 `--sub-bottom`。设置页两处可调：显示面板（`khSubPosSel`）与 P2 无障碍面板（`p2SubPos`）。
+  旧 `kh_sub_style.pos` 的 low / mid / high 自动折算为 4 / 8 / 18，不丢老设置。
+- 面板：高级与本地能力加「关闭窗口行为」，P2 无障碍加「字幕位置」，两处都即时生效。
+- 备份白名单 `KH_BAK_SETTINGS` 加 `kh_close_act`（`subPos` 在 `kh_p2` 里随包走）；配置体检期望键同步。
+- 自测：`test-pref-kit` 56 → 63（closeAct 七条）、`test-p2-kit` 84 → 93（subPos 九条）、
+  `smoke-ui` 19 → 20（新增「字幕位置真点生效」，并把 `prefClose` 纳入面板存在与真点断言）。
+
+## 1.7.92 / #1000206 — 2026-11-23
+
+本轮是 1.7.91 的当场补齐：清单里两项原本只能算「部分已有」（#39 通知声音、#48 儿童时长），一并落地，B 档 8 项才算真正做完。
+
+- 通知提示音：新增 `kh_notify_sound`（默认带提示音），主进程 `kh:notify` 用 `silent: !b8.sound` 生效，配置随 `kh-b8.json` 持久化。
+- 儿童模式时长上限：新增 `kh_kid_min`（0=不限，上限 240 分钟），按真实播放秒数累计，到点暂停并弹通知；时长用完的会话里换片也只放行起画面再暂停，避免换片绕过。
+- 面板补两个控件（通知提示音、儿童时长），保存与备份白名单、配置体检的期望键清单同步补齐。
+- `test-b8-kit.js` 从 80 项扩到 88 项（新增两项的默认值、非法回落、上下夹取），实跑 88/0。
+
+## 1.7.91 / #1000205 — 2026-11-23
+
+本轮主题：把需要主进程配合的八项一次做完 —— 音轨语言、本地字幕、通知策略、置顶与画中画、快捷键、外部播放器参数、儿童模式、配置体检。
+对应盘点里的 B 档 8 项（#30 #31 #39 #40 #52 #53 #48 #68），清单 57/9/15 → 65/4/12（8 项全部转已实现，部分已有从 9 项减到 4 项）。
+
+### 纯逻辑层 `app/kh-pref.js`（扩展，仍是 UMD 无 DOM）
+
+- `DEF` 新增 `audioLang auto` / `subAuto 1` / `subDir ''` / `notify all` / `playerExe` / `playerArgs` / `top 0` / `kid 0` / `kidPin ''` / `hotkeys{toggle,next,prev,mute,top}`
+- `norm` 同步扩展：字符串 400/200 字符夹取、PIN 只留 4 位数字、快捷键逐键规范化
+- 新增 `normHotkey`（Electron accelerator 白名单：Ctrl / Alt / Shift / Meta + 字母数字或 F1–F12，非法返回空串）
+- 新增 `hotkeyPlan`（过滤空值、去重、先到先得）、`pickAudioTrack`（auto→-1，按 lang/name 别名匹配）
+- 新增 `subKey` / `pickSubtitle`（先剥扩展名再判语言后缀；完全同名优先 → 包含关系 → 中文后缀优先）
+- 新增 `srtToVtt`（去 BOM、CRLF 归一、逗号换点、补 WEBVTT 头）、`notifyAllow`（all / download / off）
+- 新增 `kidAllows`（分类 / 分组 / 标签命中儿童词才放行）、`argsBuild`（`{url}` 占位、成对引号）、`audit`（五类问题计分）
+- 单测 `scripts/test-b8-kit.js`：80 项，实跑 80/0；`test-pref-kit.js` 回归 56/0。
+
+### 主进程与桥 `electron-main.js` / `preload.js`
+
+- 新增本机配置文件 `userData/kh-b8.json`（快捷键 / 外部播放器 / 通知策略 / 置顶），重启仍生效。
+- IPC：`kh:b8-get` / `kh:b8-set` / `kh:b8-pick`（exe|dir 对话框）/ `kh:b8-subs`（扫 srt/ass/ssa/vtt，≤500 个、≤8MB）/ `kh:b8-sub-read`（UTF-8 失败转 gb18030，≤4MB）/ `kh:b8-win`（置顶与 480×270 右下落位画中画，退出复原原 bounds）。
+- 快捷键统一走 `b8RegisterHotkeys()`：空位回落默认媒体键，被系统占用的登记进 `conflicts` 回报前端，不再静默失败。
+- `findExternalPlayer` 优先用户指定的 exe；`kh:open-external` 支持参数模板（无 `{url}` 时追加直链），回报 `via` 与 `argv`。
+- `kh:notify` 增加第 4 参 kind，主进程按 `b8.notify` 再拦一次（前端已拦一层）。
+- `preload.js` 新增 `window.khB8` 六方法；纯网页 / HAP 下为 undefined。
+
+### 前端 `app/kh-core.js` / `kh-admin.js` / `kh-app.js` / `kh-player.js` / `kh-config.js`
+
+- 设置页新增「高级与本地能力」面板（14 控件 + 6 按钮 + 体检结果区）；桌面端可用，缺桥环境自动标灰并注明不支持。
+- `b8-save` / `b8-pick-dir` / `b8-pick-exe` / `b8-pip` / `b8-audit` / `b8-fix` 六个动作接入运维分发链。
+- 通知统一出口 `khNotifyShow()`：前端按策略先拦，主进程再拦一次；下载完成走 `download` 类别。
+- 儿童模式：`allMovies()` 在数据源头过滤（首页 / 分类 / 搜索 / 推荐 / 自动下一部同一份结果），搜索历史不展示，开启需设 4 位 PIN、关闭需输入原 PIN。
+- 播放器：hls.js 多音轨按首选语言自动选轨（`MANIFEST_PARSED` + `AUDIO_TRACKS_UPDATED` 双挂点）；非直播片源自动挂同名字幕，SRT 现场转 VTT 挂 TextTrack，ASS/SSA 如实提示不自动挂。
+- 全局快捷键从 1 个扩到 5 个（播放暂停 / 上一部 / 下一部 / 静音 / 置顶切换）。
+- 备份设置白名单补 10 个新键，换机后高级设置跟着走。
+
+### 门禁
+
+- `test-b8-kit.js` 80/0、`test-pref-kit.js` 56/0、`smoke-ui.js` 19/19 探针（data-act 161、错误 0）。
+
+## 1.7.90 / #1000204 — 2026-11-23
+
+本轮主题：把写死的行为交给用户定 —— 设置页新增「偏好与行为」面板（10 控件），搜索首次命中直播与影视仓。
+对应剩余 34 项盘点里的 A 档；清单从 47/12/22 变为 57/9/15（1.7.90 复算）。
+
+### 新增模块 `app/kh-pref.js`
+
+- UMD 纯逻辑层（浏览器 `window.KHPREF` / Node `module.exports`），不碰 DOM、不读 localStorage。
+- `DEF`（histCap 30 / histDays 0 / motion 1 / resume `ask` / autoNext 0 / openMode `play` / searchScope `builtin` / whJoin 1）
+- `norm(cfg)` 非法回落 + 范围夹取（条数 10–500、天数 0–365、切源阈值 1–10、看门狗 3000–20000）
+- `trimHist(ids, atMap, cfg, now)` 条数 + 天数双裁、去重、无时间戳老记录保留
+- `resumePlan(saved, duration, mode)` 三档，<5 秒与距结尾 3 秒内不弹；`duration` 非有限按 `ask`
+- `pickNext(cur, pool)` 同系列前缀优先 → 同分类 → 排除 live/custom/自身
+- `scopeHas` / `needsArm` / `motionClass` / `choices`
+- 单测 `scripts/test-pref-kit.js`：56 项，实跑 56/0。
+
+### 面板与持久化
+
+- 设置页「偏好与行为」10 控件：历史条数、历史天数、续播策略、自动下一部、点卡片行为、搜索范围、仓站点并入分类、动效、直播切源阈值、看门狗超时。
+- `data-act="pref-save"` 一次写 10 键并即时 `khPrefApply()`；改条数/天数按新上限重裁 `kh_hist`。
+- 新存储键：`kh_hist_cap` `kh_hist_days` `kh_resume` `kh_autonext` `kh_open_mode` `kh_search_scope` `kh_motion` `kh_wh_join` `kh_stall_limit` `kh_watchdog_ms`；`kh_hist_at`（{id:ms}，600 上限）、`kh_wh_hide`、`kh_wh_pin`、`kh_plat_pref`。
+- `KH_BAK_SETTINGS` 追加 12 键，备份导入还原全覆盖。
+
+### 行为改动
+
+- 历史写入：`khHistTouch` + `khTrimHist` + 动态 cap（原先固定 30 条，无时间戳）。
+- 续播：首帧改走 `KHPREF.resumePlan`；短片与片尾 3 秒内直接从头。
+- 自动下一部：`ended` 触发 `khAutoNext`，5 秒倒计时浮层（立即 / 取消），`openPlayer` 取消倒计时。
+- 搜索：按 `searchScope` 追加直播频道（`data-act="live-go"`）与仓站点来源，各限 12 条。
+- 平台入口：逐个隐藏 / 置顶 + 「已隐藏 N · 全部恢复」。
+- 仓站点：单条隐藏 / 置顶 + 一键恢复；`cat` 并入分类 chips（受 `kh_wh_join` 控制）。
+- 直播稳定性：`khLiveStallLimit()` / `khLiveWatchMs()` 改读偏好，未设回落档位默认。
+- 无障碍：`html.kh-no-motion` 全停动画与过渡；`card-armed` 时悬停提示常显。
+
+### 三个真问题
+
+1. **`pref-save` 点击落空**：分发链只认 `res-`/`bak-`/`p2-`/`live-`，`pref-` 无分支 → toast 成功但零落盘。补 `else if(act.indexOf('pref-')===0) resAction(...)`。
+2. **冒烟断言写反**：`trimHist` 保持原序，首条是被保留的第 1 条（hist20），不是 hist39；改断言后全绿。
+3. **HAP 签名非确定性**：重签后 size/sha 必变（时间戳进包），`release.json` 立即过期 → `doctor` 0/8 中止。本轮用 `oneclick --skip-hap` 并在跑前同步 hap 条目；根治留待「签名确定性」专项。
+
+### 验证
+
+- `test-pref-kit.js` 56/0；`smoke-ui.js` 16/16 探针 · 错误 0 · data-act 155 · 正文 4288 字。
+- `doctor` OK14/WARN4/ERR0；`check-artifacts` 16/16；`verify-release` 交付验收全部通过；`check-client-purity` zip 94 + 87 条目违规 0；`version --check` 16 处一致。
+- 出包：`oneclick-release --skip-hap` 11 步成功 / 1 步告警（8.2 设备端缺 `KH_KAIHONG_PWD`）。
+
+### 产物 sha256（1.7.90）
+
+| 产物 | 大小 | sha256 |
+| --- | --- | --- |
+| 鸿汇影桌面版 Setup 1.7.90.exe | 110,283,397 | `1fc11c4490b8a252b8ffd34c89446af69cb92786c39c06ac22690c42cddf14c5` |
+| 鸿汇影免安装 1.7.90.zip | 145,756,430 | `fa8cfce63b403f254c5d2d74fe32a7afc749a1f74f876791180f3eb25ba0c363` |
+| 鸿汇影桌面版 Setup 1.7.90-arm64.exe | 108,455,189 | `2af34eeffdcbf92c21bc9ed2ea9c44219100f2ce7f598efa23b676532837e0b4` |
+| 鸿汇影免安装 1.7.90-arm64.zip | 141,328,343 | `c81a3af5d07d12a4b82dabf86cd1967844f86d70b4f90dda7ce25684bbfe7f8f` |
+| HongHubMovie.hap（客户版 #1000204） | 2,348,865 | `ed55bd7cf054f4f224af419e080d3d7f5f288bc7c077833b0150e130eea18668` |
+| HongHubMovie-开发端.hap（#1000304） | 2,348,872 | `15cac093b089f8d9eb1e64d0136a1c847d1af460e09af304fc79dbfda6627546` |
+| 鸿汇影桌面版 开发端 1.7.90.exe | 110,336,868 | `4ce9bbb1a98d1a048948335a1c2911de55f1be5e9bb1c22c3ca7d185bed88e24` |
+| 鸿汇影桌面版 开发端 1.7.90-arm64.exe | 108,455,190 | `16ae6ef50b08ddc78a1318083e394c09cf6d72f1f60ab43b636e5fffdeeae634` |
+
+## 1.7.89 / #1000203 — 2026-11-23
+
+本轮主题：性能 / 无障碍 / 安全三块落地（台账 #161 P2，清单 10 个编号）。
+统计：81 项 = 已实现 47 / 部分已有 12 / 待做 22（1.7.88 实测 39/13/29）。
+
+### 新增模块 kh-p2.js
+
+- `KHP2`：`norm / net / queue / retry / fetch / liveQuality / cardMin / focus / volTarget / subExtra / subFontCss / subStrokeCss / normPath / pathAllowed / hostAllowed / sum / seal / verify`。
+- `khP2Seal(raw)` → `{v,len,sum,at}`；`khP2Verify(raw, seal)` → `{ok}` 或 `{ok:false,reason}`（长度+双滚动校验和）。
+- `khP2HostAllowed(url, hosts, opt)`：仅 https、回环豁免、`*.` 后缀通配、**空表全拒**。
+- 默认值集中在 `DEFAULTS`，读写统一走 `khP2Cfg()` / `khP2CfgSave()`（后者自动重算封条）。
+
+### 性能与网络（清单 36 / 35 / 34 / 49）
+
+- 36 并发数 2/4/6/8 档，`khP2Queue` 调度并统计 peak；`kh-app.js` 31 处裸 `fetch(` 统一换成 `khFetch`（失败回落原生）。
+- 35 超时与重试：`khP2Retry` 带 timeout/attempts，**只对 GET/HEAD 幂等重试**，4xx 不重试。
+- 34 直播清晰度 + 启动进直播：`khHlsConfig` 直播分支按 `liveQuality` 调档；`openPlayer` 记 `kh_last_live`，启动 900ms 自动起播上次频道（`?view=` / `?selftest=` 优先）。
+- 49 卡片密度：`cardDensity` → `--grid-min` / `--live-min`（紧凑 132 / 标准 158 / 宽松 196）。
+
+### 无障碍（清单 42 / 41 / 32 部分）
+
+- 42 焦点框：`--focus-ring` / `--focus-w` / `--focus-off`，四档主题，Tab 一圈可见。
+- 41 媒体键归属：`volKeys = app|system`，system 档放行 `MediaPlayPause` / `AudioVolumeUp|Down|Mute`。
+- 32 字幕（部分）：`--sub-font` / `--sub-shadow` 生效，字体与描边可配；**上下位置未做，仍记「部分已有」**。
+
+### 安全与权限（清单 61 / 62 / 72 部分）
+
+- 61 Webhook 白名单：`kh_p2.webhookHosts`；`server/alerts-center.js` 增 `allowHosts / allowHttp / hostAllowed`，`sendTest` 与 `dispatchOnce` 同校验，拒绝记 `webhook-blocked`；保存时同步 `POST /api/alerts/config`。
+- 62 本地目录授权：`localDirs` 授权 / 撤销；`khEnsureLocalAllowed` 在打开本机视频前校验，空表按文件所在目录一键授权。
+- 72 配置载体（部分）：仍 localStorage，`getStore/setStore` 为 `kh_` 前缀键加封条，坏值回退默认并记 `kh_store_damaged`（≤20）。**封条只发现问题，不是加密**。
+
+### 本轮修掉的三个真 bug
+
+1. **配置封条自噬**：`setStore` 写完新 raw 再调 `khSealOn()`，而 `khSealOn` 走 `getStore` 读同键 → 旧封条对新值校验失败 → 新值被 `removeItem` 并回默认（表现「保存成功但读回是空」）。修法：`khSealOn` 直读 localStorage 原始串 + 手写 parse，**完全绕开 getStore 校验**。
+2. **P2 面板点击无反应**：`kh-app.js` 分发链只有 `res- / bak- / live-`，补 `p2-` 前缀 → `resAction`。
+3. **备份漏新键**：`KH_BAK_SETTINGS` 未含 `kh_p2`，换机后三面板配置全回默认，已补。
+
+### 出包链教训（写进文档以免再犯）
+
+- `hap-sign.js` **不会刷新** `harmony/entry/src/main/resources/rawfile/www`；改完 `app/` 必须先 `python harmony\build_hap.py`，否则旧前端被签进 HAP（本轮第一次签出 2,324,136 B、包内无 kh-p2.js；重跑后客户 2,340,595 B / 开发端 2,340,603 B，符号门禁 14 条）。
+- HAP 重签后哈希变化不会回写 `release.json`，`doctor` 会报「HAP SHA256 与 release.json 不一致」，需改条目或重跑 `auto-release`。
+
+### 验证
+
+- `test-p2-kit.js` 84/0；`smoke-ui.js` 13 探针全过 · `data-act` 145 · 错误 0；`test-backup-kit.js` 40/0；
+  `test-installer-nsh.js` 41 通过 / 1 失败（唯一失败项是测试前置写自启值未生效 `REWRITE=0`，注册表在子进程被虚拟化，属既有环境限制，非清理逻辑回归）；
+  `oneclick-release.js` 14 成功 / 1 告警（8.2 设备端缺 `KH_KAIHONG_PWD` 与 `hdc`）；
+  `verify-release.js` 末行「交付验收全部通过」；`check-artifacts.js` 16/16；`check-client-purity` 违规 0；`doctor` OK14 / WARN4 / ERR0。
+
+### 产物
+
+| 产物 | 尺寸（B） | sha256 |
+| --- | --- | --- |
+| x64 Setup | 110,265,943 | `b02ad91c5f3d9e3db5eb90bbeacff98fc4918446bb9a79ea9e7724cf35dcd009` |
+| x64 zip | 145,737,117 | `dfeb8ea555c703497ce77c8b963d44197935179c0822c5beb289109e4a3125a6` |
+| arm64 Setup | 108,447,073 | `de49c1d76fe06047e0a78ced854e34bb9f275b9487ad63845065813c70c94833` |
+| arm64 zip | 141,318,721 | `0ca43fb58e88c1a755c324322a9807fc9cf27eebf1b5479631266cad1c9e8aea` |
+| 客户 HAP | 2,340,595 | `b8d04340362c0498ee2cbe94e604a54f647f5dcf737fd5c09d57fd4790ce503d` |
+| 开发端 HAP | 2,340,603 | `9f354bbaa24023ac672a1cbec636791f6998a9b36d6ac815fb06f83d8034312c` |
+
+## 1.7.88 / #1000202 — 2026-11-23
+
+本轮主题：安装卸载与备份打磨（台账 #160 P1）+ 出包链「客户版优先」修复。
+
+### 备份侧（清单 44 / 45 / 64 / 67 / 73）
+
+- 新增 `app/kh-backup.js`（三端共用，自写 base64 不依赖 btoa）：v2 明文包 `honghub-backup` 与加密包 `honghub-backup-enc`（PBKDF2-SHA256 `ITER=200000` 派生密钥 + AES-256-GCM，认证失败明确报「口令错误或包被改」）。
+- 导出可整机搬迁：设置 / 影视仓 / 场景 / 自建站点 / 历史 / 搜索历史 / 会话；备份目录可自选（IPC `kh:backup-dir-pick`），文件名按 Windows 规则净化（非法字符与 CON/PRN 等保留名），同名自动 `-2/-3` 不覆盖；只允许 `.json/.khbak/.txt`。
+- 导入先差异预览：`khBakDiff` 逐项列出新增 / 覆盖 / 保留（≤15 行 + 总数），确认后才落盘；加密包导入弹密码浮层（`khBakPromptPass`），错口令不破坏现有数据。
+- 快照与回滚：`kh_snapshots` 按保留份数滚动；重置前与每次导入前自动留档；设置页「备份与恢复」面板可一键留档 / 回滚 / 打开目录。
+- 自动备份：`kh_backup_auto` 支持 launch / daily / weekly，启动后 4.2s 静默判定到期（`khBakAutoTick`），到期才写盘。
+- 自测 `scripts/test-backup-kit.js` 40 项全过；`scripts/smoke-ui.js` 新增备份面板 4 探针，真点 10/10 通过（`data-act` 141 个、错误 0）。
+
+### 安装 / 卸载侧
+
+- `build/installer.nsh` 重写四段：① 卸载前备份用户数据与 `server\data` 到「文档\鸿汇影·卸载备份\v<版本>」（同版本循环加后缀，`xcopy` 失败不阻断；`说明.txt` 以 UTF-16LE + BOM 写入）；② 非静默模式弹一次「是否一并删除个人数据」，默认保留，静默卸载不动数据；③ 清 HKCU `...\Run` 四个自启动值名；④ `SetOutPath "$TEMP"` → `RMDir /r "$INSTDIR\server"` → `RMDir "$INSTDIR"`，避免文件占用留空壳。
+- 按 `$PROFILE` 定位用户数据而非 `$APPDATA`：提权卸载不会误拷管理员账户数据。四个 `!ifndef` 可覆盖 define；`.nsh` 必须 UTF-8 无 BOM（GBK 会 `Bad text encoding`）。
+- 自测 `scripts/test-installer-nsh.js` 42 项全过（静态 16 + 探针）：实装 → 写自启动 → 卸载 → 校验备份目录 / BOM / Run 已清 / server 目录已消失，仅剩运行中的卸载器；`KH_KEEP_BOX=1` 保留现场。注册表断言合并进单个 powershell 脚本（跨进程写入会被虚拟化回滚）。
+
+### 出包链修复（「看着成功、其实错」）
+
+- `scripts/postpack.js`：不再无条件用开发端 exe 做 `desktop-setup.exe` 别名并写 `release.json`；同版本客户版指纹存在时以指纹为准，`verify()` 不符直接 `exit 1`。
+- `scripts/ship.js` `refreshArtifacts()`：同样改为客户版优先 + `verify` 阻断。
+- `scripts/build-client-exe.js` 新增 `syncManifests(dest)`：客户版一落盘即改写 `release.json`（x64 写 `artifacts.desktop`）与 `archs.json`（按架构写 size/sha256/customer，x64 额外写 `file: desktop-setup.exe`，arm64 绝不碰 x64 别名）。
+- 1.7.88 出包实测：`check-artifacts` 16 项通过 / 0 警告 / 0 失败；`verify-release` 20 项通过、末行「交付验收全部通过」；归档 28 个版本。
+
+### 产物（v1.7.88）
+
+- 客户 x64 Setup `110,239,768 B` / `9d0c592b6178…`；x64 zip `145,708,933 B` / `f22d48d26846…`
+- 客户 arm64 Setup `108,434,526 B` / `de308187288d…`；arm64 zip `141,304,177 B` / `13b216bde006…`
+- 客户 HAP `2,324,135 B` / `8ad87c8e3b4f…` / #1000202；开发端 HAP `2,324,140 B` / `4cee8c8ec66b…` / #1000302
+- 开发端 exe x64 `110,239,638 B` / `f446079d1f35…`；arm64 `108,434,432 B` / `b23798772cf6…`
+
+### 已知限制
+
+- 设备端 KaihongMovie 未重出：`scripts/hap-device.js` 需 `hdc` 与 `KH_KAIHONG_PWD`，本机缺 hdc，设备端夹沿用 v1.7.87。
+- 公网站点 exe / hap / bin 三件仍 404，需宿主后台点「发布/更新站点」；本机 8099 与 Cloudflare 隧道已验证可下发。
+- 无深开鸿真机，HAP 仅编译 / 签名 / 包内符号校验；Windows 仍为本地自签证书。
+
+## 1.7.87 / #1000201 — 2026-11-23
+
+本轮主题：更新源多路（#158）+ 出包链三个真 bug 收口 + HAP 原生编译补链。
+
+### 更新源多路（台账 #158 P0）
+
+- 新增 `server/update-sources.js`：`candidates()` 按优先级拼候选 —— ① 显式 env（`env-override`）② 清单里的绝对地址（`manifest`，带校准哈希）③ 各镜像版本目录 `{base}/honghub/v{ver}/desktop-setup.exe{share}` ④ 各镜像旧路径 `{base}/download/desktop-setup.exe{share}` ⑤ 本机镜像站 `http://127.0.0.1:8099` 同版本目录；按 URL 去重、`shareQuery` 归一化，清单只给一个哈希时其余源共用同一期望值。
+- `tryDownloadAll()` 依次重试：任一下载失败 / 体积不符 / SHA256 不符都记一条 `attempts`（label + 原因）换下一个；换源前清 `dest` 与 `dest.part`（跨源续传会拼出必然校验不过的坏包）；全失败返回 `err.attempts` 明细。
+- `server.js` 新增 `installCandidates()`：env 模式下只保留 `from === 'env'` 的候选，避免灰度被兜底源悄悄换掉。`/api/update/install` 下载段改为多源尝试，全失败返回 502 + `attempts` + `candidates`；成功时 `launchSetup` 的 extra 带 `source: 'download:'+from`、以实际落盘哈希为 `desktopSha256`、`attempts`、`downloadFrom`。
+- 新增 `KH_UPDATE_DRYRUN=1`：走完下载 + 校验就停、不 spawn，返回 `{ok, dryRun, absPath, verified, sha256, size, version, attempts}`。客户机默认不生效。
+- `app/kh-app.js`：成功文案「安装向导已启动（v… · SHA256 校验通过 · 来源 local-mirror（自动换源 N 次））」；失败时状态条写「原因（各源错误…）」，遥测只带精简 `[{label, error≤80字}]`。
+- 自测 `scripts/test-update-sources.js` 28 项断言全通过；`scripts/test-update-sources-e2e.js` 真实探活：公网两跳 404 后换到本机镜像站拿到 `110,210,804 B`、SHA256 `5db97609c1e7316b…`（与真包逐字一致）。
+
+### 出包链三个真 bug
+
+1. **HAP 原生改动从未进包**：`harmony/build_hap.py` 只做前端注入、不编译 ArkTS；`hap-sign.js` 遇到源码比产物新只告警不拦截。`openVideo`（`Index.ets` 2026-11-22 20:50）在 1.7.86 交付的 HAP 里实测 MISSING。修法：手工 `hvigorw.bat --mode module -p product=default assembleHap --no-daemon`（PATH 必须含 `C:\Windows\System32` + `ComSpec`，否则 `spawn cmd.exe ENOENT`），再走 `build_hap.py` → `hap-sign.js`。1.7.87 客户 HAP 与开发端 HAP 均实测包内含 `openVideo`。
+2. **归档把开发端 exe 当客户 Setup**：`dist/desktop-setup.exe.sha256` 只在 `ship.js` 重算，`build-exe.js` 阶段它还是开发端哈希 → `archive-release.js` 按权威哈希选源，把开发端包写进 `releases/v1.7.87` 与回滚索引。修法：`build-client-exe.js` 出 x64 客户版时同步写 `desktop-setup.exe.sha256`，重跑归档；归档件已与 `dist/desktop-setup.exe` 逐字节一致（`e433eef3…`）。
+3. **随包端点残留旧 HAP 校验值**：`server/public-endpoint.json` 的 `hapSha256: 69fe5ad2…` / `hapSize: 2215054` 实为 1.7.70 值，经 `distribute.published()` 透传进清单会让 HAP 下载永远校验不过。已按该文件自身注释删掉两字段（本就不该随包写死）。
+
+### 出包链防返工（台账 #159，1.7.87 同版收口）
+
+- **客户版指纹成单一真相**：`build-client-exe.js` 出 x64 / arm64 客户包时写 `dist/client/.client-build-<arch>.json`（arch / 版本 / Setup 与 zip 的尺寸和哈希）；新增 `scripts/lib/client-stamp.js`（write / read / verify，流式哈希）。归档、发版、验收三处都读这一份，不再拿别名猜。
+- **归档只认指纹**：`archive-release.js` 不再从 `dist/desktop-setup.exe` 或某个「权威哈希」猜客户版 —— 缺指纹 / 版本不符 / 哈希不符一律 exit 1；调试要归档开发端必须显式 `KH_ARCHIVE_ALLOW_DEV=1`，且回滚索引里标 `channel: dev`。
+- **auto-release 硬失败**：归档失败或产物一致性总检失败直接 `process.exit(1)`，整条发版链中止（原来只打印 ⚠ 放过，1.7.87 的归档错包正是这样漏出去的）。
+- **新增 `scripts/check-artifacts.js`**：16 项跨产物一致性 —— dist/client · dist 根 · desktop-setup 别名 · 回滚归档 · release.json · archs.json(x64/arm64/hap) · HAP 三副本 · 开发端 HAP 版本码 +100 · HAP 包内原生符号 · 发布目录。只读不修，任一 FAIL 退出码 1。
+- **hap-sign 两道硬门禁**：① ArkTS 源码比壳包新 → 拒绝签名，提示先跑 hvigor（纯前端改动可 `KH_HAP_ALLOW_STALE=1`）；② 包内找不到 `harmony/required-symbols.txt` 的符号（默认 `openVideo`）→ 拒绝签名。辅以 `scripts/lib/hap-fresh.js`、`scripts/lib/hap-symbols.js`。
+- **oneclick 5.1/8**：`dist/arch-arm64/win-arm64-unpacked` 存在时自动补 arm64 客户包，archs.json 不再误标 fallback；`step()` 支持单步额外环境变量。
+- 自测 `scripts/test-release-gates.js`：15 项断言全过；实跑篡改指纹 → archive exit 1、恢复后 exit 0；`check-artifacts` 对 1.7.87 现网产物 **16/16 通过**。
+- 老版本补指纹：`scripts/backfill-client-stamp.js`（1.7.87 已补：x64 `e433eef3` / arm64 `1a659eea`）。
+
+### 本版实测
+
+- 客户 x64 Setup `110,216,110` / `e433eef3d47e1f90ec87d2158ee7751f6db60aa6c284249ac1d398c14ba6b09e`；x64 免安装 zip `145,685,144` / `e07886a78fdd7008…`
+- 客户 arm64 Setup `108,422,386` / `1a659eea9f203c07…`（补 arm64 原生链后重出）；arm64 zip `141,291,691` / `1da33631cd7be954…`
+- 客户 HAP `2,315,863` / `ce5a102164028eb963552161b2af80e046fde8bd7d45324fd8cbc4583a5f144c`（#1000201）；开发端 HAP `2,315,958` / `9c64920b1e39bce2…`（#1000301）
+- 开发端 exe x64 `110,269,625` / `69b1d7e2a4b8bb98…`；arm64 `108,422,392` / `13253c83f9f92acb…`
+- 设备端 `KaihongMovie_v1.7.87.hap` `1,041,939` / `a6773fee8f9120a0b55f683d9367de07b99019329039c8dded745b49d086dc02`
+- 一键流水线 14/14 成功；`ship-client.js` 上传 3/3 成功；`verify-release.js` → 「交付验收全部通过」（含 Range 206、自动修 Bug 闭环、下发清单 3 通道、OS 适配 7 家族 22 版本、页面冒烟 data-act 133）。
+
+### 已知限制
+
+- 公网 `exe / hap / zip` 仍 404：需在 WorkBuddy 站点后台手动点一次「发布/更新站点」，本机 8099 已就绪。
+- 无真机：三个 HAP 只做编译与包内符号校验，未实测安装；`openVideo` 能否拉起系统播放器取决于 ROM 是否放行三方 `startAbility`。
+
+## 1.7.86 / #1000200 — 2026-11-23
+
+本轮主题：安装方式可选（静默覆盖）+ 设备端接系统播放器 + 出包链止损。
+
+### 桌面端：静默覆盖安装
+
+- 设置「版本与升级」新增「安装方式」下拉：0 = 弹安装向导（默认，用户确认覆盖）/ 1 = 静默覆盖。仅桌面端渲染（`window.khUpdater` 存在时）。
+- 主进程新增 `kh:install-silent`：先校验安装包存在、是 exe、目标目录有 `Uninstall*.exe`，三项缺一即拒绝并说明"免安装版目录不适用"；通过后退出自身，`setup /S /D=<appDir>` 同目录覆盖，再自动重开。
+- `launchSetup` 增 `extra.silent` 分支：校验通过后不 spawn，只把绝对路径交回渲染进程；`preload.js` 暴露 `window.khUpdater.installSilent`。
+- 静默失败会自动把「安装方式」改回 0 并提示"已改回弹向导，请再点一次安装"，不把用户卡在中间态。
+
+### 深开鸿设备端：接系统播放器
+
+- `KaihongBridge` 新增 `openVideo(url, mime)`：`startAbility` + `ohos.want.action.viewData` / `entity.system.browsable` / `type: video/*`，把设备端拉不动的片源交给系统播放器。
+- `kh-hap-bridge.js` 的 `khExternal.play(url, mime)` 返回 `{ok, via:'system-player', reason}`；客户端「用外部播放器打开」在设备端优先走它，桌面端仍走 `open`。能否真正拉起取决于 ROM 是否放行三方 `startAbility`，无真机未实测。
+
+### 出包链止损
+
+- `auto-release.js` 取免安装 zip 时未排除 `-arm64`，导致客户说明 / 文件导航 / 公网 bin 一直印着 arm64 的体积与哈希。本版修掉，并给客户说明生成器补上 ARM64 两组与别名 zip。
+- 1.7.86 实测：x64 Setup `110,210,804` / `5db97609c1e7316b…`；x64 zip `145,679,229` / `1654ac82cd02cf48…`；arm64 Setup `110,501,482` / `4e2139845bb895b6…`；arm64 zip `143,393,907` / `925deccf3c62…`；客户 HAP `2,312,384` / `18093f5230171e0e…`；设备端 KaihongMovie HAP `1,037,843` / `014ca56d7b0d56dc…`。
+
+### 原记「待发布」，已在 1.7.87 落地发布
+
+- **更新源多路（台账 #158 P0）**：安装包下载从"只认清单里那一个地址"扩成按优先级的多源候选 —— 显式 env → 清单绝对地址 → 各镜像（版本目录优先、`/download/` 旧路径兜底）→ 本机镜像站；前一个源 404 / 超时 / 体积不符 / SHA256 不符都自动换下一个，坏包与 `.part` 一律清掉，不跨源拼接续传。
+- 失败时 `/api/update/install` 返回 502 并附 `attempts`（每个源各自的原因），客户端把"试过哪些源、各报什么错"直接写进升级状态条与遥测，不再只有一句"失败"。
+- 新增 `KH_UPDATE_DRYRUN=1`：走完下载 + 校验就停，不拉起安装向导，用于排障与自测。
+- 自测：`scripts/test-update-sources.js` 28 项断言全通过（候选优先级/去重/shareQuery 归一化、404 换源、SHA 不符换源、半包按体积拒收、全失败明细齐全）；`scripts/test-update-sources-e2e.js` 按真实配置探活。实跑结论：公网两跳均 404 后自动换到本机镜像站拿到 `110,210,804 B`、SHA256 `5db97609…`（与真包一致），校验通过。
+- 顺手修掉 `server/public-endpoint.json` 里遗留的旧 `hapSha256`（`69fe5ad2…` / `2,215,054 B`，实为 1.7.70 的值）。它会经 `distribute.published()` 透传进清单，让 1.7.86 的 HAP 下载永远校验不过；该字段按设计本就不该随包写死，已删除。
 
 ## 1.7.85 / #1000199 — 2026-11-22
 
@@ -365,3 +788,11 @@
 - **修出包链 bug**：`auto-release.js` 用 `readdir().find(...)` 取「免安装 zip」，dist 根同版本有 x64 与 `-arm64` 两个 zip，历史上多次取到 arm64，使客户说明、文件导航、公网 `win.bin` 的尺寸与哈希全变成 arm64 的值。现明确排除 arm64；客户说明生成器同时补上 ARM64 两个包与别名说明（生成器改完换版自动生效）。
 - **产物**：客户 HAP `2,312,383` / `cca79fdc…`；开发端 HAP `2,312,391` / `78190608…`；x64 Setup `110,207,636` / `f5acfca3…`；x64 免安装 `145,663,060` / `efe610e9…`；arm64 Setup `110,498,322` / `26928f94…`；arm64 免安装 `143,390,324` / `0bc97f8c…`；开发端 x64 `110,261,186` / `805fbb1e…`；开发端 arm64 `110,552,467` / `e184926f…`。
 - **验收**：oneclick 8/8 通过；arm64 手工补齐；`auto-release` 重跑后 bin 已是 x64 值；公网仍为旧包待宿主发布。
+
+## v1.7.86（#1000200 · 2026-11-22）
+
+- **客户端静默覆盖安装**：设置 → 版本与升级 新增「安装方式」。选「静默装」后，安装包过 SHA256 校验即自动退出 → `setup /S /D=<当前目录>` 覆盖 → 约 10 秒后自动重开。只对 Setup 目录生效（需有 `Uninstall*.exe`）；免安装 zip 目录由主进程拒绝并自动改回弹向导。前端仍保留原「弹向导」默认，安全闸（SHA256/体积/仅本机）不变。
+- **设备端用外部播放器打开**：`KaihongBridge.openVideo(url, mime)` 以 `startAbility` + `video/*` 交给系统视频应用；`khExternal.play` 暴露给前端，无可用应用时如实提示。
+- **出包链修正生效**：`auto-release` 取免安装 zip 时排除 `-arm64`，客户说明补 ARM64 两组与别名 zip；本版 bin 已为 x64 值。
+- **产物**：客户 HAP `2,312,384` / `18093f52…`；x64 Setup `110,210,804` / `5db97609…`；x64 免安装 `145,679,229`；arm64 Setup `110,501,482` / `4e213984…`；arm64 免安装 `143,393,907`；设备端 KaihongMovie `1,037,843` / `014ca56d…`。
+- **验收**：oneclick 13/14（8.2 因口令未注入失败，已补跑成功）；verify「交付验收全部通过」；archive 归档 8 件；ship-client 3/3，公网待宿主发布。

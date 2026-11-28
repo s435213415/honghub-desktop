@@ -104,6 +104,33 @@ class KaihongBridge {
     }
   }
 
+  /* 本机视频播放器（1.7.86）：ArkWeb 自身解码不了的片源（专用编码 / DRM / 部分 mkv）交给系统里的视频应用。
+     want 带 video/* 类型，系统会弹「用哪个应用打开」；没有可用应用时 startAbility 抛错，返回 false 由前端如实提示。 */
+  openVideo(url: string, mime: string): boolean {
+    if (!url) {
+      return false;
+    }
+    if (!this.uiCtx) {
+      return false;
+    }
+    let t: string = 'video/*';
+    if (mime && mime.length > 0) {
+      t = mime;
+    }
+    try {
+      let want: Want = {
+        action: 'ohos.want.action.viewData',
+        entities: ['entity.system.browsable'],
+        uri: url,
+        type: t
+      };
+      this.uiCtx.startAbility(want);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   openUpdatePage(url: string): void {
     try {
       if (url && /^https?:\/\//i.test(url)) {
@@ -313,6 +340,90 @@ class HapBridge {
       return JSON.stringify({ 'ok': true, 'id': id });
     } catch (e) {
       return JSON.stringify({ 'ok': false, 'reason': String((e as Error).message || e) });
+    }
+  }
+
+  /* 商店版设备端：本机视频直选 / 批量入片库。
+     前端 khOpenLocalVideo 与 khScanLibrary 依赖 window.khLocalFile.pick / scanDir，
+     设备端此前没实现这两个方法，商店首页两个主按钮只能提示「仅桌面版可用」。
+     这里用系统文件选择器补上：
+       - pickVideo()：选 1 个视频 → { ok, path, url, name }
+       - pickVideos()：多选视频（≤200）→ { ok, items:[{name,path,url,group}] }
+     ArkWeb 已开 fileAccess，前端拿到 uri 可直接交给 <video> 播放。 */
+  pickVideo(): string {
+    return this.pickVideoFiles(1, 'file');
+  }
+
+  pickVideos(): string {
+    return this.pickVideoFiles(200, 'list');
+  }
+
+  private pickVideoFiles(max: number, kind: string): string {
+    let id: number = this.fileSeq + 1;
+    this.fileSeq = id;
+    try {
+      if (!this.ctx) {
+        return JSON.stringify({ 'ok': false, 'reason': '缺少应用上下文' });
+      }
+      let opt: picker.DocumentSelectOptions = new picker.DocumentSelectOptions();
+      opt.maxSelectNumber = max;
+      opt.fileSuffixFilters = ['视频|.mp4,.mkv,.m3u8,.ts,.mov,.avi,.flv,.webm,.m4v,.rmvb'];
+      let dp: picker.DocumentViewPicker = new picker.DocumentViewPicker(this.ctx);
+      dp.select(opt).then((uris: Array<string>) => {
+        if (!uris || uris.length === 0) {
+          this.localEvent(id, kind, false, '已取消', '', '', '', '');
+          return;
+        }
+        if (kind === 'file') {
+          let uri: string = uris[0];
+          let nm: string = uri.slice(uri.lastIndexOf('/') + 1);
+          this.localEvent(id, kind, true, '', uri, uri, nm, '');
+          return;
+        }
+        let items: string = '[';
+        for (let i = 0; i < uris.length; i++) {
+          let uri: string = uris[i];
+          let nm: string = uri.slice(uri.lastIndexOf('/') + 1);
+          let grp: string = '本机';
+          let cut: number = uri.lastIndexOf('/');
+          if (cut > 0) {
+            let parent: string = uri.substring(0, cut);
+            let p2: number = parent.lastIndexOf('/');
+            grp = p2 > 0 ? parent.substring(p2 + 1) : parent;
+          }
+          if (i > 0) {
+            items += ',';
+          }
+          items += '{"name":' + JSON.stringify(nm) + ',"path":' + JSON.stringify(uri) +
+            ',"url":' + JSON.stringify(uri) + ',"group":' + JSON.stringify(grp) + '}';
+        }
+        items += ']';
+        this.localEvent(id, kind, true, '', '', '', '', items);
+      }).catch((e: Error) => {
+        this.localEvent(id, kind, false, String((e && e.message) || e), '', '', '', '');
+      });
+      return JSON.stringify({ 'ok': true, 'id': id, 'kind': kind });
+    } catch (e) {
+      return JSON.stringify({ 'ok': false, 'reason': String((e as Error).message || e) });
+    }
+  }
+
+  /* 结果经 __KH_LOCAL_EVT 回推；payload 手拼 JSON，避免 Record<string, Object> 塞数组的类型约束 */
+  private localEvent(id: number, kind: string, ok: boolean, reason: string, path: string, url: string,
+                     name: string, itemsJson: string): void {
+    let payload: string = '{"id":' + String(id) + ',"kind":' + JSON.stringify(kind) +
+      ',"ok":' + (ok ? 'true' : 'false') + ',"reason":' + JSON.stringify(reason) +
+      ',"path":' + JSON.stringify(path) + ',"url":' + JSON.stringify(url) +
+      ',"name":' + JSON.stringify(name);
+    if (itemsJson && itemsJson.length > 0) {
+      payload += ',"items":' + itemsJson;
+    }
+    payload += '}';
+    try {
+      this.controller.runJavaScript(
+        'try{if(window.__KH_LOCAL_EVT)window.__KH_LOCAL_EVT(' + payload + ');}catch(e){}'
+      );
+    } catch (e) {
     }
   }
 
@@ -631,11 +742,11 @@ struct Index {
       }
       if (this.kaihongBridge) {
         this.controller.registerJavaScriptProxy(this.kaihongBridge, 'KaihongBridge',
-          ['openUpdatePage', 'retryUpgrade', 'openSiteMode', 'openExternal']);
+          ['openUpdatePage', 'retryUpgrade', 'openSiteMode', 'openExternal', 'openVideo']);
       }
       if (this.hapBridge) {
         this.controller.registerJavaScriptProxy(this.hapBridge, 'KHHap',
-          ['getEnv', 'notify', 'dlAdd', 'dlList', 'dlRemove', 'dlClear', 'dlReveal', 'saveText', 'openText']);
+          ['getEnv', 'notify', 'dlAdd', 'dlList', 'dlRemove', 'dlClear', 'dlReveal', 'saveText', 'openText', 'pickVideo', 'pickVideos']);
       }
       this.proxiesReady = true;
     } catch (e) {

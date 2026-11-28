@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "size": 2440947,
+  "sha256": "86bc9d3823c1ce34891c84f730175b5efe8fb5e91a248b163e03c4047099b213",
+  "versionName": "1.7.107",
+  "versionCode": 1000221,
+  "variant": "client",
+  "chain": "official-openharmony",
+  "chainOwner": "sdk-public",
+  "shell": "entry-default-unsigned.hap",
+  "shellSha256": "916caad1230a04e0ec555cd083c22ea6c6208c093997e88348b02baf744aad36",
+  "targetApi": 14,
+  "compatVersion": 11,
+  "builtAt": "2026-11-24T14:47:32.843112+08:00",
+  "source": "harmony/signing（壳包注入 + official-openharmony 签名）"
+}

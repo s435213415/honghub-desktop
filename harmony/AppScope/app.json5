@@ -2,8 +2,8 @@
   "app": {
     "bundleName": "com.honghub.harmony",
     "vendor": "kaihong",
-    "versionCode": 1000114,
-    "versionName": "1.7.0",
+    "versionCode": 1000228,
+    "versionName": "1.7.114",
     "icon": "$media:app_icon",
     "label": "$string:app_name"
   }

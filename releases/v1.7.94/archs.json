@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "versionName": "1.7.94",
+  "generatedAt": "2026-11-23T04:31:48.494Z",
+  "archs": {
+    "x64": {
+      "status": "ready",
+      "customer": true,
+      "file": "desktop-setup.exe",
+      "size": 110389787,
+      "sha256": "11101bb489ffd634a492afea92e5502fe386d5b3e2bb81ec9a409b30db840291",
+      "url": "/download/desktop-setup.exe",
+      "native": false
+    },
+    "ia32": {
+      "status": "unsupported",
+      "file": null,
+      "url": null,
+      "note": "Electron 45 起官方不再提供 32 位 Windows 二进制，本项目不再出 ia32 包；此前「自动回退 x64」属虚标，已移除"
+    },
+    "arm64": {
+      "status": "ready",
+      "customer": true,
+      "file": "鸿汇影桌面版 Setup 1.7.94-arm64.exe",
+      "size": 108503941,
+      "sha256": "5865b4b41a35bc5134c24c33e0fbf8762a2ef837c1d454614f54dcf87cf11c49",
+      "url": "/download/%E9%B8%BF%E6%B1%87%E5%BD%B1%E6%A1%8C%E9%9D%A2%E7%89%88%20Setup%201.7.94-arm64.exe",
+      "native": true
+    }
+  },
+  "hap": {
+    "status": "ready",
+    "file": "honghub-harmony.hap",
+    "size": 2402506,
+    "sha256": "04801a4e245c51634ddc272dd81842912e164b4caf123e77f1e162d5c134679b",
+    "url": "/download/honghub-harmony.hap"
+  },
+  "features": {
+    "count": 38,
+    "hash": "78c545d7ffe9ce9c",
+    "ids": [
+      "board",
+      "report",
+      "sourcespeed",
+      "fix",
+      "updatepublish",
+      "automation",
+      "updatecheck",
+      "govern",
+      "preset-open-dashboard",
+      "preset-dingtalk",
+      "preset-wecom",
+      "preset-feishu",
+      "preset-backup",
+      "preset-broadcast",
+      "feature-mine",
+      "auto-batch",
+      "arch-adaptive",
+      "play-smooth",
+      "mem-adaptive",
+      "auto-update",
+      "os-follow",
+      "ops-audit",
+      "ops-trend",
+      "ops-rollout",
+      "ops-publish",
+      "ops-smoke",
+      "ops-alerts",
+      "ops-catalog",
+      "ops-play",
+      "ops-issues",
+      "stats-heat",
+      "fail-top",
+      "kid-mode",
+      "handoff",
+      "handoff-take",
+      "search-all",
+      "rank-sources",
+      "upgrade-telemetry"
+    ]
+  },
+  "platforms": {
+    "win": {
+      "status": "ready",
+      "file": "desktop-setup.exe",
+      "size": 110345085,
+      "sha256": "2705e0b55787ed125ec66ab6b183c6b4b94235b0703365ec6a2cd89888b299b2",
+      "note": "x64 安装包 + 免安装 zip"
+    },
+    "mac": {
+      "status": "external",
+      "note": "dmg 需 macOS 主机（electron-builder 不能跨平台产出），在 Mac 上执行 npm run pack"
+    },
+    "linux": {
+      "status": "external",
+      "note": "AppImage / deb 需 Linux 主机或 Docker 环境"
+    }
+  }
+}

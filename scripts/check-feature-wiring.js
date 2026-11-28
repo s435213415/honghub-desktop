@@ -20,7 +20,9 @@ const fe = require('./frontend-source');
 const raw = JSON.parse(fs.readFileSync(MAN, 'utf8'));
 const list = Array.isArray(raw) ? raw : (raw.features || []);
 const app = fe.merged(APP);
-const hap = fs.existsSync(HAP) ? fs.readFileSync(HAP, 'utf8') : '';
+/* 1.7.95：HAP 侧原来只读 index.html 裸壳页，脚本全是外链，KH_DEV_ACTION / builtin:* 一个都扫不到，
+   于是「两端不同步」恒报 4 项假红。这里同样用 merged() 把 HAP 目录下的外链脚本内联回来。 */
+const hap = fs.existsSync(HAP) ? fe.merged(HAP) : '';
 
 const devReSrc = (app.match(/var KH_DEV_ACTION = (\/[^\n]*\/);/) || [])[1];
 if (!devReSrc) { console.error('✗ 找不到 KH_DEV_ACTION 规则'); process.exit(1); }

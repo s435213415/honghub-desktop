@@ -19,18 +19,52 @@ const INJECT_FILE = path.join(DATA, 'alerts-injected.json');   // 问题上报�
 const INJECT_KEEP = 120;
 
 const LEVELS = { critical: 0, warn: 1, info: 2 };
-const DEFAULTS = { enabled: false, minLevel: 'critical', webhookUrl: '', dedupeMin: 30 };
+/* 1.7.89（台账 #161 / 清单 61）：外发域名白名单。空表 = 全拒（安全默认），
+   本机回环始终允许；只允许 https，明文 http 要 allowHttp 显式打开。 */
+const DEFAULTS = { enabled: false, minLevel: 'critical', webhookUrl: '', dedupeMin: 30, allowHosts: [], allowHttp: false };
+
+function normHosts(v) {
+  const out = [];
+  (Array.isArray(v) ? v : String(v || '').split(/[\r\n,，;；]+/)).forEach(function (x) {
+    const h = String(x || '').trim().toLowerCase();
+    if (h && out.indexOf(h) < 0 && out.length < 32) out.push(h.slice(0, 80));
+  });
+  return out;
+}
+/* 与前端 KHP2.hostAllowed 同一口径，服务端自己实现一份，避免依赖前端模块 */
+function hostAllowed(url, hosts, allowHttp) {
+  const s = String(url || '').trim();
+  if (!s) return { ok: false, error: '地址为空' };
+  let u;
+  try { u = new URL(s); } catch (e) { return { ok: false, error: '地址不合法' }; }
+  const host = String(u.hostname || '').toLowerCase();
+  const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '[::1]';
+  if (u.protocol !== 'https:' && !loopback && !allowHttp) return { ok: false, error: '非 https，且未允许明文外发' };
+  const list = normHosts(hosts);
+  if (!list.length) return loopback ? { ok: true, host: host, loopback: true } : { ok: false, error: '白名单为空（安全默认全拒）' };
+  for (let i = 0; i < list.length; i++) {
+    const rule = list[i];
+    if (rule === host) return { ok: true, host: host, rule: rule };
+    if (rule.indexOf('*.') === 0) {
+      const suffix = rule.slice(1);
+      if (host.length > suffix.length && host.slice(-suffix.length) === suffix) return { ok: true, host: host, rule: rule };
+    }
+  }
+  return { ok: false, error: '域名不在白名单：' + host };
+}
 
 function ensureDir() { try { fs.mkdirSync(DATA, { recursive: true }); } catch (e) {} }
 function jread(p, d) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return d; } }
 function jwrite(p, v) { ensureDir(); try { fs.writeFileSync(p, JSON.stringify(v, null, 2), 'utf8'); return true; } catch (e) { return false; } }
 
-function config() { return Object.assign({}, DEFAULTS, jread(CFG_FILE, {})); }
+function config() { return Object.assign({}, DEFAULTS, jread(CFG_FILE, {}), { allowHosts: normHosts(Object.assign({}, DEFAULTS, jread(CFG_FILE, {})).allowHosts) }); }
 function saveConfig(patch) {
   const next = Object.assign({}, config(), patch || {});
   next.webhookUrl = String(next.webhookUrl || '').trim();
   next.minLevel = LEVELS[next.minLevel] !== undefined ? next.minLevel : DEFAULTS.minLevel;
   next.dedupeMin = Math.max(1, Math.min(1440, Number(next.dedupeMin) || DEFAULTS.dedupeMin));
+  next.allowHosts = normHosts(next.allowHosts);
+  next.allowHttp = !!next.allowHttp;
   jwrite(CFG_FILE, next);
   return next;
 }
@@ -133,11 +167,16 @@ function textOf(a) {
     '\n主机：' + os.hostname();
 }
 
-/* 手动测试：忽略开关与级别，直接发一条样例 */
+/* 手动测试：忽略开关与级别，直接发一条样例。白名单照旧生效——测试也不能绕过外发边界 */
 async function sendTest(urlOverride) {
   const cfg = config();
   const url = String(urlOverride || cfg.webhookUrl || '').trim();
   if (!url) return { ok: false, error: '还没填 Webhook 地址' };
+  const gate = hostAllowed(url, cfg.allowHosts, cfg.allowHttp);
+  if (!gate.ok) {
+    recordOutbox({ at: Date.now(), kind: 'test', url: url.replace(/\/\/[^/]+\//, '//***/'), ok: false, status: 0, error: '白名单拒绝：' + gate.error, body: '' });
+    return { ok: false, error: '白名单拒绝：' + gate.error, host: gate.host || '' };
+  }
   const payload = { text: '【鸿汇影·测试】告警通道联通性测试\n主机：' + os.hostname(), level: 'info', code: 'test', at: Date.now(), source: '鸿汇影开发端' };
   const r = await postJson(url, payload);
   recordOutbox({ at: Date.now(), kind: 'test', url: url.replace(/\/\/[^/]+\//, '//***/'), ok: !!r.ok, status: r.status || 0, error: r.error || '', body: r.body || '' });
@@ -151,6 +190,11 @@ let lastSeenAt = (jread(STATE_FILE, {}).lastSeenAt) || 0;
 async function dispatchOnce() {
   const cfg = config();
   if (!cfg.enabled || !cfg.webhookUrl) return { sent: 0, skipped: '未启用或无地址' };
+  const gate = hostAllowed(cfg.webhookUrl, cfg.allowHosts, cfg.allowHttp);
+  if (!gate.ok) {
+    recordOutbox({ at: Date.now(), kind: 'alert', code: 'webhook-blocked', level: 'warn', ok: false, status: 0, error: '白名单拒绝：' + gate.error, body: '' });
+    return { sent: 0, skipped: '白名单拒绝：' + gate.error };
+  }
   let graded;
   try {
     graded = require('./devops').gradeAlerts(

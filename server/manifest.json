@@ -1489,17 +1489,17 @@
       "zjHome": "https://zhaoju4.com/",
       "zjSearch": "https://zhaoju4.com/search"
     },
-    "remoteUrl": "https://strain-require-eligibility-maria.trycloudflare.com/api/report",
+    "remoteUrl": "https://teaching-paperbacks-florida-bill.trycloudflare.com/api/report",
     "channelCount": 31
   },
   "release": {
     "schema": 1,
-    "generatedAt": "2026-11-22T12:32:08.985Z",
+    "generatedAt": "2026-11-27T11:48:14.145Z",
     "latest": {
-      "versionName": "1.7.85",
-      "versionCode": 1000199,
-      "publishedAt": "2026-11-22T12:32:08.985Z",
-      "minApi": 12,
+      "versionName": "1.7.114",
+      "versionCode": 1000228,
+      "publishedAt": "2026-11-27T11:48:14.145Z",
+      "minApi": 11,
       "targetApi": 26,
       "compatibleSdk": "5.0.0(12)",
       "targetSdk": "26.0.1",
@@ -1516,13 +1516,13 @@
         {
           "name": "KaihongOS",
           "min": "4.0",
-          "apiMin": 12,
-          "note": "API 12 起可安装；系统升级后自动沿用最新兼容策略"
+          "apiMin": 11,
+          "note": "API 11 起可安装可运行（1.7.99 起与包内 minAPIVersion 对齐）；系统升级后自动沿用最新兼容策略"
         },
         {
           "name": "OpenHarmony",
           "min": "4.0",
-          "apiMin": 12,
+          "apiMin": 11,
           "note": "纯 ArkTS 字节码，无 native so，跨 x86_64 / arm64 通用"
         }
       ],
@@ -1553,8 +1553,8 @@
       "hapAutoInstall": false,
       "hapUrl": "/download/honghub-harmony.hap",
       "downloadUrl": "/download/desktop-setup.exe",
-      "generatedAt": "2026-11-22T12:10:53.874Z",
-      "contentVersion": 99
+      "generatedAt": "2026-11-27T11:48:14.145Z",
+      "contentVersion": 154
     },
     "beta": null,
     "betaNote": "内测清单未配置：当前归档仅有稳定包；配置真实内测包前，内测设备回退稳定清单，此处不提供内测下载链接"

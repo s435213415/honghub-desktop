@@ -206,6 +206,23 @@ function adminPath() {
 app.setName(APP_TITLE);
 
 let serverProc = null;
+
+/* 1.7.104：局域网访问开关（默认关闭，仅绑 127.0.0.1）。
+   开启后内置中枢绑 0.0.0.0，由 server.js 自动要求访问口令；开关状态落在 userData/lan-mode.json。 */
+let LAN_MODE = null;
+function lanFile(){ try{ return path.join(app.getPath('userData'), 'lan-mode.json'); }catch(e){ return ''; } }
+function lanLoad(){
+  if (LAN_MODE !== null) return LAN_MODE;
+  LAN_MODE = false;
+  try{
+    const f = lanFile();
+    if (f && require('fs').existsSync(f)) {
+      const j = JSON.parse(require('fs').readFileSync(f, 'utf8'));
+      LAN_MODE = !!j.lan;
+    }
+  }catch(e){}
+  return LAN_MODE;
+}
 let mainWin = null;
 let tray = null;
 let quitting = false;
@@ -285,12 +302,53 @@ ipcMain.handle('kh:env-info', () => {
     diskOk: diskFree == null ? null : diskFree >= DISK_MIN_BYTES,
     platform: sysProf.platform,
     sysVersion: sysProf.sysVersion,
-    oldSystem: !!sysProf.oldSystem
+    oldSystem: !!sysProf.oldSystem,
+    /* 1.7.103：VC++ 运行库探测（只读 System32 里三个 dll 的存在性，不做任何安装动作） */
+    vcRuntime: (function(){
+      try{
+        const fs2 = require('fs'), path2 = require('path');
+        const sys2 = process.env.SystemRoot || 'C:\\Windows';
+        const dir2 = path2.join(sys2, 'System32');
+        const need = ['msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll'];
+        const missing = need.filter(n => { try { return !fs2.existsSync(path2.join(dir2, n)); } catch(e){ return false; } });
+        return { ok: missing.length === 0, missing: missing };
+      }catch(e){ return null; }
+    })()
   };
 });
 
 /* 本机崩溃 / 异常日志（#95）：只读返回最近记录，供诊断报告并入；不含堆栈与用户数据 */
 /* 页面匿名 ID（1.7.85）：前端首次生成时同步过来，崩溃上报不再固定 desktop-main */
+/* 1.7.104：局域网访问开关（默认关）。开启后重启内置服务让绑定生效，然后重载页面。 */
+ipcMain.handle('kh:lan-mode', async (e, arg) => {
+  const cur = lanLoad();
+  if (!arg || typeof arg.set !== 'boolean') {
+    return { ok: true, lan: cur, host: cur ? '0.0.0.0' : '127.0.0.1' };
+  }
+  const want = !!arg.set;
+  if (want === cur) return { ok: true, lan: cur, host: cur ? '0.0.0.0' : '127.0.0.1' };
+  LAN_MODE = want;
+  try{
+    const f = lanFile();
+    if (f) require('fs').writeFileSync(f, JSON.stringify({ lan: want }));
+  }catch(err){ console.error('[局域网] 写配置失败', err && err.message); }
+  try{
+    if (serverProc) {
+      serverProc.removeAllListeners('exit');
+      try { serverProc.kill(); } catch(e2){}
+    }
+  }catch(e2){}
+  serverProc = null; reusing = false; restarts = 0;
+  try{
+    await pickPort();
+    startServer();
+    if (mainWin && !mainWin.isDestroyed()) setTimeout(() => { try { mainWin.reload(); } catch(e3){} }, 1400);
+  }catch(e3){
+    return { ok: false, lan: cur, host: '', msg: '重启内置服务失败：' + ((e3 && e3.message) || e3) };
+  }
+  return { ok: true, lan: want, host: want ? '0.0.0.0' : '127.0.0.1' };
+});
+
 ipcMain.handle('kh:device-id-set', (e, id) => {
   const v = String(id || '').trim().slice(0, 40);
   if (v) pageDeviceId = v;
@@ -306,9 +364,218 @@ ipcMain.handle('kh:startup-state', () => {
   try { return { lastCrash: readCrashFlag() }; } catch (e) { return { lastCrash: null }; }
 });
 
+/* ---------------- B 档本机能力（1.7.91 · 台账 #167） ----------------
+   #31 字幕目录扫描 / #39 通知策略 / #40 自定义快捷键 / #52 外部播放器路径与参数 /
+   #53 窗口置顶与画中画，都要主进程参与。配置统一落 userData/kh-b8.json，
+   前端保存时整体推送（kh:b8-set），重启仍生效；纯网页 / HAP 无此桥，前端按不支持处理。 */
+const B8_FILE = path.join(app.getPath('userData'), 'kh-b8.json');
+let b8 = { hotkeys: {}, player: { exe: '', args: '' }, notify: 'all', sound: true, top: false, closeAct: 'tray' };
+(function b8Load() {
+  try {
+    const j = JSON.parse(fs.readFileSync(B8_FILE, 'utf8'));
+    if (j && typeof j === 'object') {
+      b8.hotkeys = (j.hotkeys && typeof j.hotkeys === 'object') ? j.hotkeys : {};
+      b8.player = { exe: String((j.player && j.player.exe) || ''), args: String((j.player && j.player.args) || '') };
+      b8.notify = ['all', 'download', 'off'].indexOf(String(j.notify)) >= 0 ? String(j.notify) : 'all';
+      b8.sound = j.sound === undefined ? true : !!j.sound;
+      b8.top = !!j.top;
+      b8.closeAct = ['tray', 'quit', 'min'].indexOf(String(j.closeAct)) >= 0 ? String(j.closeAct) : 'tray';
+      b8.trayBalloonShown = !!j.trayBalloonShown;
+    }
+  } catch (e) { /* 首次启动没有配置文件，用默认值 */ }
+})();
+function b8Write() {
+  try { fs.mkdirSync(path.dirname(B8_FILE), { recursive: true }); fs.writeFileSync(B8_FILE, JSON.stringify(b8, null, 2), 'utf8'); } catch (e) {}
+  b8Broadcast();
+}
+/* 1.7.94 #75 跨进程一致：b8（快捷键 / 外部播放器 / 通知 / 置顶 / 关窗口）有改动就广播给所有窗口，
+   另一处（另开的窗口、托盘菜单、主进程自身如托盘置顶切换）改了也立刻反映到界面，不用重启。 */
+function b8Broadcast() {
+  try {
+    const wins = BrowserWindow.getAllWindows();
+    for (const w of wins) {
+      if (!w || w.isDestroyed()) continue;
+      try { w.webContents.send('kh:b8-changed', { b8: b8, at: new Date().toISOString() }); } catch (e) {}
+    }
+  } catch (e) {}
+}
+/* 1.7.94 #37 IPv4/IPv6 与自定义 DNS：界面把选择写进 kh-net.json，这里在进程启动早期读，
+   mode=ipv4 时追加 --disable-ipv6（重启后生效）。自定义 DNS 只记录：Windows 解析器由系统
+   控制，主进程没有正当手段替用户改全局 DNS，界面里也如实写明，不假装已切换。 */
+const NET_FILE = path.join(app.getPath('userData'), 'kh-net.json');
+let netCfg = { mode: 'auto', dns: [] };
+(function () {
+  try {
+    const j = JSON.parse(fs.readFileSync(NET_FILE, 'utf8'));
+    if (j && typeof j === 'object') {
+      netCfg.mode = (j.mode === 'ipv4' || j.mode === 'ipv6') ? j.mode : 'auto';
+      netCfg.dns = Array.isArray(j.dns) ? j.dns.filter((x) => typeof x === 'string' && x).slice(0, 3) : [];
+    }
+  } catch (e) { /* 首次启动没有文件 */ }
+  if (netCfg.mode === 'ipv4') { try { app.commandLine.appendSwitch('disable-ipv6'); } catch (e) {} }
+})();
+ipcMain.handle('kh:b8-net-get', () => ({ ok: true, net: netCfg, applied: { disableIpv6: netCfg.mode === 'ipv4' } }));
+ipcMain.handle('kh:b8-net-set', (ev, arg) => {
+  const a = (arg && typeof arg === 'object') ? arg : {};
+  const mode = (a.mode === 'ipv4' || a.mode === 'ipv6') ? a.mode : 'auto';
+  const dns = Array.isArray(a.dns) ? a.dns.filter((x) => typeof x === 'string' && x).slice(0, 3) : [];
+  netCfg = { mode: mode, dns: dns, at: new Date().toISOString() };
+  try {
+    fs.mkdirSync(path.dirname(NET_FILE), { recursive: true });
+    fs.writeFileSync(NET_FILE, JSON.stringify(netCfg, null, 2), 'utf8');
+  } catch (e) { return { ok: false, reason: '写入 kh-net.json 失败：' + String((e && e.message) || e) }; }
+  return { ok: true, net: netCfg, restart: mode !== 'auto' };
+});
+const B8_ACTIONS = ['toggle', 'next', 'prev', 'mute', 'top'];
+function b8RegisterHotkeys() {
+  const out = { ok: true, registered: [], conflicts: [] };
+  try { globalShortcut.unregisterAll(); } catch (e) {}
+  const hk = b8.hotkeys || {};
+  const plan = [];
+  for (const a of B8_ACTIONS) {
+    const acc = String(hk[a] || '').trim();
+    if (acc) plan.push({ action: a, accel: acc });
+  }
+  // 用户没自定义播放键时保留媒体键默认，避免"自定义之后媒体键失效"
+  if (!plan.some((p) => p.action === 'toggle')) plan.unshift({ action: 'toggle', accel: 'MediaPlayPause' });
+  const seen = new Set();
+  for (const p of plan) {
+    if (seen.has(p.accel)) { out.conflicts.push(p); continue; }
+    seen.add(p.accel);
+    let okReg = false;
+    try {
+      okReg = globalShortcut.register(p.accel, () => {
+        if (!mainWin || mainWin.isDestroyed()) return;
+        if (p.action === 'top') { b8.top = !b8.top; mainWin.setAlwaysOnTop(b8.top, b8.top ? 'floating' : 'normal'); b8Write(); }
+        mainWin.webContents.send('kh:shortcut', p.action);
+      });
+    } catch (e) { okReg = false; }
+    if (okReg) out.registered.push(p); else out.conflicts.push(p);
+  }
+  if (out.conflicts.length) out.ok = false;
+  return out;
+}
+ipcMain.handle('kh:b8-get', () => ({ ok: true, b8: b8, platform: process.platform }));
+ipcMain.handle('kh:b8-set', (ev, arg) => {
+  const a = (arg && typeof arg === 'object') ? arg : {};
+  try {
+    if (a.hotkeys && typeof a.hotkeys === 'object') {
+      const hk = {};
+      for (const k of B8_ACTIONS) hk[k] = String(a.hotkeys[k] || '').trim();
+      b8.hotkeys = hk;
+    }
+    if (a.player && typeof a.player === 'object') {
+      b8.player = { exe: String(a.player.exe || ''), args: String(a.player.args || '') };
+    }
+    if (a.notify) {
+      const n = String(a.notify);
+      b8.notify = ['all', 'download', 'off'].indexOf(n) >= 0 ? n : 'all';
+    }
+    if (typeof a.sound === 'boolean') b8.sound = a.sound;
+    /* 1.7.93 #54：关闭行为 tray / quit / min */
+    if (a.closeAct) {
+      const ca = String(a.closeAct);
+      b8.closeAct = ['tray', 'quit', 'min'].indexOf(ca) >= 0 ? ca : b8.closeAct;
+    }
+    if (typeof a.top === 'boolean') {
+      b8.top = a.top;
+      if (mainWin && !mainWin.isDestroyed()) mainWin.setAlwaysOnTop(a.top, a.top ? 'floating' : 'normal');
+    }
+    b8Write();
+    const reg = b8RegisterHotkeys();
+    return { ok: true, hotkeys: reg, player: b8.player, notify: b8.notify, sound: b8.sound, top: b8.top, closeAct: b8.closeAct };
+  } catch (e) { return { ok: false, reason: String((e && e.message) || e).slice(0, 120) }; }
+});
+ipcMain.handle('kh:b8-pick', async (ev, arg) => {
+  const kind = String((arg && arg.kind) || 'exe');
+  try {
+    const r = await dialog.showOpenDialog(mainWin && !mainWin.isDestroyed() ? mainWin : undefined, kind === 'dir'
+      ? { title: '选择字幕所在文件夹', properties: ['openDirectory'] }
+      : { title: '选择外部播放器', properties: ['openFile'], filters: [{ name: '可执行文件', extensions: ['exe'] }] });
+    if (r.canceled || !r.filePaths || !r.filePaths.length) return { ok: false, canceled: true };
+    return { ok: true, path: r.filePaths[0] };
+  } catch (e) { return { ok: false, reason: String((e && e.message) || e).slice(0, 120) }; }
+});
+ipcMain.handle('kh:b8-subs', (ev, arg) => {
+  const dir = String((arg && arg.dir) || '');
+  if (!dir) return { ok: false, reason: '未设置字幕目录' };
+  try {
+    if (!fs.existsSync(dir)) return { ok: false, reason: '目录不存在' };
+    if (!fs.statSync(dir).isDirectory()) return { ok: false, reason: '不是目录' };
+    const out = [];
+    for (const name of fs.readdirSync(dir)) {
+      if (!/\.(srt|ass|ssa|vtt)$/i.test(name)) continue;
+      let sz = 0;
+      try { const st = fs.statSync(path.join(dir, name)); if (!st.isFile() || st.size > 8 * 1024 * 1024) continue; sz = st.size; } catch (e) { continue; }
+      out.push({ name: name, path: path.join(dir, name), size: sz });
+      if (out.length >= 500) break;
+    }
+    return { ok: true, dir: dir, files: out };
+  } catch (e) { return { ok: false, reason: String((e && e.message) || e).slice(0, 120) }; }
+});
+/* 1.7.94 #78 皮肤包：读取「外部主题目录」里的 *.json（每个 ≤64KB，最多 64 个），
+   前端拿到文本自己校验与入库；这里绝不解析样式，只搬文件内容。 */
+ipcMain.handle('kh:b8-themes', (ev, arg) => {
+  const dir = String((arg && arg.dir) || '');
+  if (!dir) return { ok: false, reason: '未选择主题目录' };
+  try {
+    if (!fs.existsSync(dir)) return { ok: false, reason: '目录不存在' };
+    if (!fs.statSync(dir).isDirectory()) return { ok: false, reason: '不是目录' };
+    const out = [];
+    for (const name of fs.readdirSync(dir)) {
+      if (!/\.json$/i.test(name)) continue;
+      const fp = path.join(dir, name);
+      let okFile = false;
+      try { const st = fs.statSync(fp); okFile = st.isFile() && st.size <= 64 * 1024; } catch (e) { okFile = false; }
+      if (!okFile) continue;
+      try { out.push({ name: name, text: fs.readFileSync(fp, 'utf8') }); } catch (e) { continue; }
+      if (out.length >= 64) break;
+    }
+    return { ok: true, dir: dir, files: out };
+  } catch (e) { return { ok: false, reason: String((e && e.message) || e).slice(0, 120) }; }
+});
+ipcMain.handle('kh:b8-sub-read', (ev, arg) => {
+  const p = String((arg && arg.path) || '');
+  if (!p || !fs.existsSync(p)) return { ok: false, reason: '文件不存在' };
+  try {
+    let text = fs.readFileSync(p, 'utf8');
+    if (/\uFFFD/.test(text.slice(0, 200))) {
+      try { text = new TextDecoder('gb18030').decode(fs.readFileSync(p)); } catch (e) {}
+    }
+    return { ok: true, text: text.slice(0, 4 * 1024 * 1024), name: path.basename(p) };
+  } catch (e) { return { ok: false, reason: String((e && e.message) || e).slice(0, 120) }; }
+});
+let b8PrevBounds = null;
+ipcMain.handle('kh:b8-win', (ev, arg) => {
+  if (!mainWin || mainWin.isDestroyed()) return { ok: false, reason: '窗口不在' };
+  const a = (arg && typeof arg === 'object') ? arg : {};
+  try {
+    if (typeof a.top === 'boolean') {
+      b8.top = a.top;
+      mainWin.setAlwaysOnTop(a.top, a.top ? 'floating' : 'normal');
+      b8Write();
+    }
+    if (typeof a.pip === 'boolean') {
+      if (a.pip) {
+        if (!b8PrevBounds) b8PrevBounds = mainWin.getBounds();
+        const area = screen.getPrimaryDisplay().workArea;
+        mainWin.setAlwaysOnTop(true, 'floating');
+        mainWin.setSize(480, 270, false);
+        mainWin.setPosition(area.x + area.width - 492, area.y + area.height - 282);
+      } else {
+        if (b8PrevBounds) { mainWin.setBounds(b8PrevBounds); b8PrevBounds = null; }
+        mainWin.setAlwaysOnTop(!!b8.top, b8.top ? 'floating' : 'normal');
+      }
+    }
+    return { ok: true, top: b8.top, pip: !!a.pip, bounds: mainWin.getBounds() };
+  } catch (e) { return { ok: false, reason: String((e && e.message) || e).slice(0, 120) }; }
+});
+
 /* 外部播放器拉起（#109）：优先本机已装 VLC / mpv 打开片源直链；都未安装则交系统默认播放器。
    纯浏览器 / HAP 环境无此桥，前端隐藏入口；失败如实返回，不静默吞错误。 */
 function findExternalPlayer() {
+  const custom = String((b8.player && b8.player.exe) || '').trim();
+  if (custom) { try { if (fs.existsSync(custom)) return custom; } catch (e) {} }
   const pf = [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], process.env.ProgramW6432].filter(Boolean);
   for (const base of pf) {
     const vlc = path.join(base, 'VideoLAN', 'VLC', 'vlc.exe');
@@ -324,8 +591,19 @@ ipcMain.handle('kh:open-external', (ev, url) => {
   const exe = findExternalPlayer();
   try {
     if (exe) {
-      spawn(exe, [target], { detached: true, stdio: 'ignore' }).unref();
-      return { ok: true, via: /vlc\.exe$/i.test(exe) ? 'vlc' : 'mpv' };
+      /* 1.7.91（#52）：参数模板可配，{url} 占位替换；没写占位符时把直链追加在最后，
+         避免"填了参数反而打不开片"。 */
+      const tpl = String((b8.player && b8.player.args) || '').trim();
+      let argv = [target];
+      if (tpl) {
+        const toks = tpl.match(/"[^"]*"|'[^']*'|\S+/g) || [];
+        argv = toks.map((x) => x.replace(/^["']|["']$/g, '').split('{url}').join(target));
+        if (argv.join('\u0000').indexOf(target) < 0) argv.push(target);
+      }
+      spawn(exe, argv, { detached: true, stdio: 'ignore' }).unref();
+      const custom = String((b8.player && b8.player.exe) || '').trim();
+      const via = (custom && exe === custom) ? 'custom' : (/vlc\.exe$/i.test(exe) ? 'vlc' : 'mpv');
+      return { ok: true, via: via, argv: argv };
     }
     return Promise.resolve(shell.openPath(target))
       .then((err) => ({ ok: !err, via: 'system-default', reason: err || undefined }))
@@ -335,11 +613,76 @@ ipcMain.handle('kh:open-external', (ev, url) => {
   }
 });
 
-/* 系统通知（#109）：升级完成 / 追剧提醒等场景由前端经桥触发；不支持时如实返回。 */
-ipcMain.handle('kh:notify', (ev, title, body) => {
+/* 静默覆盖安装（1.7.86）：安装包已由服务端下载并校验 SHA256，这里只负责「退出自身 → /S 覆盖装到当前目录 → 重新拉起」。
+   只对 Setup 安装出来的目录生效（目录里有 Uninstall*.exe）；免安装 zip 目录直接拒绝，否则会把 NSIS 解到解压目录里搞乱。
+   NSIS 的 /S 是同目录覆盖，/D 必须放在最后且不能带引号。 */
+ipcMain.handle('kh:install-silent', (ev, arg) => {
+  const fp = String((arg && arg.file) || '');
+  if (!fp || !fs.existsSync(fp)) return { ok: false, reason: '安装包不存在（可能已被清理）' };
+  if (!/\.exe$/i.test(fp)) return { ok: false, reason: '安装包不是可执行文件' };
+  const appDir = path.dirname(process.execPath);
+  let isSetupDir = false;
+  try {
+    isSetupDir = fs.readdirSync(appDir).some((f) => /^Uninstall.*\.exe$/i.test(f));
+  } catch (e) { isSetupDir = false; }
+  if (!isSetupDir) {
+    return { ok: false, reason: '当前是免安装版目录，静默覆盖安装不适用（请继续用免安装包，或改用 Setup 安装一次）' };
+  }
+  const exe = process.execPath;
+  const cmd = 'timeout /t 3 /nobreak >nul & "' + fp + '" /S /D=' + appDir +
+    ' & timeout /t 2 /nobreak >nul & start "" "' + exe + '"';
+  try {
+    spawn('cmd.exe', ['/c', cmd], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  } catch (e) {
+    return { ok: false, reason: String((e && e.message) || e).slice(0, 120) };
+  }
+  setTimeout(() => { quitting = true; try { app.quit(); } catch (e) { process.exit(0); } }, 800);
+  return { ok: true, dir: appDir, file: path.basename(fp) };
+});
+
+/* 客户版静默升级：状态读取 / 模式切换 / 手动检查（1.7.95 · P1-07 / P1-08）
+   模式：off 不检查 · check 只提示 · download 下载并提示 · install 下载校验后静默安装（仅 Setup 目录）
+   手动「立即检查」只下载不安装，避免用户只是想知道有没有新版就被重启。 */
+ipcMain.handle('kh:auto-update-get', () => {
+  try { return { ok: true, state: require('./client-auto-update').readState(), current: app.getVersion(), devBuild: DEV_BUILD }; }
+  catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
+});
+ipcMain.handle('kh:auto-update-mode', (ev, arg) => {
+  try {
+    const mode = ['off', 'check', 'download', 'install'].indexOf(String((arg && arg.mode) || '')) >= 0
+      ? String(arg.mode) : 'download';
+    const m = require('./client-auto-update');
+    const st = m.readState();
+    st.mode = mode;
+    st.attempts = 0;
+    m.writeState(st);
+    return { ok: true, mode: mode };
+  } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
+});
+ipcMain.handle('kh:auto-update-run', () => {
+  try {
+    return require('./client-auto-update').checkOnce({
+      current: app.getVersion(),
+      appDir: path.dirname(process.execPath),
+      relaunch: process.execPath,
+      updateDir: path.join(app.getPath('userData'), 'updates'),
+      autoInstall: false
+    });
+  } catch (e) { return Promise.resolve({ ok: false, reason: String((e && e.message) || e) }); }
+});
+
+/* 系统通知（#109）：升级完成 / 追剧提醒等场景由前端经桥触发；不支持时如实返回。
+   1.7.91（#39）：前端传第四参 kind（download / update / other），主进程按 b8.notify 策略拦截，
+   这样即使前端漏过滤也不会响。 */
+ipcMain.handle('kh:notify', (ev, title, body, kind) => {
+  const k = String(kind || 'other');
+  const pol = String(b8.notify || 'all');
+  if (pol === 'off' || (pol === 'download' && !(k === 'download' || k === 'update'))) {
+    return { ok: false, skipped: true, reason: 'policy:' + pol };
+  }
   try {
     if (typeof Notification === 'undefined' || !Notification.isSupported()) return { ok: false, reason: 'notification unsupported' };
-    new Notification({ title: String(title || '鸿汇影'), body: String(body || '') }).show();
+    new Notification({ title: String(title || '鸿汇影'), body: String(body || ''), silent: !b8.sound }).show();
     return { ok: true };
   } catch (e) {
     return { ok: false, reason: String(e && e.message || e).slice(0, 120) };
@@ -799,6 +1142,46 @@ ipcMain.handle('kh:pick-video', async () => {
     return { ok: true, path: fp, name: path.basename(fp), size: size, url: url };
   } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
 });
+/* ---------------- 本地媒体库扫描（1.7.111-A） ----------------
+   选一个文件夹，递归扫出视频（含子目录），按相对目录分组，顺带找本地封面与 nfo 标题。
+   只读枚举，不写盘、不改系统；上限 2000 条 / 深度 5，避免超大目录卡死。 */
+function mediaFileUrl(fp) {
+  return 'file:///' + fp.replace(/\\/g, '/').split('/').map((seg, i) => i === 0 ? seg : encodeURIComponent(seg)).join('/');
+}
+function findCover(dir, base) {
+  const cand = [base + '.jpg', base + '.png', base + '.jpeg', 'poster.jpg', 'folder.jpg', 'cover.jpg', 'fanart.jpg'];
+  for (const c of cand) { try { const p = path.join(dir, c); if (fs.statSync(p).isFile()) return mediaFileUrl(p); } catch (e) {} }
+  return '';
+}
+ipcMain.handle('kh:scan-media-dir', async () => {
+  try {
+    const r = await dialog.showOpenDialog(mainWin && !mainWin.isDestroyed() ? mainWin : undefined, {
+      title: '选择媒体库文件夹', properties: ['openDirectory']
+    });
+    if (!r || r.canceled || !r.filePaths || !r.filePaths[0]) return { ok: false, canceled: true };
+    const root = r.filePaths[0];
+    const items = [];
+    const walk = (dir, depth) => {
+      if (depth > 5 || items.length >= 2000) return;
+      let ents; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+      for (const e of ents) {
+        if (items.length >= 2000) return;
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) { walk(p, depth + 1); continue; }
+        const ext = path.extname(e.name).slice(1).toLowerCase();
+        if (VIDEO_EXT.indexOf(ext) < 0) continue;
+        let size = 0; try { size = fs.statSync(p).size; } catch (e2) {}
+        const base = path.basename(e.name, path.extname(e.name));
+        const rel = path.relative(root, dir).replace(/\\/g, '/');
+        items.push({ name: base, file: e.name, path: p, url: mediaFileUrl(p), size: size, ext: ext,
+          group: rel || '根目录', cover: findCover(dir, base) });
+      }
+    };
+    walk(root, 0);
+    items.sort((a, b) => (a.group + a.name).localeCompare(b.group + b.name, 'zh'));
+    return { ok: true, dir: root, count: items.length, items: items };
+  } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
+});
 /* 1.7.85：一键加载影视仓配置——选本机 .json/.txt 配置文件，按 GBK/UTF-8 智能解码读回文本。
    只读文本文件，不改文件系统、不注册文件关联，内容交由用户在影视仓里确认导入。 */
 ipcMain.handle('kh:pick-config', async () => {
@@ -819,6 +1202,90 @@ ipcMain.handle('kh:pick-config', async () => {
     return { ok: true, name: path.basename(fp), text: text, size: buf.length };
   } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
 });
+/* ---------------- 备份落盘（1.7.88 · 台账 #160） ----------------
+   自动备份要真正写到磁盘（而不是让浏览器弹下载框），所以主进程提供三个能力：
+   选目录 / 写文件 / 打开目录。写入前先做路径与体积校验，只允许 .json / .khbak。 */
+const BAK_EXT = ['.json', '.khbak', '.txt'];
+function bakSanitizeName(name) {
+  let n = String(name || '').replace(/[\\/:*?"<>|]/g, '_').trim();
+  if (!n) n = '鸿汇影备份';
+  /* 去掉以点开头的隐藏名与保留名 */
+  n = n.replace(/^\.+/, '_');
+  if (/^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(n)) n = '_' + n;
+  return n.slice(0, 160);
+}
+function bakDefaultDir() {
+  try {
+    const d = path.join(app.getPath('documents'), '鸿汇影·备份');
+    fs.mkdirSync(d, { recursive: true });
+    return d;
+  } catch (e) {
+    return app.getPath('userData');
+  }
+}
+ipcMain.handle('kh:backup-dir-pick', async () => {
+  try {
+    const r = await dialog.showOpenDialog(mainWin && !mainWin.isDestroyed() ? mainWin : undefined, {
+      title: '选择自动备份目录',
+      defaultPath: bakDefaultDir(),
+      properties: ['openDirectory', 'createDirectory']
+    });
+    if (!r || r.canceled || !r.filePaths || !r.filePaths[0]) return { ok: false, canceled: true, dir: bakDefaultDir() };
+    const d = r.filePaths[0];
+    try { fs.mkdirSync(d, { recursive: true }); } catch (e) {}
+    return { ok: true, dir: d };
+  } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
+});
+ipcMain.handle('kh:backup-save', async (ev, arg) => {
+  try {
+    const a = arg || {};
+    const text = String(a.text || '');
+    if (!text) return { ok: false, reason: '内容为空' };
+    if (text.length > 64 * 1024 * 1024) return { ok: false, reason: '备份超过 64MB，已拒绝写入' };
+    let name = bakSanitizeName(a.name || ('鸿汇影备份 ' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.json'));
+    const ext = path.extname(name).toLowerCase();
+    if (BAK_EXT.indexOf(ext) < 0) name += '.json';
+    let dir = String(a.dir || '').trim();
+    if (!dir) dir = bakDefaultDir();
+    try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
+    let fp = path.join(dir, name);
+    /* 同名不覆盖：加 -2、-3…，避免自动备份把手工导出顶掉 */
+    if (fs.existsSync(fp)) {
+      const base = name.slice(0, name.length - ext.length), e2 = path.extname(name) || '.json';
+      for (let i = 2; i < 60; i++) {
+        const cand = path.join(dir, base + '-' + i + e2);
+        if (!fs.existsSync(cand)) { fp = cand; break; }
+      }
+    }
+    fs.writeFileSync(fp, text, 'utf8');
+    let size = 0;
+    try { size = fs.statSync(fp).size; } catch (e) {}
+    /* 自动备份保留份数：由渲染层传 keep，主进程只删自己命名的同前缀旧文件 */
+    const keep = Number(a.keep) || 0;
+    if (keep > 0) {
+      try {
+        const prefix = bakSanitizeName(a.keepPrefix || '自动备份');
+        const files = fs.readdirSync(dir)
+          .filter((f) => f.indexOf(prefix) === 0 && /\.(json|khbak)$/i.test(f))
+          .map((f) => ({ f: f, t: fs.statSync(path.join(dir, f)).mtimeMs }))
+          .sort((x, y) => y.t - x.t);
+        files.slice(keep).forEach((it) => { try { fs.unlinkSync(path.join(dir, it.f)); } catch (e) {} });
+      } catch (e) { /* 清理失败不影响本次备份 */ }
+    }
+    return { ok: true, path: fp, dir: dir, size: size };
+  } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
+});
+ipcMain.handle('kh:backup-open-dir', async (ev, arg) => {
+  try {
+    const d = String((arg && arg.dir) || '').trim() || bakDefaultDir();
+    if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
+    const r = await shell.openPath(d);
+    if (r) return { ok: false, reason: String(r) };
+    return { ok: true, dir: d };
+  } catch (e) { return { ok: false, reason: String((e && e.message) || e) }; }
+});
+ipcMain.handle('kh:backup-default-dir', () => ({ ok: true, dir: bakDefaultDir() }));
+
 /* 落盘地址 → file:// 地址（拖放走渲染层的 File.path，同样需要转换） */
 ipcMain.handle('kh:file-path-to-url', (ev, p) => {
   const fp = String(p || '');
@@ -1175,7 +1642,7 @@ function startServer() {
   // 关键：打包后 process.execPath 是 Electron 的 exe，必须用 ELECTRON_RUN_AS_NODE=1
   // 才能把它当纯 Node 运行 server.js；否则服务起不来，窗口加载 localhost 就会白屏。
   serverProc = spawn(process.execPath, [path.join(__dirname, 'server', 'server.js')], {
-    env: Object.assign({}, process.env, { PORT: String(HUB_PORT), ELECTRON_RUN_AS_NODE: '1', KH_DEV_MODE: DEV_BUILD ? '1' : '0', KH_CLIENT_ONLY: CLIENT_ONLY ? '1' : '0' }),
+    env: Object.assign({}, process.env, { PORT: String(HUB_PORT), ELECTRON_RUN_AS_NODE: '1', KH_DEV_MODE: DEV_BUILD ? '1' : '0', KH_CLIENT_ONLY: CLIENT_ONLY ? '1' : '0', KH_HOST: (lanLoad() ? '0.0.0.0' : '127.0.0.1') }),
     stdio: ['ignore', 'pipe', 'pipe']
   });
   if (serverProc.stdout) serverProc.stdout.on('data', (d) => console.log('[服务]', d.toString().trim()));
@@ -1209,8 +1676,9 @@ function waitForServer(onReady, tries) {
   });
 }
 
-/* 托盘（#116）：常驻入口 + 右键「显示主窗口 / 退出」。本应用随附本地服务，既有口径为
-   关闭窗口即彻底退出、不留后台，因此托盘不把关闭改成最小化驻留；仅提供快捷唤回与退出。 */
+/* 托盘（#116 / 1.7.93 #54）：常驻入口 + 右键「显示主窗口 / 退出」。
+   关闭行为由设置里的 kh_close_act 决定（tray 收进托盘 / min 最小化 / quit 直接退出），
+   托盘这里只负责唤回与退出，不参与判定。 */
 function createTray() {
   try {
     let img;
@@ -1232,15 +1700,9 @@ function createTray() {
   } catch (e) { tray = null; }
 }
 
-/* 全局快捷键（#116）：媒体播放/暂停键转发到渲染进程；音量键交系统默认，不劫持。
-   渲染进程无对应播放状态时动作自行兜底忽略。 */
-function registerShortcuts() {
-  try {
-    globalShortcut.register('MediaPlayPause', () => {
-      if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('kh:shortcut', 'playpause');
-    });
-  } catch (e) { /* 旧内核或键位被占用时不阻断启动 */ }
-}
+/* 全局快捷键（#116 / 1.7.91 #40）：默认媒体播放/暂停键转发到渲染进程；
+   用户在设置里自定义后改走 b8.hotkeys（kh:b8-set 里重新注册），音量键始终交系统默认不劫持。 */
+function registerShortcuts() { return b8RegisterHotkeys(); }
 
 /* 应用内浏览窗口：按平台多开（同一域名复用，最多 4 个），每个窗口各带返回工具栏。
    平台页普遍禁止 iframe，所以用 webview 载入；站内 _blank 链接在当前窗口继续走，
@@ -1549,7 +2011,28 @@ function createWindow() {
       item.once('done', (e, state) => push({ state: state, filename: item.getFilename(), received: item.getReceivedBytes(), total: item.getTotalBytes(), path: item.getSavePath() }));
     });
   } catch (e) { /* 旧内核无 session 事件时不阻断启动 */ }
-  mainWin.on('close', () => { saveBounds(mainWin); });
+  /* 1.7.93 #54 关闭行为：tray=收进托盘继续跑（点托盘图标或菜单“显示主窗口”唤回）；
+     min=最小化到任务栏；quit=直接退出（旧口径，仍可选）。退出走托盘菜单 / Ctrl+Q / 系统关机，
+     这些路径都先置 quitting=true，所以不会被下面的拦截吞掉。 */
+  mainWin.on('close', (e) => {
+    saveBounds(mainWin);
+    if (quitting) return;
+    try {
+      if (b8.closeAct === 'tray') {
+        e.preventDefault();
+        mainWin.hide();
+        // 首次收进托盘给一次气泡提示，之后只静默收纳，避免每次关窗都弹
+        if (!b8.trayBalloonShown && tray && typeof tray.displayBalloon === 'function') {
+          try { tray.displayBalloon({ title: APP_TITLE, content: '已收进托盘，右键托盘图标可退出' }); } catch (err) {}
+          b8.trayBalloonShown = true;
+          b8Write();
+        }
+      } else if (b8.closeAct === 'min') {
+        e.preventDefault();
+        mainWin.minimize();
+      }
+    } catch (err) { /* 托盘不可用等异常时按旧口径退出，不留半死状态 */ }
+  });
   mainWin.on('closed', () => { mainWin = null; });
 }
 
@@ -1603,6 +2086,25 @@ app.whenReady().then(async () => {
   registerShortcuts();
   // 开发端自更新：启动后检查本机镜像站新包，下载校验后静默安装并重启（客户版不会加载这段）
   if (DEV_BUILD) { try { require('./dev-auto-update').start(); } catch (e) {} }
+  // 客户版静默升级（1.7.95 P1-07/08）：只认云端清单 + SHA256，默认「下载并提示」；
+  // 只有 Setup 安装目录才允许自动静默安装，免安装版自动降级为提示（避免 NSIS 解到解压目录）。
+  if (!DEV_BUILD) {
+    try {
+      require('./client-auto-update').start({
+        app: app, spawn: spawn, version: app.getVersion(),
+        appDir: path.dirname(process.execPath), relaunch: process.execPath,
+        updateDir: path.join(app.getPath('userData'), 'updates'),
+        notify: (type, payload) => {
+          try { if (mainWin && !mainWin.isDestroyed()) mainWin.webContents.send('kh:auto-update', { type: type, payload: payload || {} }); } catch (e) {}
+          if (type === 'ready' && Notification.isSupported()) {
+            try {
+              new Notification({ title: '鸿汇影 · 新版本已就绪', body: 'v' + ((payload && payload.version) || '') + ' 已下载并通过校验，重启后安装' }).show();
+            } catch (e) {}
+          }
+        }
+      });
+    } catch (e) { console.error('[自动升级] 启动失败：', e && e.message); }
+  }
 });
 
 app.on('window-all-closed', () => {

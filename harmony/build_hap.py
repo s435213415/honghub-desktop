@@ -490,8 +490,8 @@ HAP_BLOCK = r'''
     // 接收所有最终成品：拉取中枢治理产出 + 自动反馈通道
     window.fetch(KH_HUB + '/api/feedback', { cache: 'no-store' }).then(function (r) { return r.json(); })
       .then(function (d) {
-        if (d && d.finalProducts) { khLastFinal = d.finalProducts; khRenderFinal(); }
-        if (d && Array.isArray(d.feedback)) { khFeedbacks = d.feedback; khRenderFinal(); }
+        if (d && d.finalProducts) { khLastFinal = d.finalProducts;  khRenderFinal();  }
+        if (d && Array.isArray(d.feedback)) { khFeedbacks = d.feedback;  khRenderFinal();  }
       }).catch(function () {});
   }
   khDiscoverHub(function () { sync(); });
@@ -629,7 +629,9 @@ HAP_BLOCK = r'''
     khHarmonyOptimize();
   }
 
+  
   khHarmonyHubUI();
+  
   khRenderHub();
 
   function khRenderHub() {
@@ -640,6 +642,7 @@ HAP_BLOCK = r'''
   }
 
   // 接收所有最终成品：把中枢治理产出的「建议 / 优化 / 更新 / 发布 / 反馈」在深开鸿端呈现
+  
   function khRenderFinal() {
     try {
       var panel = document.getElementById('khFinalPanel');
@@ -671,7 +674,9 @@ HAP_BLOCK = r'''
       panel.innerHTML = h;
     } catch (e) {}
   }
+  
 
+  
   function khHarmonyHubUI() {
     try {
       var bar = document.createElement('div'); bar.id = 'khHubBar';
@@ -730,6 +735,7 @@ HAP_BLOCK = r'''
       if (chk) chk.onchange = function () { try { localStorage.setItem('khAutoOptimize', chk.checked ? '1' : '0'); } catch (e) {} khShowToast(chk.checked ? '✅ 已开启自动优化' : '⏸️ 已关闭自动优化'); };
     } catch (e) {}
   }
+  
 
   /* ===== TV / 遥控器空间焦点导航（无触摸屏设备可用方向键选条目，Enter 打开）===== */
   (function khTvSpatialNav() {
@@ -876,6 +882,10 @@ def inject(html, hub):
     if os.environ.get('KH_DIAG') != '1':
         block = re.sub(r'/\* KH_DIAG_START \*/.*?/\* KH_DIAG_END \*/', '', block, flags=re.S)
         block = re.sub(r'[ \t]*window\.__KH_DIAG_ALLOW = __KH_DIAG_ALLOW__;[^\n]*\n', '', block)
+    # 客户版：运维悬浮条（中枢地址 / 自动优化 / 优化 / 反馈 / 成品 / 重连 / 口令）与成品面板
+    # 只属于开发端，整段不进客户包；dev 变体（KH_DEVUI=1）原样保留。
+    if os.environ.get('KH_DEVUI') != '1':
+        block = drop_dev_block(block)
     html = html.replace(anchor, anchor + "\n" + block, 1)
     # 5) 窗口管理桥的网页侧（原生 EntryAbility 推安全区 / 返回键，网页回报"还能不能退一层"）
     #    诊断面板在 BRIDGE_BLOCK 里，正式包同样整块剔除
@@ -887,6 +897,32 @@ def inject(html, hub):
         html = re.sub(r'/\* KH_DEVUI_START \*/.*?/\* KH_DEVUI_END \*/', '', html, flags=re.S)
     html = html.replace(anchor, anchor + "\n" + bridge, 1)
     return html, True
+
+
+def drop_dev_block(text):
+    """客户端变体：把开发端的运维悬浮条连同成品面板整段去掉。
+
+    1.7.99 起不用「标记对」剥离：同一个注入块里有多对标记时，非贪婪正则会把
+    相邻两对互相吞并，结果是标记被删、标记之间的代码却留了下来（1.7.99 客户包
+    里 khHubBar 又冒出来就是这么来的）。改成按行删函数体：函数头到下一个
+    两空格缩进的收尾 `}` 为止，纯文本行级操作，不依赖正则配对，也不会误伤。"""
+    for name in ('khHarmonyHubUI', 'khRenderFinal'):
+        lines = text.split('\n')
+        out, skipping = [], False
+        for ln in lines:
+            s = ln.strip()
+            if not skipping and s.startswith('function ' + name + '() {'):
+                skipping = True
+                continue
+            if skipping:
+                if ln.rstrip() == '  }':
+                    skipping = False
+                continue
+            out.append(ln)
+        text = '\n'.join(out)
+    text = re.sub(r'[ \t]*khHarmonyHubUI\(\);[^\n]*\n', '', text)
+    text = text.replace('khRenderFinal();', '')
+    return text
 
 
 def inject_main(www_dir, hub):
